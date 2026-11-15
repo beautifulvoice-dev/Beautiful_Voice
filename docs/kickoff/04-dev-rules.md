@@ -28,7 +28,7 @@ flowchart LR
 | 브랜치 이름 | `<type>/<issue번호>-<짧은설명>` 예: `feat/42-appointment-conflict` |
 | 커밋 메시지 | Conventional Commits: `feat(appointments): 저장 직전 충돌 재검사 (#42)` |
 | 머지 방식 | Squash merge만 허용. PR 제목이 최종 커밋 메시지 |
-| `main` 보호 | 직접 push 금지, CI 통과 + 승인 1명 필수, 대화(리뷰 코멘트) 해결 필수 |
+| `main` 보호 | 직접 push 금지, CI 통과 + 승인 1명 필수, 대화(리뷰 코멘트) 해결 필수, **새 커밋이 올라오면 기존 승인 무효화**(Dismiss stale approvals), CODEOWNERS 승인 필수 |
 | 큰 기능 | 피처 플래그로 미완성 기능을 숨기고 `main`에 자주 통합 (장기 브랜치 금지) |
 
 ## 3. 이슈 관리 (D-09 초안)
@@ -45,9 +45,10 @@ flowchart LR
 |---|---|
 | 크기 | 변경 400줄 이하 권장(생성 파일·락파일 제외). 넘으면 쪼개거나 사유 기재 |
 | 설명 | PR 템플릿 필수: 연결 이슈, 무엇/왜, 테스트 방법, 스크린샷(UI), **AI 사용 범위**, 위험·롤백 |
-| 리뷰어 | 사람 1명 승인 필수. 계약(`contracts/`)·DB 마이그레이션·인증 코드는 영역 주담당 승인 필수(CODEOWNERS) |
+| 리뷰어 | 사람 1명 승인 필수. 계약(`contracts/`)·DB 마이그레이션·인증 코드·**CI/CD 워크플로(`.github/workflows/`)**는 지정 담당 승인 필수(CODEOWNERS). CODEOWNERS 파일은 R&R 확정 후 담당자 2명 이상으로 작성(작성자 본인은 승인 불가하므로) |
 | AI 리뷰 | 모든 PR에 자동 AI 리뷰 실행. **AI 리뷰는 보조이며 승인을 대체하지 않는다.** 지적 사항은 반영하거나 반박 코멘트를 남긴다 |
 | 응답 시간 | 리뷰 요청 후 업무일 기준 24시간 내 1차 응답 |
+| 머지 시점 | 작성자가 "push 완료"를 알린 뒤 머지. 승인 후 새 커밋이 오면 승인이 자동 무효화되므로 다시 승인받는다 |
 | 리뷰 관점 | ① 수용 기준 충족 ② 테스트 ③ 보안·개인정보(shop 격리, 로그에 개인정보 없음) ④ 멱등·실패 처리 ⑤ 계약 일치 |
 
 ## 5. AI 활용 규칙과 책임 범위
@@ -86,6 +87,9 @@ flowchart LR
 | CD staging | main 머지 | 자동 배포 + 스모크 테스트 | 호스팅 결정 후 |
 | CD production | 릴리스 태그 | 수동 승인(GitHub Environment) 후 배포, 마이그레이션 선행 | 호스팅 결정 후 |
 
+- 의존성 업데이트: Dependabot/Renovate 주 1회 묶음 PR.
+- 시크릿: GitHub Environments(`staging`, `production`)로 분리, production은 승인자 지정.
+
 ### AI 리뷰 토큰 — 각자 본인 구독으로
 AI 리뷰(`ai-review.yml`)는 **PR 작성자**, `@claude`(`claude.yml`)는 **호출한 사람**의 Claude 구독 토큰을 쓴다. 사용량이 한 사람에게 몰리지 않게 하기 위함이다.
 
@@ -96,27 +100,25 @@ AI 리뷰(`ai-review.yml`)는 **PR 작성자**, `@claude`(`claude.yml`)는 **호
 
 등록 절차 (팀원 1인당 1회):
 1. **팀원:** 저장소 Collaborator 초대를 수락하고, fork가 아닌 이 저장소 브랜치로 PR을 연다 (fork PR에는 Secret이 전달되지 않아 리뷰가 돌지 않음).
-2. **팀원:** 로컬에서 `claude setup-token` 실행 → 토큰 발급.
-3. **등록:** 저장소 관리자가 아래 명령을 실행하고, 팀원이 화면 공유 등으로 **직접 붙여넣는다.** 토큰을 Slack·카톡·이슈에 붙여넣지 않는다.
-   ```bash
-   gh secret set CLAUDE_TOKEN_<아이디> -R parkganghyun123-sketch/Beautiful_Voice
-   ```
-   또는 관리자가 팀원에게 Secrets 설정 권한이 있는 역할(Admin)을 잠시 부여하고 팀원이 웹에서 직접 등록한다.
-   - **권장:** 아래 명령을 **먼저** 실행해 입력 대기 상태로 만든 뒤, `claude setup-token`이 출력한 `sk-ant-oat01-…` 토큰 한 줄만 복사해 붙여넣고 Enter. 공백·줄바꿈을 지우고, 토큰 형식이 아니면 등록하지 않는다(zsh 기준).
+2. **팀원:** 터미널 창을 넓게 만든 뒤 `claude setup-token` 실행 → `sk-ant-oat01-…` 토큰이 한 줄로 보이는지 확인(아직 복사하지 않음).
+3. **등록:** 저장소 관리자 권한이 있는 사람의 **실제 터미널 탭**(대화형 입력이 되는 곳)에서 아래 명령을 **먼저** 실행해 입력 대기 상태로 만든다. 그다음 토큰 한 줄만 복사해 붙여넣고 Enter. 명령은 공백을 지우고, **토큰으로 Claude를 실제 호출해 성공할 때만** Secret을 등록한다(호출 1회만큼 사용량 차감). 토큰은 화면에 출력되지 않는다.
+   - zsh (macOS 기본)
      ```bash
-     read -rs "T?토큰 붙여넣고 Enter: "; echo; T="$(printf '%s' "$T" | tr -d '[:space:]')"; case "$T" in sk-ant-oat01-*) printf '%s' "$T" | gh secret set CLAUDE_TOKEN_<아이디> -R parkganghyun123-sketch/Beautiful_Voice ;; *) echo "토큰 형식이 아닙니다 (앞부분: ${T:0:6}) — 등록하지 않음" ;; esac; unset T
+     read -rs "T?토큰 붙여넣고 Enter: "; echo; T="$(printf '%s' "$T" | tr -d '[:space:]')"; echo "길이: ${#T}"; if CLAUDE_CODE_OAUTH_TOKEN="$T" claude -p "ok라고만 답해" 2>&1 | grep -qi '^ok'; then printf '%s' "$T" | gh secret set CLAUDE_TOKEN_<아이디> -R parkganghyun123-sketch/Beautiful_Voice; else echo "❌ 토큰이 동작하지 않음 — 등록하지 않음"; fi; unset T
      ```
-   - 실제 발생 사례: ① 붙여넣기에 앞 공백이 섞여 인증 실패 ② `pbpaste` 방식은 명령어를 복사하는 순간 클립보드의 토큰이 명령어로 덮여 **명령어 문자열이 Secret으로 등록**됨. 클립보드 파이프 방식은 쓰지 않는다.
+   - bash (Linux·WSL)
+     ```bash
+     read -rsp "토큰 붙여넣고 Enter: " T; echo; T="$(printf '%s' "$T" | tr -d '[:space:]')"; echo "길이: ${#T}"; if CLAUDE_CODE_OAUTH_TOKEN="$T" claude -p "ok라고만 답해" 2>&1 | grep -qi '^ok'; then printf '%s' "$T" | gh secret set CLAUDE_TOKEN_<아이디> -R parkganghyun123-sketch/Beautiful_Voice; else echo "❌ 토큰이 동작하지 않음 — 등록하지 않음"; fi; unset T
+     ```
+   - `❌`이면 아무것도 등록되지 않는다. 길이가 100자보다 한참 짧으면 복사 중 잘린 것이니 다시 복사한다.
+   - 토큰을 Slack·카톡·이슈·AI 프롬프트에 붙여넣지 않는다. 관리자 화면에서 팀원이 직접 입력하거나, 팀원에게 관리자 권한을 잠시 부여해 본인 터미널에서 실행하게 한다.
+   - 실제 발생 사례: ① 붙여넣기에 앞 공백이 섞여 인증 실패 ② `pbpaste` 방식은 명령어를 복사하는 순간 클립보드의 토큰이 덮여 **명령어 문자열이 등록**됨 ③ 화면에서 잘린 토큰이 형식 검사만 통과해 등록됨 ④ 앱 대화창의 `!` 명령 입력에서는 대화형 입력이 안 돼 아무것도 등록되지 않음. 그래서 위의 "실제 호출 검증 후 등록" 방식만 쓴다.
 4. 토큰이 유출됐거나 팀을 떠나면 해당 Secret을 삭제하고 Claude 계정에서 토큰을 폐기한다.
-5. 등록 확인: 본인 PR의 Actions 실행 요약에 "✅ PR 작성자 본인 토큰"이 보이면 정상, "⚠️ 미등록"이면 Secret 이름을 확인한다. "✅"인데 `Claude execution failed: result is_error:true`로 실패하면 토큰 값(공백·만료)을 의심하고 위 권장 방법으로 다시 등록한다.
+5. 등록 확인: 본인 PR의 Actions 실행 요약에 "✅ PR 작성자 본인 토큰"이 보이면 정상, "⚠️ 미등록"이면 Secret 이름을 확인한다. "✅"인데 `Claude execution failed: result is_error:true`로 실패하면 토큰 값(공백·잘림·만료) 또는 구독 사용량 한도를 의심한다.
 
 ### AI 리뷰가 건너뛰어지는 경우 (정상 동작)
-- **워크플로 파일(`.github/workflows/`)을 수정하는 PR:** 보안 검증상 `main`과 같은 워크플로만 실행되므로 리뷰가 skip된다(체크는 success로 표시). 이런 PR은 사람이 꼼꼼히 리뷰한다.
+- **워크플로 파일(`.github/workflows/`)을 수정하는 PR:** 보안 검증상 `main`과 같은 워크플로만 실행되므로 리뷰가 skip된다(체크는 success로 표시). 가장 민감한 변경이므로 §4에 따라 **CODEOWNERS 필수 승인** 대상이다.
 - Draft PR, `ai-review:skip` 라벨이 붙은 PR, fork에서 올린 PR.
-- **PR에 커밋이 더 올라오는 중에는 머지하지 않는다.** 작성자가 "push 완료"를 알린 뒤 머지한다.
-
-- 의존성 업데이트: Dependabot/Renovate 주 1회 묶음 PR.
-- 시크릿: GitHub Environments(`staging`, `production`)로 분리, production은 승인자 지정.
 
 ## 7. 코드 컨벤션 (스택 결정 후 구체화)
 - 포매터·린터는 CI에서 강제, 스타일 논쟁은 리뷰에서 하지 않는다.
