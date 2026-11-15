@@ -79,12 +79,30 @@ flowchart LR
 
 | 단계 | 트리거 | 내용 | 상태 |
 |---|---|---|---|
-| AI 리뷰 | PR 열림/갱신 | `.github/workflows/ai-review.yml` (Claude Code Action, **구독 토큰** 인증) | 작성됨, `CLAUDE_CODE_OAUTH_TOKEN` 등록 필요 |
+| AI 리뷰 | PR 열림/갱신 | `.github/workflows/ai-review.yml` (Claude Code Action, **PR 작성자 본인 구독 토큰**) | 동작 중. 팀원별 토큰 등록 필요(아래) |
 | 문서 검사 | PR | Markdown 링크·형식 검사 | 스택 결정 후 CI에 통합 |
 | CI | PR, main push | lint · typecheck · unit test · 계약 검사(OpenAPI diff) · 마이그레이션 검사 · 의존성/시크릿 스캔 | **스택 결정 후 작성** |
 | AI eval | `ai/` 또는 프롬프트 변경 PR | 골든 세트 정확도 리포트 코멘트 | 스파이크 S2 이후 |
 | CD staging | main 머지 | 자동 배포 + 스모크 테스트 | 호스팅 결정 후 |
 | CD production | 릴리스 태그 | 수동 승인(GitHub Environment) 후 배포, 마이그레이션 선행 | 호스팅 결정 후 |
+
+### AI 리뷰 토큰 — 각자 본인 구독으로
+AI 리뷰(`ai-review.yml`)는 **PR 작성자**, `@claude`(`claude.yml`)는 **호출한 사람**의 Claude 구독 토큰을 쓴다. 사용량이 한 사람에게 몰리지 않게 하기 위함이다.
+
+| Secret 이름 | 용도 |
+|---|---|
+| `CLAUDE_TOKEN_<GitHub 아이디>` | 팀원 본인 토큰. 아이디는 대문자, 영숫자 외 문자는 `_` (예: `parkganghyun123-sketch` → `CLAUDE_TOKEN_PARKGANGHYUN123_SKETCH`) |
+| `CLAUDE_CODE_OAUTH_TOKEN` | 공용 대체 토큰. 본인 토큰 미등록 시에만 사용되고 실행 요약에 경고가 남는다 |
+
+등록 절차 (팀원 1인당 1회):
+1. **팀원:** 저장소 Collaborator 초대를 수락하고, fork가 아닌 이 저장소 브랜치로 PR을 연다 (fork PR에는 Secret이 전달되지 않아 리뷰가 돌지 않음).
+2. **팀원:** 로컬에서 `claude setup-token` 실행 → 토큰 발급.
+3. **등록:** 저장소 관리자가 아래 명령을 실행하고, 팀원이 화면 공유 등으로 **직접 붙여넣는다.** 토큰을 Slack·카톡·이슈에 붙여넣지 않는다.
+   ```bash
+   gh secret set CLAUDE_TOKEN_<아이디> -R parkganghyun123-sketch/Beautiful_Voice
+   ```
+   또는 관리자가 팀원에게 Secrets 설정 권한이 있는 역할(Admin)을 잠시 부여하고 팀원이 웹에서 직접 등록한다.
+4. 토큰이 유출됐거나 팀을 떠나면 해당 Secret을 삭제하고 Claude 계정에서 토큰을 폐기한다.
 
 - 의존성 업데이트: Dependabot/Renovate 주 1회 묶음 PR.
 - 시크릿: GitHub Environments(`staging`, `production`)로 분리, production은 승인자 지정.
