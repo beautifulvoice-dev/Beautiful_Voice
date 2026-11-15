@@ -19,8 +19,10 @@ on:
   issue_comment:
     types: [created]
 
+# 리뷰 실행(PR 이벤트·`/review`)끼리만 같은 그룹으로 묶어 이전 리뷰를 취소한다.
+# 일반 코멘트(AI가 단 요약 코멘트 포함)는 run_id로 각자 다른 그룹 → 진행 중인 리뷰를 취소하지 않는다.
 concurrency:
-  group: ai-review-${{ github.event.pull_request.number || github.event.issue.number }}
+  group: ai-review-${{ github.event.pull_request.number || github.event.issue.number }}-${{ (github.event_name == 'pull_request' || startsWith(github.event.comment.body, '/review')) && 'review' || github.run_id }}
   cancel-in-progress: true
 
 jobs:
