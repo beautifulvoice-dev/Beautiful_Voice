@@ -102,12 +102,11 @@ AI 리뷰(`ai-review.yml`)는 **PR 작성자**, `@claude`(`claude.yml`)는 **호
    gh secret set CLAUDE_TOKEN_<아이디> -R parkganghyun123-sketch/Beautiful_Voice
    ```
    또는 관리자가 팀원에게 Secrets 설정 권한이 있는 역할(Admin)을 잠시 부여하고 팀원이 웹에서 직접 등록한다.
-   - **권장(공백 혼입 방지):** 토큰을 복사한 뒤 아래처럼 공백·줄바꿈을 지워 등록한다. 붙여넣기 때 앞뒤 공백이 섞이면 인증이 실패한다(실제 발생 사례).
+   - **권장:** 아래 명령을 **먼저** 실행해 입력 대기 상태로 만든 뒤, `claude setup-token`이 출력한 `sk-ant-oat01-…` 토큰 한 줄만 복사해 붙여넣고 Enter. 공백·줄바꿈을 지우고, 토큰 형식이 아니면 등록하지 않는다(zsh 기준).
      ```bash
-     pbpaste | tr -d '[:space:]' | gh secret set CLAUDE_TOKEN_<아이디> -R parkganghyun123-sketch/Beautiful_Voice
+     read -rs "T?토큰 붙여넣고 Enter: "; echo; T="$(printf '%s' "$T" | tr -d '[:space:]')"; case "$T" in sk-ant-oat01-*) printf '%s' "$T" | gh secret set CLAUDE_TOKEN_<아이디> -R parkganghyun123-sketch/Beautiful_Voice ;; *) echo "토큰 형식이 아닙니다 (앞부분: ${T:0:6}) — 등록하지 않음" ;; esac; unset T
      ```
-     등록 후 클립보드를 다른 내용으로 덮어써 토큰을 지운다.
-   - 직접 입력할 때는 `? Paste your secret:`에 붙여넣고 Enter. 입력 내용은 화면에 표시되지 않는다.
+   - 실제 발생 사례: ① 붙여넣기에 앞 공백이 섞여 인증 실패 ② `pbpaste` 방식은 명령어를 복사하는 순간 클립보드의 토큰이 명령어로 덮여 **명령어 문자열이 Secret으로 등록**됨. 클립보드 파이프 방식은 쓰지 않는다.
 4. 토큰이 유출됐거나 팀을 떠나면 해당 Secret을 삭제하고 Claude 계정에서 토큰을 폐기한다.
 5. 등록 확인: 본인 PR의 Actions 실행 요약에 "✅ PR 작성자 본인 토큰"이 보이면 정상, "⚠️ 미등록"이면 Secret 이름을 확인한다. "✅"인데 `Claude execution failed: result is_error:true`로 실패하면 토큰 값(공백·만료)을 의심하고 위 권장 방법으로 다시 등록한다.
 
