@@ -1,5 +1,6 @@
 # 이슈·PR 코멘트에서 @claude 로 AI 에이전트 호출 (쓰기 권한이 있는 협업자만 실행됨).
 # 인증: Claude 구독 토큰(CLAUDE_CODE_OAUTH_TOKEN). 등록 방법은 ai-review.yml 상단 참고.
+# 쓰기(커밋·코멘트)는 설치된 Claude GitHub 앱 권한으로 수행하므로 워크플로 토큰은 읽기 전용(최소 권한).
 # 에이전트는 브랜치에 커밋하고 PR을 제안할 수 있지만 main 직접 push·머지는 브랜치 보호로 차단한다.
 name: Claude
 
@@ -8,6 +9,8 @@ on:
     types: [created]
   pull_request_review_comment:
     types: [created]
+  pull_request_review:
+    types: [submitted]
   issues:
     types: [opened, assigned]
 
@@ -16,14 +19,16 @@ jobs:
     if: |
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'issues' && contains(github.event.issue.body, '@claude'))
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: write
-      pull-requests: write
-      issues: write
+      contents: read
+      pull-requests: read
+      issues: read
       id-token: write
+      actions: read # PR의 CI 결과를 읽기 위해 필요
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,3 +36,5 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          additional_permissions: |
+            actions: read

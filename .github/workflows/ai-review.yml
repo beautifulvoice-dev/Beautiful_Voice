@@ -18,10 +18,11 @@ jobs:
     if: github.event.pull_request.draft == false && !contains(github.event.pull_request.labels.*.name, 'ai-review:skip')
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # 코멘트 작성은 Claude GitHub 앱 권한으로 수행하므로 워크플로 토큰은 읽기 전용(최소 권한).
     permissions:
       contents: read
-      pull-requests: write
-      issues: write
+      pull-requests: read
+      issues: read
       id-token: write
     steps:
       - uses: actions/checkout@v4
