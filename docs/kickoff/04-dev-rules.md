@@ -102,9 +102,14 @@ AI 리뷰(`ai-review.yml`)는 **PR 작성자**, `@claude`(`claude.yml`)는 **호
    gh secret set CLAUDE_TOKEN_<아이디> -R parkganghyun123-sketch/Beautiful_Voice
    ```
    또는 관리자가 팀원에게 Secrets 설정 권한이 있는 역할(Admin)을 잠시 부여하고 팀원이 웹에서 직접 등록한다.
-   - `? Paste your secret:`이 뜨면 다른 터미널에서 `claude setup-token`으로 토큰을 만들어 붙여넣고 Enter. 입력 내용은 화면에 표시되지 않는다.
+   - **권장(공백 혼입 방지):** 토큰을 복사한 뒤 아래처럼 공백·줄바꿈을 지워 등록한다. 붙여넣기 때 앞뒤 공백이 섞이면 인증이 실패한다(실제 발생 사례).
+     ```bash
+     pbpaste | tr -d '[:space:]' | gh secret set CLAUDE_TOKEN_<아이디> -R parkganghyun123-sketch/Beautiful_Voice
+     ```
+     등록 후 클립보드를 다른 내용으로 덮어써 토큰을 지운다.
+   - 직접 입력할 때는 `? Paste your secret:`에 붙여넣고 Enter. 입력 내용은 화면에 표시되지 않는다.
 4. 토큰이 유출됐거나 팀을 떠나면 해당 Secret을 삭제하고 Claude 계정에서 토큰을 폐기한다.
-5. 등록 확인: 본인 PR의 Actions 실행 요약에 "✅ PR 작성자 본인 토큰"이 보이면 정상, "⚠️ 미등록"이면 Secret 이름을 확인한다.
+5. 등록 확인: 본인 PR의 Actions 실행 요약에 "✅ PR 작성자 본인 토큰"이 보이면 정상, "⚠️ 미등록"이면 Secret 이름을 확인한다. "✅"인데 `Claude execution failed: result is_error:true`로 실패하면 토큰 값(공백·만료)을 의심하고 위 권장 방법으로 다시 등록한다.
 
 ### AI 리뷰가 건너뛰어지는 경우 (정상 동작)
 - **워크플로 파일(`.github/workflows/`)을 수정하는 PR:** 보안 검증상 `main`과 같은 워크플로만 실행되므로 리뷰가 skip된다(체크는 success로 표시). 이런 PR은 사람이 꼼꼼히 리뷰한다.
