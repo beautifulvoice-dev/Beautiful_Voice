@@ -28,7 +28,7 @@ flowchart LR
 | 브랜치 이름 | `<type>/<issue번호>-<짧은설명>` 예: `feat/42-appointment-conflict` |
 | 커밋 메시지 | Conventional Commits: `feat(appointments): 저장 직전 충돌 재검사 (#42)` |
 | 머지 방식 | Squash merge만 허용. PR 제목이 최종 커밋 메시지 |
-| `main` 보호 | 직접 push 금지, CI 통과 + 승인 1명 필수, 대화(리뷰 코멘트) 해결 필수, **새 커밋이 올라오면 기존 승인 무효화**(Dismiss stale approvals), CODEOWNERS 승인 필수 |
+| `main` 보호 | 직접 push 금지, CI 통과 + 승인 1명 필수, 대화(리뷰 코멘트) 해결 필수, **새 커밋이 올라오면 기존 승인 무효화**(Dismiss stale approvals), CODEOWNERS 승인 필수(파일 작성 후 ruleset에서 켬. 현재는 승인 0·CODEOWNERS 미적용 — 팀원 합류 후 승인 1로 올림) |
 | 큰 기능 | 피처 플래그로 미완성 기능을 숨기고 `main`에 자주 통합 (장기 브랜치 금지) |
 
 ## 3. 이슈 관리 (D-09 초안)
@@ -37,7 +37,8 @@ flowchart LR
 - 이슈 유형: `story`(백로그 기반), `bug`, `spike`, `chore`. 템플릿은 `.github/ISSUE_TEMPLATE/`.
 - 모든 story 이슈는 **백로그 ID와 수용 기준**을 포함한다. 수용 기준이 테스트로 옮겨지지 않으면 PM에게 질문 후 착수.
 - **채팅(Slack) 결정은 결정한 사람이 24시간 내 이슈/ADR/PM 문서에 반영**하고 링크를 남긴다.
-- 라벨: `phase:1|2|3`, `area:web|api|ai|infra|hw`, `type:*`, `blocked:pm`, `ai-review:skip`(문서 전용 등 예외).
+- 라벨: `phase:1|2|3`, `area:web|api|ai|infra|hw`, `type:*`, `blocked:pm`, `needs-owner-check`, `ai-review:skip`.
+- `ai-review:skip`은 **`docs/**`만 바뀐 PR 또는 자동 생성 PR(락파일·의존성 갱신)**에만 쓴다. 붙인 사람은 PR 본문에 사유를 적고, 리뷰어는 변경 파일이 조건에 맞는지 확인한다. skip된 체크도 success로 표시되므로 "리뷰됨"과 "건너뜀"은 PR 코멘트 유무로 구분한다(워크플로가 skip 사유를 요약에 남기도록 하는 개선은 다음 워크플로 PR에서).
 
 ## 4. PR·코드 리뷰
 
@@ -45,8 +46,8 @@ flowchart LR
 |---|---|
 | 크기 | 변경 400줄 이하 권장(생성 파일·락파일 제외). 넘으면 쪼개거나 사유 기재 |
 | 설명 | PR 템플릿 필수: 연결 이슈, 무엇/왜, 테스트 방법, 스크린샷(UI), **AI 사용 범위**, 위험·롤백 |
-| 리뷰어 | 사람 1명 승인 필수. 계약(`contracts/`)·DB 마이그레이션·인증 코드·**CI/CD 워크플로(`.github/workflows/`)**는 지정 담당 승인 필수(CODEOWNERS). CODEOWNERS 파일은 R&R 확정 후 담당자 2명 이상으로 작성(작성자 본인은 승인 불가하므로) |
-| AI 리뷰 | 모든 PR에 자동 AI 리뷰 실행. **AI 리뷰는 보조이며 승인을 대체하지 않는다.** 지적 사항은 반영하거나 반박 코멘트를 남긴다 |
+| 리뷰어 | 사람 1명 승인 필수. 계약(`contracts/`)·DB 마이그레이션·인증 코드·**CI/CD 워크플로(`.github/workflows/`)**는 지정 담당 승인 필수(CODEOWNERS). CODEOWNERS 파일은 R&R 확정 후 담당자 2명 이상으로 작성(작성자 본인은 승인 불가하므로). **작성 전까지는** 이 경로를 바꾸는 PR에 `needs-owner-check` 라벨을 붙이고 저장소 관리자가 직접 확인한 뒤 머지한다 |
+| AI 리뷰 | 원칙적으로 모든 PR에 자동 AI 리뷰 실행(단 §6 "AI 리뷰가 건너뛰어지는 경우" 제외 — 이때는 사람 리뷰가 유일한 안전장치). **AI 리뷰는 보조이며 승인을 대체하지 않는다.** 지적 사항은 반영하거나 반박 코멘트를 남긴다 |
 | 응답 시간 | 리뷰 요청 후 업무일 기준 24시간 내 1차 응답 |
 | 머지 시점 | 작성자가 "push 완료"를 알린 뒤 머지. 승인 후 새 커밋이 오면 승인이 자동 무효화되므로 다시 승인받는다 |
 | 리뷰 관점 | ① 수용 기준 충족 ② 테스트 ③ 보안·개인정보(shop 격리, 로그에 개인정보 없음) ④ 멱등·실패 처리 ⑤ 계약 일치 |
@@ -101,18 +102,14 @@ AI 리뷰(`ai-review.yml`)는 **PR 작성자**, `@claude`(`claude.yml`)는 **호
 등록 절차 (팀원 1인당 1회):
 1. **팀원:** 저장소 Collaborator 초대를 수락하고, fork가 아닌 이 저장소 브랜치로 PR을 연다 (fork PR에는 Secret이 전달되지 않아 리뷰가 돌지 않음).
 2. **팀원:** 터미널 창을 넓게 만든 뒤 `claude setup-token` 실행 → `sk-ant-oat01-…` 토큰이 한 줄로 보이는지 확인(아직 복사하지 않음).
-3. **등록:** 저장소 관리자 권한이 있는 사람의 **실제 터미널 탭**(대화형 입력이 되는 곳)에서 아래 명령을 **먼저** 실행해 입력 대기 상태로 만든다. 그다음 토큰 한 줄만 복사해 붙여넣고 Enter. 명령은 공백을 지우고, **토큰으로 Claude를 실제 호출해 성공할 때만** Secret을 등록한다(호출 1회만큼 사용량 차감). 토큰은 화면에 출력되지 않는다.
-   - zsh (macOS 기본)
-     ```bash
-     read -rs "T?토큰 붙여넣고 Enter: "; echo; T="$(printf '%s' "$T" | tr -d '[:space:]')"; echo "길이: ${#T}"; if CLAUDE_CODE_OAUTH_TOKEN="$T" claude -p "ok라고만 답해" 2>&1 | grep -qi '^ok'; then printf '%s' "$T" | gh secret set CLAUDE_TOKEN_<아이디> -R parkganghyun123-sketch/Beautiful_Voice; else echo "❌ 토큰이 동작하지 않음 — 등록하지 않음"; fi; unset T
-     ```
-   - bash (Linux·WSL)
-     ```bash
-     read -rsp "토큰 붙여넣고 Enter: " T; echo; T="$(printf '%s' "$T" | tr -d '[:space:]')"; echo "길이: ${#T}"; if CLAUDE_CODE_OAUTH_TOKEN="$T" claude -p "ok라고만 답해" 2>&1 | grep -qi '^ok'; then printf '%s' "$T" | gh secret set CLAUDE_TOKEN_<아이디> -R parkganghyun123-sketch/Beautiful_Voice; else echo "❌ 토큰이 동작하지 않음 — 등록하지 않음"; fi; unset T
-     ```
-   - `❌`이면 아무것도 등록되지 않는다. 길이가 100자보다 한참 짧으면 복사 중 잘린 것이니 다시 복사한다.
+3. **등록:** 저장소 Secrets 쓰기 권한(관리자)이 있는 사람의 **실제 터미널 탭**에서 스크립트를 실행하고, 프롬프트가 뜨면 토큰 한 줄만 복사해 붙여넣고 Enter. zsh·bash 모두 같은 명령이다.
+   ```bash
+   bash scripts/register-claude-token.sh <GitHub 아이디>
+   ```
+   - 스크립트는 공백 제거 → 형식(`sk-ant-oat01-`) 확인 → **토큰으로 Claude를 실제 호출해 종료 코드 0일 때만** Secret 등록(호출 1회만큼 사용량 차감). 실패하면 원인 메시지(토큰은 `[REDACTED]` 처리)를 보여 주고 아무것도 등록하지 않는다. 토큰은 화면에 출력하지 않는다.
+   - 길이가 100자보다 한참 짧으면 복사 중 잘린 것이니 다시 복사한다.
    - 토큰을 Slack·카톡·이슈·AI 프롬프트에 붙여넣지 않는다. 관리자 화면에서 팀원이 직접 입력하거나, 팀원에게 관리자 권한을 잠시 부여해 본인 터미널에서 실행하게 한다.
-   - 실제 발생 사례: ① 붙여넣기에 앞 공백이 섞여 인증 실패 ② `pbpaste` 방식은 명령어를 복사하는 순간 클립보드의 토큰이 덮여 **명령어 문자열이 등록**됨 ③ 화면에서 잘린 토큰이 형식 검사만 통과해 등록됨 ④ 앱 대화창의 `!` 명령 입력에서는 대화형 입력이 안 돼 아무것도 등록되지 않음. 그래서 위의 "실제 호출 검증 후 등록" 방식만 쓴다.
+   - 실제 발생 사례: ① 붙여넣기에 앞 공백이 섞여 인증 실패 ② `pbpaste` 방식은 명령어를 복사하는 순간 클립보드의 토큰이 덮여 **명령어 문자열이 등록**됨 ③ 화면에서 잘린 토큰이 형식 검사만 통과해 등록됨 ④ 앱 대화창의 `!` 명령 입력에서는 대화형 입력이 안 돼 아무것도 등록되지 않음. 그래서 위 스크립트만 쓴다.
 4. 토큰이 유출됐거나 팀을 떠나면 해당 Secret을 삭제하고 Claude 계정에서 토큰을 폐기한다.
 5. 등록 확인: 본인 PR의 Actions 실행 요약에 "✅ PR 작성자 본인 토큰"이 보이면 정상, "⚠️ 미등록"이면 Secret 이름을 확인한다. "✅"인데 `Claude execution failed: result is_error:true`로 실패하면 토큰 값(공백·잘림·만료) 또는 구독 사용량 한도를 의심한다.
 
