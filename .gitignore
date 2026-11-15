@@ -22,3 +22,6 @@ data/private/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# 비공개 자료(인수인계 코드·분석 보고서) — 공개 저장소에 올리지 않는다
+.private/
