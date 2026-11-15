@@ -62,6 +62,7 @@ flowchart LR
   - `story-to-issue`: 백로그 ID → 수용 기준이 포함된 이슈 초안
   - `write-adr`: 기술 결정 → ADR
   - `contract-change`: API 계약 변경 절차(계약 → 타입 생성 → 서버/클라이언트 → 테스트)
+  - `legacy-code-analysis`: 이전·외부 코드를 새 Phase 기준으로 분석(가져옴/참고/교훈/폐기). 대상 코드 실행 금지, 보고서는 `.private/`에만
 - 공용 컨텍스트는 `CLAUDE.md`에 둔다. 개인 설정은 `CLAUDE.local.md`(git 제외).
 
 ### 책임
