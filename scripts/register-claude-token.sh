@@ -28,14 +28,21 @@ case "$token" in
   sk-ant-oat01-*) ;;
   *) echo "❌ 토큰 형식(sk-ant-oat01-…)이 아닙니다 — 등록하지 않음" >&2; exit 1 ;;
 esac
+# 잘린 토큰 차단(실제 토큰은 100자 안팎). 검증 호출이 우회되는 환경에서도 마지막 방어선.
+if [ "${#token}" -lt 80 ]; then
+  echo "❌ 토큰이 너무 짧습니다(${#token}자) — 복사 중 잘린 것으로 보여 등록하지 않음" >&2
+  exit 1
+fi
 
 echo "토큰으로 Claude 호출 확인 중…"
-if out="$(CLAUDE_CODE_OAUTH_TOKEN="$token" claude -p "ok라고만 답해" 2>&1)"; then
+# 다른 자격증명(API 키 등)이 대신 쓰여 가짜로 통과하지 않도록 해당 환경변수를 제거하고 호출한다.
+# (저장된 로그인보다 CLAUDE_CODE_OAUTH_TOKEN이 우선함을 확인: 로그인된 환경에서 잘못된 토큰 → 종료 코드 1)
+if out="$(env -u ANTHROPIC_API_KEY -u ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN="$token" claude -p "ok라고만 답해" 2>&1)"; then
   printf '%s' "$token" | gh secret set "$name" -R "$REPO"
   echo "✅ $name 등록 완료"
 else
   echo "❌ 토큰으로 Claude 호출 실패 — 등록하지 않음. 원인(마지막 5줄):" >&2
-  printf '%s\n' "${out//"$token"/[REDACTED]}" | tail -n 5 >&2
+  printf '%s\n' "${out//"$token"/[REDACTED]}" | sed -E 's/sk-ant-[A-Za-z0-9_-]+/[REDACTED]/g' | tail -n 5 >&2
   unset token out
   exit 1
 fi
