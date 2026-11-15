@@ -26,5 +26,5 @@
 - `CLAUDE.md`: 모든 AI 코딩 도구가 따르는 프로젝트 규칙
 - `.claude/skills/`: 팀 공용 스킬 (`story-to-issue`, `write-adr`, `contract-change`)
 - `.github/workflows/ai-review.yml`: PR 자동 AI 리뷰 · `claude.yml`: PR/이슈에서 `@claude` 호출
-  - 인증은 **Claude 구독 토큰** 방식(추가 종량제 비용 없음, 토큰 주인의 구독 사용량에서 차감)
-  - 설정: 토큰 담당자가 `claude setup-token` 실행 → 저장소 Secrets에 `CLAUDE_CODE_OAUTH_TOKEN`으로 등록
+  - 인증은 **각자 본인의 Claude 구독 토큰**(추가 종량제 비용 없음). PR 작성자·`@claude` 호출자의 구독에서 차감
+  - 팀원 토큰 등록: [04-dev-rules.md §6 AI 리뷰 토큰](docs/kickoff/04-dev-rules.md) 참고 (`CLAUDE_TOKEN_<아이디>`)
