@@ -102,7 +102,14 @@ AI 리뷰(`ai-review.yml`)는 **PR 작성자**, `@claude`(`claude.yml`)는 **호
    gh secret set CLAUDE_TOKEN_<아이디> -R parkganghyun123-sketch/Beautiful_Voice
    ```
    또는 관리자가 팀원에게 Secrets 설정 권한이 있는 역할(Admin)을 잠시 부여하고 팀원이 웹에서 직접 등록한다.
+   - `? Paste your secret:`이 뜨면 다른 터미널에서 `claude setup-token`으로 토큰을 만들어 붙여넣고 Enter. 입력 내용은 화면에 표시되지 않는다.
 4. 토큰이 유출됐거나 팀을 떠나면 해당 Secret을 삭제하고 Claude 계정에서 토큰을 폐기한다.
+5. 등록 확인: 본인 PR의 Actions 실행 요약에 "✅ PR 작성자 본인 토큰"이 보이면 정상, "⚠️ 미등록"이면 Secret 이름을 확인한다.
+
+### AI 리뷰가 건너뛰어지는 경우 (정상 동작)
+- **워크플로 파일(`.github/workflows/`)을 수정하는 PR:** 보안 검증상 `main`과 같은 워크플로만 실행되므로 리뷰가 skip된다(체크는 success로 표시). 이런 PR은 사람이 꼼꼼히 리뷰한다.
+- Draft PR, `ai-review:skip` 라벨이 붙은 PR, fork에서 올린 PR.
+- **PR에 커밋이 더 올라오는 중에는 머지하지 않는다.** 작성자가 "push 완료"를 알린 뒤 머지한다.
 
 - 의존성 업데이트: Dependabot/Renovate 주 1회 묶음 PR.
 - 시크릿: GitHub Environments(`staging`, `production`)로 분리, production은 승인자 지정.
