@@ -1,0 +1,24 @@
+name: Bug
+description: 기대와 다르게 동작하는 문제
+labels: ["type:bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 현상
+      description: 실제 고객 데이터·음성은 넣지 말고 ID나 합성 예시로 설명
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 방법
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대 동작
+  - type: dropdown
+    id: env
+    attributes:
+      label: 환경
+      options: [local, staging, production]

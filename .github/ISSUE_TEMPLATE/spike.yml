@@ -1,0 +1,26 @@
+name: Spike (기술 검증)
+description: 결정 전에 타임박스로 검증할 질문
+labels: ["type:spike"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: 검증할 질문
+    validations:
+      required: true
+  - type: input
+    id: timebox
+    attributes:
+      label: 타임박스
+      placeholder: 2일
+    validations:
+      required: true
+  - type: textarea
+    id: criteria
+    attributes:
+      label: 성공·판단 기준
+  - type: textarea
+    id: output
+    attributes:
+      label: 산출물
+      value: "- 결과 요약\n- ADR (docs/adr/)"

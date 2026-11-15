@@ -1,0 +1,38 @@
+name: Story (백로그 기능)
+description: 제품 백로그 항목을 구현 단위로 쪼갠 작업
+labels: ["type:story"]
+body:
+  - type: input
+    id: backlog
+    attributes:
+      label: 백로그 ID
+      placeholder: P2-04
+    validations:
+      required: true
+  - type: textarea
+    id: story
+    attributes:
+      label: 유저 스토리
+      placeholder: 원장은 ~하고 싶다. 왜냐하면 ~
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 수용 기준 (테스트로 옮길 수 있게)
+      description: PM 백로그의 수용 기준을 Given/When/Then 등으로 구체화
+    validations:
+      required: true
+  - type: textarea
+    id: assumptions
+    attributes:
+      label: 가정·PM 확인 필요 사항
+  - type: textarea
+    id: deps
+    attributes:
+      label: 의존성 (계약·선행 이슈)
+  - type: dropdown
+    id: size
+    attributes:
+      label: 예상 크기
+      options: [S, M, L, XL(쪼개야 함)]
