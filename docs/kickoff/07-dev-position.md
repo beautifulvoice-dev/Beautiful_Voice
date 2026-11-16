@@ -11,7 +11,7 @@
 
 | 영역 | 상태 | 위치 |
 |---|---|---|
-| 저장소·브랜치 보호 | `main` PR 필수, 강제 push·삭제 금지, 코멘트 해결 필수, 새 커밋 시 승인 무효화, Squash만 | ruleset `main-protection` (현재 승인 0 → 팀원 합류 시 1) |
+| 저장소·브랜치 보호 | `main` PR 필수, 강제 push·삭제 금지, 코멘트 해결 필수, 새 커밋 시 승인 무효화, Squash만 | ruleset `main-protection` (승인 1명, 팀원 초대 완료 11/16) |
 | AI 자동 리뷰 | PR을 열 때 1회, 🔴 필수만 인라인, `/review`로 변경분 재리뷰. **PR 작성자 본인 구독 토큰**으로 실행 | `.github/workflows/ai-review.yml`, [04 §4·§6](04-dev-rules.md) |
 | `@claude` 에이전트 | 이슈·PR 코멘트에서 호출, 호출자 본인 토큰, 최소 권한 | `.github/workflows/claude.yml` |
 | 팀 공용 AI 규칙·스킬 | `CLAUDE.md` 절대 규칙 10개, 스킬 4종(`story-to-issue`, `write-adr`, `contract-change`, `legacy-code-analysis`) | `CLAUDE.md`, `.claude/skills/` |
@@ -41,7 +41,7 @@
 
 | 순위 | 필요한 것 | 막히는 작업 |
 |---|---|---|
-| 1 | 마이크 전송 방식(Q1), 기록/명령 구분(Q3·Q16) | 업로드 API, 의도 분류 |
+| 1 | ~~마이크 전송 방식(Q1)~~ ✅ Wi-Fi 직접 업로드 확정, 기록/명령 구분(Q3·Q16) | 의도 분류 (업로드 API는 착수 가능) |
 | 2 | **원장 실제 발화 샘플 20~30개 + 정답**, 메뉴 카탈로그(Q7) | S1 STT 비교, S2 구조화 eval |
 | 3 | 예약 운영 규칙(Q6·Q18), 고객 필수값(Q8·Q19) | P2-03·04 스키마 |
 | 4 | 해외 AI API·보관 기간(Q9), 로그인 방식(Q5) | 벤더 선정, COM-01 |
@@ -54,13 +54,13 @@
 | 스택 확정 → 모노레포 초기화, CI(lint·type·test), `CLAUDE.md`에 빌드·테스트 명령 추가 | 실행되는 빈 앱 + CI | 리더 |
 | COM-01·03: 매장·인증 골격, 강제 RLS, OpenAPI 계약 v0(고객·예약·녹음) | 계약 + 마이그레이션 + 격리 테스트 | 리더 + CRM 담당 |
 | S4 예약 충돌 | 배타 제약 + 병렬 저장 100회 테스트 | CRM 담당 |
-| S3 업로드 E2E | 멱등 업로드 API + 재전송 시나리오 | 음성 파이프라인 담당 |
+| S3 업로드 E2E | 멱등 업로드 API + 재전송 시나리오 (Q1 확정: 기기 Wi-Fi 직접 업로드, 기기별 토큰) | 음성 파이프라인 담당 + 카본(HW) |
 | S1·S2 (샘플 도착 시) | STT 비교표, 구조화 eval v0 | 음성 파이프라인 담당 + 카본 |
 | S5 전화 연동 조사 | 연동 후보·리드타임 | 3A 착수 시 |
 
 ## 6. 팀원 온보딩 체크리스트 (회의 직후 각자)
 
-1. GitHub Collaborator 초대 수락. **fork 하지 말고** 이 저장소에 브랜치로 작업
+1. GitHub Collaborator 초대 수락(11/16 발송 완료). **fork 하지 말고** 이 저장소에 브랜치로 작업
 2. Slack 기획 자료 채널의 PM 원본을 로컬 `docs/product/source/`에 넣기(git 제외됨)
 3. `claude setup-token` → 관리자 터미널에서 `bash scripts/register-claude-token.sh <GitHub 아이디>`로 본인 토큰 등록
 4. `CLAUDE.md`와 [04 개발 규칙](04-dev-rules.md) 읽기

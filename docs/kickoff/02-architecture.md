@@ -43,7 +43,7 @@ flowchart LR
   OBJ[(오브젝트 스토리지<br/>원본 음성)]
   Q[[작업 큐<br/>초기엔 Postgres 기반]]
 
-  MIC -->|HTTPS + Idempotency-Key| INGEST
+  MIC -->|Wi-Fi 직접 HTTPS 업로드 + Idempotency-Key<br/>기기별 토큰, Q1 확정| INGEST
   WEB --> SHOP & CRM & REC & ACT & QRY & IMP
   PHONE -.-> INGEST
   INGEST --> OBJ
