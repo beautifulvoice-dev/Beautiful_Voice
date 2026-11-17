@@ -45,7 +45,7 @@
 
 ## 5. 카본 PM 입장 및 추가 답변 (2026-11-16)
 
-관련: [BEA-53](https://linear.app/beautifulvoice/issue/BEA-53), [BEA-54](https://linear.app/beautifulvoice/issue/BEA-54), [PR #11](https://github.com/parkganghyun123-sketch/Beautiful_Voice/pull/11).
+관련: [BEA-53](https://linear.app/beautifulvoice/issue/BEA-53), [BEA-54](https://linear.app/beautifulvoice/issue/BEA-54), [PR #11](https://github.com/beautifulvoice-dev/Beautiful_Voice/pull/11).
 다음은 PM의 입장 기록이며 개발팀 합의나 ADR 승인 완료를 뜻하지 않는다.
 
 | 안건 | PM 입장 |
