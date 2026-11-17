@@ -178,9 +178,9 @@ ALTER TABLE appointment ADD CONSTRAINT no_overlap_per_lane
 - 모든 AI 호출 기록: model, prompt_version, 입력 참조, 출력, 지연, 비용 → 품질 평가·회귀 테스트(eval)용.
 - STT·LLM은 **어댑터 인터페이스**로 감싸 벤더 교체 가능하게(스파이크 결과에 따라 결정).
 
-## 5. 기술 스택 후보 🟡 (D-06에서 결정)
+## 5. 기술 스택 ✅ (D-06 확정)
 
-> **11/17 제안: A안 구체화 → [ADR-0006](../adr/0006-tech-stack-ts-monorepo.md)** — pnpm+Turborepo, 웹 React+Vite PWA, API·워커 NestJS, PostgreSQL + Drizzle/Kysely, Postgres 기반 큐. 유사 서비스(Twenty·Comp AI CRM·Cal.com·Atomic CRM) 조사 근거 포함.
+> **11/17 확정(Accepted): A안 구체화 → [ADR-0006](../adr/0006-tech-stack-ts-monorepo.md)** — pnpm+Turborepo, 웹 React+Vite PWA, API·워커 NestJS, PostgreSQL + Drizzle/Kysely, Postgres 기반 큐. 유사 서비스(Twenty·Comp AI CRM·Cal.com·Atomic CRM) 조사 근거 포함.
 
 | | A. TypeScript 단일 언어 | B. React + Python API | C. BaaS(Supabase 등) 중심 |
 |---|---|---|---|

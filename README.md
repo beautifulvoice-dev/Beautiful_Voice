@@ -23,7 +23,7 @@
 | [06. PM 질문](docs/kickoff/06-pm-questions.md) | 제품 결정 요청 목록(Q1~Q25) |
 | [07. 개발팀 입장 정리](docs/kickoff/07-dev-position.md) | 회의 안건별 제안·첫 주 계획·온보딩 |
 | [08. 아키텍처 트레이드오프](docs/kickoff/08-architecture-tradeoffs.md) | PM용 — 백로그 근거로 본 선택지·이점·포기하는 것 |
-| [ADR](docs/adr/) | 기술 결정 기록 (0001~0006, 모두 Proposed). 스택 제안은 [ADR-0006](docs/adr/0006-tech-stack-ts-monorepo.md) |
+| [ADR](docs/adr/) | 기술 결정 기록. 0001~0005 Proposed, 스택은 [ADR-0006](docs/adr/0006-tech-stack-ts-monorepo.md) Accepted |
 
 ### 저장소에 없는 자료 (로컬 전용, git 제외)
 
