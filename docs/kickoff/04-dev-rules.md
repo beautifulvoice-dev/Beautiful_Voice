@@ -29,7 +29,7 @@ flowchart LR
 | 커밋 메시지 | Conventional Commits: `feat(appointments): 저장 직전 충돌 재검사 (#42)` |
 | 머지 방식 | Squash merge만 허용. PR 제목이 최종 커밋 메시지 |
 | `main` 보호 (목표) | 직접 push 금지, CI 통과 + 승인 1명 필수, 대화(리뷰 코멘트) 해결 필수, 새 커밋이 올라오면 기존 승인 무효화(Dismiss stale approvals), CODEOWNERS 승인 필수, Squash만 |
-| `main` 보호 (현재 적용) | ruleset `main-protection`: PR 필수·직접 push/강제 push/삭제 금지·코멘트 해결 필수·승인 무효화·Squash만. **승인 수 0**(팀원 합류 전이라 본인 PR 머지 위해), CODEOWNERS·CI 필수 미적용. 팀원 합류 시 승인 1, CODEOWNERS 작성 시 해당 옵션, CI 작성 시 status check를 켠다 |
+| `main` 보호 (현재 적용) | ruleset `main-protection`: PR 필수·직접 push/강제 push/삭제 금지·코멘트 해결 필수·승인 무효화·Squash만·**승인 1명**(11/16 팀원 초대 후 상향). CODEOWNERS·CI 필수 미적용 — CODEOWNERS 작성 시 해당 옵션, CI 작성 시 status check를 켠다. **작성자 본인은 승인할 수 없으므로 모든 PR은 다른 팀원 1명의 승인이 필요하다** |
 | 큰 기능 | 피처 플래그로 미완성 기능을 숨기고 `main`에 자주 통합 (장기 브랜치 금지) |
 
 ## 3. 이슈 관리 (D-09 초안)

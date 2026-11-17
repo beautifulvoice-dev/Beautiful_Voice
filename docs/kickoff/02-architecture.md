@@ -43,7 +43,7 @@ flowchart LR
   OBJ[(오브젝트 스토리지<br/>원본 음성)]
   Q[[작업 큐<br/>초기엔 Postgres 기반]]
 
-  MIC -->|HTTPS + Idempotency-Key| INGEST
+  MIC -->|Wi-Fi 직접 HTTPS 업로드 + Idempotency-Key<br/>기기별 토큰, Q1 확정| INGEST
   WEB --> SHOP & CRM & REC & ACT & QRY & IMP
   PHONE -.-> INGEST
   INGEST --> OBJ
@@ -59,7 +59,7 @@ flowchart LR
 ```
 업로드 수신(received) → 저장(stored) → 전사(transcribed) → 구조화(structured)
    → [기록] 기록·할 일·확인 필요 생성       (P1-04~07)
-   → [조회 의도] 질의 엔진 → 웹앱 결과       (P2-05)
+   → [조회 의도] MLP: 실행하지 않고 채팅으로 안내 (PD-31, P2-05 MLP 제외)
    → [변경 의도] ActionProposal → 원장 승인  (P2-06)
    → [장부 낭독] import_batch 저장 예정 목록  (P2-08)
 각 단계 실패 시 failed_at_stage + 재시도 가능, 원본은 불변
@@ -105,22 +105,41 @@ erDiagram
 | `record_entry` | extraction_id, occurred_on(업무 날짜), entry_type, summary, customer_id?, status | P1-06 |
 | `task` / `clarification` | record_entry_id, evidence_span, status(open/done/dismissed) | P1-05·07 |
 | `revision` | target_type, target_id, before, after, actor, reason | COM-02, P1-09 |
-| `customer` | name, phone?(정규화 저장, **필수 아님** — 원장 메모·장부에서 전화번호 없이 생성 가능), birth_partial?, memo, archived_at, erasure_requested_at(보관·파기 분리), (동의 항목?) | P2-02 ❓Q8 |
-| `service_item` | name, duration_min, prep_min, cleanup_min, price?, active | P2-03·04 ❓Q7 |
-| `schedule_rule` | business_hours, closed_days, capacity | P2-04 ❓Q6 |
-| `appointment` | customer_id, service_item_id, `period tstzrange`(준비·정리 포함 **점유 구간**), service_snapshot(예약 시점 메뉴명·소요·가격), status, source(web/voice/phone/import), version | P2-03 |
+| `customer` | name, phone?(정규화 저장, **필수 아님** — 원장 메모·장부에서 전화번호 없이 생성 가능), birth_partial?, memo, archived_at, erasure_requested_at(보관·파기 분리), (동의 항목?) — 이름만 필수, 동명이인은 확인 필요로 표시(PD-50) | P2-02 ✅ |
+| `service_item` | name, duration_min, buffer_min(준비·정리 합쳐 기본 30, PD-13), price?, active — 실제 메뉴 데이터는 명세서로 전달 | P2-03·04 |
+| `schedule_rule` | business_hours, closed_days(원장 입력), max_overlap=2 | P2-04 ✅ PD-11·12 |
+| `appointment` | customer_id, service_item_id, `period tstzrange`(**시술 시간만** — 준비·정리 30분은 겹침 판정에 넣지 않음, PD-13), `lane`(1·2, 동시 최대 2건 보장용 내부 번호), `is_forced`(원장 강제 저장 여부), service_snapshot(예약 시점 메뉴명·소요·가격), status, source(web/voice/phone/import), version | P2-03 |
 | `appointment_event` | appointment_id, type, before, after, actor, source_ref | P2-03·11 |
 | `action_proposal` | kind, target_ref, target_version(제안 시점 레코드 버전), preview_hash(원장이 본 미리보기), before, after, status(pending/approved/rejected/expired/superseded/executed/failed), idempotency_key, expires_at, superseded_by, source_ref | P2-06, P3-06·07 |
 | `import_batch` / `import_row` | recording_id, row_payload, match_candidates, decision | P2-08·09 |
+| `schedule_block` | period, reason(개인 일정 등) — 임시 차단 | P2-03 (PD-15) |
+| `chat_message` | role, text, referenced_records, hidden_at — 90일 보관, 숨기기는 삭제가 아님 | P2-07 (PD-42) |
 | `job` (큐) | type, payload, attempts, status | P1-02 |
 
-**충돌 보장 (P2-04) 예시** — 동시 수용 1명 기준:
+**충돌 보장 (P2-04)** — Linear「MLP 범위·제품 결정」PD-11~14·18 기준:
+- 같은 시간 겹치는 예약은 **매장당 최대 2건**. 일반 저장은 겹치면 실패(`409 APPOINTMENT_CONFLICT`) → 화면에서 "시간 옮기기 / 강제 저장". 원장이 강제 저장해도 **2건을 넘을 수 없고, 영업시간 밖은 불가**.
+- 겹침 판정은 **시술 시간만**으로 한다. 준비·정리 시간(합쳐 기본 30분)은 포함하지 않는다(PD-13). 점유 시간 계산 세부는 상세 기능 명세서(BEA-83)로 온다.
+- 원장이 만든 예약(웹 입력, 음성·채팅 변경안 승인)은 **승인 = 확정**. `requested`는 전화 접수처럼 원장이 아닌 경로만 쓴다(PD-18).
+
+설계안 — **자리(`lane`)는 DB가 "동시 최대 2건"을 보장하기 위한 내부 번호**다. 일반/강제 저장과 결합하지 않으며 사용자에게 보이지 않는다. 강제 저장 여부는 `is_forced` + 이력(`appointment_event`)으로 따로 남긴다.
 ```sql
-ALTER TABLE appointment ADD CONSTRAINT no_overlap
-  EXCLUDE USING gist (shop_id WITH =, period WITH &&)
-  WHERE (status IN ('confirmed'));
+ALTER TABLE appointment ADD CONSTRAINT lane_valid CHECK (lane IN (1, 2));
+ALTER TABLE appointment ADD CONSTRAINT no_overlap_per_lane
+  EXCLUDE USING gist (shop_id WITH =, lane WITH =, period WITH &&)
+  WHERE (status IN ('confirmed', 'completed'))
+  DEFERRABLE INITIALLY DEFERRED;  -- 재배정 중 일시 위반 허용, 커밋 시 검사
 ```
-동시 수용 N>1이면 리소스(베드) 단위 컬럼을 추가하거나 트랜잭션 내 잠금+카운트로 처리 → ❓Q6 결과에 따라 결정.
+두 자리 각각에서 구간이 겹치지 않으면 어느 순간에도 확정 예약은 2건 이하다. 저장은 **매장 단위 잠금(`pg_advisory_xact_lock(shop)`)을 건 트랜잭션 하나**에서 아래 순서로 한다.
+1. 영업시간·휴무·임시 차단(`schedule_block`)을 검사한다. 걸리면 거절(강제 저장으로도 불가). ASSUMPTION: 임시 차단 시간에는 예약 불가 — 명세서로 확인.
+2. 새 예약과 겹치는 확정 예약을 **두 자리 전체**에서 찾는다.
+3. 겹치는 예약이 있고 일반 저장이면 `409 APPOINTMENT_CONFLICT` → 화면에서 "시간 옮기기 / 강제 저장". (자리가 비어 있어도 거절 — 리뷰 반례 1)
+4. 겹치는 예약이 없으면 `lane = 1`로 저장한다(겹치는 예약이 없으므로 항상 가능).
+5. 강제 저장이면, 새 예약과 이어서 겹치는 예약 묶음 전체를 **시작 시각 순으로 자리를 다시 배정**한다(구간을 시작 순으로 비어 있는 가장 낮은 자리에 넣으면 필요한 최소 자리 수가 나온다). 2자리로 배정되면 기존 예약의 `lane`을 갱신하고 새 예약을 `is_forced = true`로 저장, 3자리가 필요하면 "동시 최대 2건 초과"로 거절한다. (빈 자리가 있는데 거절되는 문제와, 기존 배정 때문에 거절되는 문제 — 리뷰 반례 2·추가 반례)
+6. 예약 변경(시간 이동)은 "기존 예약 제외 후 1~5"로 처리한다. 취소는 자리를 비우기만 하고 재배정하지 않는다.
+- AI 제안(`ActionProposal`)은 강제 저장을 스스로 고를 수 없다. 원장이 승인 화면에서 고른다.
+- 모든 쓰기 경로(웹·음성 승인·채팅 승인·장부·전화)는 이 도메인 서비스 하나만 호출한다. DB 제약은 서비스 우회·버그에 대한 최종 방어선이다.
+- 대안(검토 후 기각): 자리 없이 매장 잠금 + 서비스의 동시 건수 계산만 쓰면 더 단순하지만, 서비스를 우회한 쓰기를 DB가 막지 못한다(절대 규칙 4 "예약 충돌은 DB 제약으로 최종 보장").
+- S4 검증 사례(반례 고정): ① B(10:30~11:30)만 남은 상태에서 C(10:45~11:15) 일반 저장 → 409 ② A(10:00~11:00)·B(10:30~11:30) 상태에서 C(11:00~12:00) 강제 저장 → 허용 ③ A(09:00~11:00, 자리1)·B(12:00~14:00, 자리2) 상태에서 C(10:00~13:00) 강제 저장 → 재배정 후 허용 ④ 3건째 동시 겹침 강제 저장 → 거절 ⑤ 영업시간 밖·임시 차단 → 강제 저장도 거절 ⑥ 같은 시간 병렬 저장 100회 → 규칙 유지.
 - 애플리케이션 메모리 검사만으로는 동시 저장 시 이중 예약이 생긴다(이전 코드에서 확인된 결함). **DB 제약 + 병렬 저장 테스트(S4)를 필수**로 한다.
 - `CHECK (upper(period) > lower(period))`, 영업시간·휴무 검사는 도메인 서비스에서 저장 직전에 수행(조회용 가용성 API가 검사를 생략하지 않도록 같은 함수 사용).
 
@@ -161,6 +180,8 @@ ALTER TABLE appointment ADD CONSTRAINT no_overlap
 
 ## 5. 기술 스택 후보 🟡 (D-06에서 결정)
 
+> **11/17 제안: A안 구체화 → [ADR-0006](../adr/0006-tech-stack-ts-monorepo.md)** — pnpm+Turborepo, 웹 React+Vite PWA, API·워커 NestJS, PostgreSQL + Drizzle/Kysely, Postgres 기반 큐. 유사 서비스(Twenty·Comp AI CRM·Cal.com·Atomic CRM) 조사 근거 포함.
+
 | | A. TypeScript 단일 언어 | B. React + Python API | C. BaaS(Supabase 등) 중심 |
 |---|---|---|---|
 | 구성 | pnpm 모노레포: `apps/web`(React/Next 또는 Vite PWA), `apps/api`(Fastify/Nest), `apps/worker`, `packages/contracts` | `web`(React) + `api`(FastAPI) + `worker`(arq/Celery) | Postgres·Auth·Storage 관리형 + 웹 + 별도 워커 |
@@ -195,6 +216,6 @@ ALTER TABLE appointment ADD CONSTRAINT no_overlap
 |---|---|---|
 | 강제 RLS·복합 FK·역할 가드, 한국어 금액·날짜 포맷, 이름+조사 검색 변형, ISO offset·전화번호 검증 | 메뉴·예약·고객 필드 설계, 제안→승인 모델(버전·미리보기 결속·만료·대체), 멱등 패턴, 조회 tool 세트, 그라운딩 규칙, 작업·보고서 생명주기, 문의 사유·작업 분류 | 실시간 음성 전부(VAD·말 끊기·TTS·스트리밍), 파인튜닝 트랙, 결제·이용권·환불, 기존 UI, 대화로 지침 영구 수정 기능 |
 
-- 이식 전 **코드 권리 관계 확인 필요**(❓Q22).
+- 코드 권리: ✅ 확인됨(Q22, 11/16 — 소유 표기는 PM 본인 계정). 작은 유틸 이식 가능. 이식할 때는 PR에 출처를 적는다.
 - Phase 3A 전화 응대는 직접 구현보다 **관리형 음성 런타임 우선 검토**([ADR-0004](../adr/0004-phase3a-managed-voice-runtime.md)).
 
