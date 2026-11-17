@@ -1,0 +1,16 @@
+{
+  "name": "@bv/scheduling",
+  "version": "0.0.0",
+  "private": true,
+  "description": "예약 충돌 판정(P2-04, C-05) — 순수 도메인 로직과 DB 배타 제약",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": "./src/conflict.ts"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.ts"
+  }
+}
