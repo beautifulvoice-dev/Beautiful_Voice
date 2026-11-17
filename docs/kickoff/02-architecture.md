@@ -59,7 +59,7 @@ flowchart LR
 ```
 업로드 수신(received) → 저장(stored) → 전사(transcribed) → 구조화(structured)
    → [기록] 기록·할 일·확인 필요 생성       (P1-04~07)
-   → [조회 의도] 질의 엔진 → 웹앱 결과       (P2-05)
+   → [조회 의도] MLP: 실행하지 않고 채팅으로 안내 (PD-31, P2-05 MLP 제외)
    → [변경 의도] ActionProposal → 원장 승인  (P2-06)
    → [장부 낭독] import_batch 저장 예정 목록  (P2-08)
 각 단계 실패 시 failed_at_stage + 재시도 가능, 원본은 불변
@@ -105,22 +105,33 @@ erDiagram
 | `record_entry` | extraction_id, occurred_on(업무 날짜), entry_type, summary, customer_id?, status | P1-06 |
 | `task` / `clarification` | record_entry_id, evidence_span, status(open/done/dismissed) | P1-05·07 |
 | `revision` | target_type, target_id, before, after, actor, reason | COM-02, P1-09 |
-| `customer` | name, phone?(정규화 저장, **필수 아님** — 원장 메모·장부에서 전화번호 없이 생성 가능), birth_partial?, memo, archived_at, erasure_requested_at(보관·파기 분리), (동의 항목?) | P2-02 ❓Q8 |
-| `service_item` | name, duration_min, prep_min, cleanup_min, price?, active | P2-03·04 ❓Q7 |
-| `schedule_rule` | business_hours, closed_days, capacity | P2-04 ❓Q6 |
-| `appointment` | customer_id, service_item_id, `period tstzrange`(준비·정리 포함 **점유 구간**), service_snapshot(예약 시점 메뉴명·소요·가격), status, source(web/voice/phone/import), version | P2-03 |
+| `customer` | name, phone?(정규화 저장, **필수 아님** — 원장 메모·장부에서 전화번호 없이 생성 가능), birth_partial?, memo, archived_at, erasure_requested_at(보관·파기 분리), (동의 항목?) — 이름만 필수, 동명이인은 확인 필요로 표시(PD-50) | P2-02 ✅ |
+| `service_item` | name, duration_min, buffer_min(준비·정리 합쳐 기본 30, PD-13), price?, active — 실제 메뉴 데이터는 명세서로 전달 | P2-03·04 |
+| `schedule_rule` | business_hours, closed_days(원장 입력), max_overlap=2 | P2-04 ✅ PD-11·12 |
+| `appointment` | customer_id, service_item_id, `period tstzrange`(**시술 시간만** — 준비·정리 30분은 겹침 판정에 넣지 않음, PD-13), `lane`(1=일반, 2=강제 저장 자리), service_snapshot(예약 시점 메뉴명·소요·가격), status, source(web/voice/phone/import), version | P2-03 |
 | `appointment_event` | appointment_id, type, before, after, actor, source_ref | P2-03·11 |
 | `action_proposal` | kind, target_ref, target_version(제안 시점 레코드 버전), preview_hash(원장이 본 미리보기), before, after, status(pending/approved/rejected/expired/superseded/executed/failed), idempotency_key, expires_at, superseded_by, source_ref | P2-06, P3-06·07 |
 | `import_batch` / `import_row` | recording_id, row_payload, match_candidates, decision | P2-08·09 |
+| `schedule_block` | period, reason(개인 일정 등) — 임시 차단 | P2-03 (PD-15) |
+| `chat_message` | role, text, referenced_records, hidden_at — 90일 보관, 숨기기는 삭제가 아님 | P2-07 (PD-42) |
 | `job` (큐) | type, payload, attempts, status | P1-02 |
 
-**충돌 보장 (P2-04) 예시** — 동시 수용 1명 기준:
+**충돌 보장 (P2-04)** — Linear「MLP 범위·제품 결정」PD-11~14·18 기준:
+- 같은 시간 겹치는 예약은 **매장당 최대 2건**. 일반 저장은 겹치면 실패(`409 APPOINTMENT_CONFLICT`) → 화면에서 "시간 옮기기 / 강제 저장". 원장이 강제 저장해도 **2건을 넘을 수 없고, 영업시간 밖은 불가**.
+- 겹침 판정은 **시술 시간만**으로 한다. 준비·정리 시간(합쳐 기본 30분)은 포함하지 않는다(PD-13). 점유 시간 계산 세부는 상세 기능 명세서(BEA-83)로 온다.
+- 원장이 만든 예약(웹 입력, 음성·채팅 변경안 승인)은 **승인 = 확정**. `requested`는 전화 접수처럼 원장이 아닌 경로만 쓴다(PD-18).
+
+설계안 — 예약마다 자리(`lane`)를 두고 자리별로 겹침을 금지한다:
 ```sql
-ALTER TABLE appointment ADD CONSTRAINT no_overlap
-  EXCLUDE USING gist (shop_id WITH =, period WITH &&)
-  WHERE (status IN ('confirmed') AND NOT allow_overlap);
+ALTER TABLE appointment ADD CONSTRAINT lane_valid CHECK (lane IN (1, 2));
+ALTER TABLE appointment ADD CONSTRAINT no_overlap_per_lane
+  EXCLUDE USING gist (shop_id WITH =, lane WITH =, period WITH &&)
+  WHERE (status IN ('confirmed', 'completed'));
 ```
-✅ Q6·Q18(11/17): 매장당 동시 1명, 준비·정리 기본 30분(점유 구간에 포함), **원장 강제 저장 허용** — 일반 저장은 충돌 시 `409`, 원장이 "강제 저장"을 고른 경우만 `allow_overlap = true`로 제약에서 제외하고 이력(`appointment_event`)에 남긴다. AI 제안은 강제 저장을 선택할 수 없다. 임시 차단(개인 일정)도 같은 겹침 규칙 대상.
+- 일반 저장은 `lane = 1`만 시도한다. 원장이 "강제 저장"을 고른 경우에만 `lane = 2`로 저장하고 이력(`appointment_event`)에 강제 저장을 남긴다. 3번째 겹침은 두 자리 모두 막혀 DB가 거부한다.
+- AI 제안(`ActionProposal`)은 강제 저장을 스스로 고를 수 없다. 원장이 승인 화면에서 고른다.
+- 임시 차단(`schedule_block`)과 영업시간·휴무는 다른 테이블이라 한 제약으로 묶을 수 없다. 도메인 서비스가 저장 트랜잭션 안에서 매장 단위 잠금(`pg_advisory_xact_lock(shop)`) 후 검사한다. ASSUMPTION: 임시 차단 시간에는 두 자리 모두 예약 불가 — 명세서로 확인.
+- 이 방식(자리 + 잠금)이 동시 저장에서 지켜지는지 S4에서 병렬 저장 테스트로 확인한다.
 - 애플리케이션 메모리 검사만으로는 동시 저장 시 이중 예약이 생긴다(이전 코드에서 확인된 결함). **DB 제약 + 병렬 저장 테스트(S4)를 필수**로 한다.
 - `CHECK (upper(period) > lower(period))`, 영업시간·휴무 검사는 도메인 서비스에서 저장 직전에 수행(조회용 가용성 API가 검사를 생략하지 않도록 같은 함수 사용).
 
