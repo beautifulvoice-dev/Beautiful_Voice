@@ -26,7 +26,7 @@
 | **D-03 기존 코드** | **설계·스키마·규칙·tool 정의는 참고, 코드는 새로 작성.** 작은 유틸만 권리 확인 후 이식 | 세 레포의 저장 구조가 서로 다름, 양방향 실시간·AI 직접 확정 전제, 동시 이중 예약 미방지 등 결함 ([ADR-0005](../adr/0005-legacy-code-reuse-policy.md)) | 합의 (Q22 코드 권리 ✅ 확인) |
 | **D-04 리소스** | 회의 시작 시 [05](05-rnr.md) 표를 채운다 (주당 시간·강점·희망 영역) | — | 전원 사실 확인 |
 | **D-05 리더·R&R** | ✅ **리더 주드, 기능 단위 분담 확정(11/16):** 리더·서버 기반 주드 / CRM·웹앱 옵마 / 음성·AI 해나 ([05](05-rnr.md)) | 3인이 FE/BE/AI로 나누면 모든 기능이 3명 동시 작업을 기다림 | 검토·대체 담당 합의 |
-| **D-06 기술·계약** | 모듈형 모놀리스(API+Worker+웹) + **PostgreSQL 단일 DB** + OpenAPI 계약. 언어는 **TypeScript 단일**을 기본 권고 | 계약 타입 공유, AI 코드 생성 효율. 이전 코드도 TS였지만 재작성하므로 결정적 근거는 아님 ([02 §5](02-architecture.md), ADR-0001, PM용 비교 [08](08-architecture-tradeoffs.md)) | 스택 확정 |
+| **D-06 기술·계약** | 모듈형 모놀리스(API+Worker+웹) + **PostgreSQL 단일 DB** + OpenAPI 계약. 언어는 **TypeScript 단일**을 기본 권고 | 계약 타입 공유, AI 코드 생성 효율. 이전 코드도 TS였지만 재작성하므로 결정적 근거는 아님 ([02 §5](02-architecture.md), ADR-0001, PM용 비교 [08](08-architecture-tradeoffs.md)). **구체안: [ADR-0006](../adr/0006-tech-stack-ts-monorepo.md)** — React+Vite PWA / NestJS / PostgreSQL | 스택 확정 |
 | | 테넌트 격리는 **강제 RLS + 복합 FK + 역할 가드** | DB가 최종 방어선, AI 생성 코드의 `shop_id` 누락 방지 ([ADR-0003](../adr/0003-tenant-isolation-forced-rls.md)) | 합의 |
 | | AI 변경은 **항상 제안 → 웹 탭 승인 → 도메인 서비스** | PM 원칙 1·2, Phase 3B까지 재사용 ([ADR-0002](../adr/0002-ai-changes-via-action-proposal.md)) | 합의 |
 | | 예약 충돌은 **DB 배타 제약 + 병렬 저장 테스트** | 메모리 검사만으로는 동시 이중 예약 발생(이전 코드에서 확인) | 합의 |

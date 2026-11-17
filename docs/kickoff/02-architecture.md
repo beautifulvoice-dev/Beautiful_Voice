@@ -161,6 +161,8 @@ ALTER TABLE appointment ADD CONSTRAINT no_overlap
 
 ## 5. 기술 스택 후보 🟡 (D-06에서 결정)
 
+> **11/17 제안: A안 구체화 → [ADR-0006](../adr/0006-tech-stack-ts-monorepo.md)** — pnpm+Turborepo, 웹 React+Vite PWA, API·워커 NestJS, PostgreSQL + Drizzle/Kysely, Postgres 기반 큐. 유사 서비스(Twenty·Comp AI CRM·Cal.com·Atomic CRM) 조사 근거 포함.
+
 | | A. TypeScript 단일 언어 | B. React + Python API | C. BaaS(Supabase 등) 중심 |
 |---|---|---|---|
 | 구성 | pnpm 모노레포: `apps/web`(React/Next 또는 Vite PWA), `apps/api`(Fastify/Nest), `apps/worker`, `packages/contracts` | `web`(React) + `api`(FastAPI) + `worker`(arq/Celery) | Postgres·Auth·Storage 관리형 + 웹 + 별도 워커 |
