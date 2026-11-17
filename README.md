@@ -38,7 +38,7 @@
 
 1. Collaborator 초대 수락. fork 하지 말고 이 저장소에 브랜치로 작업
 2. PM 원본을 `docs/product/source/`에 넣기
-3. 본인 Claude 구독 토큰 등록 (AI 리뷰가 본인 구독으로 실행됨)
+3. 본인 Claude 구독 토큰 등록 (AI 리뷰가 본인 구독으로 실행됨). Claude 구독이 없으면 본인 LLM 리뷰(예: Codex)를 켠다 — 공용 토큰은 없다
    ```bash
    claude setup-token
    ```

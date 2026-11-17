@@ -84,7 +84,7 @@ flowchart LR
 
 | 단계 | 트리거 | 내용 | 상태 |
 |---|---|---|---|
-| AI 리뷰 | PR 열 때·Ready 전환·`/review` 코멘트 | `.github/workflows/ai-review.yml` (Claude Code Action, **PR 작성자 본인 구독 토큰**) | 동작 중. 팀원별 토큰 등록 필요(아래) |
+| AI 리뷰 | PR 열 때·Ready 전환·`/review` 코멘트 | `.github/workflows/ai-review.yml` (Claude Code Action, **PR 작성자 본인 구독 토큰**). Claude 토큰이 없는 작성자는 본인 LLM 리뷰(예: Codex) | 동작 중(아래) |
 | 문서 검사 | PR | Markdown 링크·형식 검사 | 스택 결정 후 CI에 통합 |
 | CI | PR, main push | lint · typecheck · unit test · 계약 검사(OpenAPI diff) · 마이그레이션 검사 · 의존성/시크릿 스캔 | **스택 결정 후 작성** |
 | AI eval | `ai/` 또는 프롬프트 변경 PR | 골든 세트 정확도 리포트 코멘트 | 스파이크 S2 이후 |
@@ -94,13 +94,15 @@ flowchart LR
 - 의존성 업데이트: Dependabot/Renovate 주 1회 묶음 PR.
 - 시크릿: GitHub Environments(`staging`, `production`)로 분리, production은 승인자 지정.
 
-### AI 리뷰 토큰 — 각자 본인 구독으로
+### AI 리뷰 토큰 — 자기 PR은 자기 LLM으로
 AI 리뷰(`ai-review.yml`)는 **PR 작성자**, `@claude`(`claude.yml`)는 **호출한 사람**의 Claude 구독 토큰을 쓴다. 사용량이 한 사람에게 몰리지 않게 하기 위함이다.
+- **공용 토큰은 없다.** 본인 토큰이 없으면 Claude 리뷰·`@claude`는 건너뛴다(실행 요약에 ⏭️ 표시).
+- Claude 구독이 없는 팀원은 **본인 LLM 리뷰**를 쓴다. 예: 주드는 Codex 코드 리뷰(본인 Codex 설정에서 켬). 기준은 같다 — 🔴 필수/🟡 제안/❔ 질문 구분, CLAUDE.md 절대 규칙.
+- 한 PR에 AI 리뷰는 1회: 작성자 본인 LLM 하나만. 다른 사람의 LLM이 남의 PR까지 자동 리뷰하지 않는지 각자 설정에서 확인한다(예: Codex 자동 리뷰가 저장소 전체 PR에 도는지).
 
 | Secret 이름 | 용도 |
 |---|---|
 | `CLAUDE_TOKEN_<GitHub 아이디>` | 팀원 본인 토큰. 아이디는 대문자, 영숫자 외 문자는 `_` (예: `parkganghyun123-sketch` → `CLAUDE_TOKEN_PARKGANGHYUN123_SKETCH`) |
-| `CLAUDE_CODE_OAUTH_TOKEN` | 공용 대체 토큰. 본인 토큰 미등록 시에만 사용되고 실행 요약에 경고가 남는다 |
 
 등록 절차 (팀원 1인당 1회):
 1. **팀원:** 저장소 Collaborator 초대를 수락하고, fork가 아닌 이 저장소 브랜치로 PR을 연다 (fork PR에는 Secret이 전달되지 않아 리뷰가 돌지 않음).
@@ -115,7 +117,7 @@ AI 리뷰(`ai-review.yml`)는 **PR 작성자**, `@claude`(`claude.yml`)는 **호
    - 스크립트는 길이 80자 미만이면 거부하고, 검증 호출 시 `ANTHROPIC_API_KEY` 등 다른 자격증명을 제거해 가짜 통과를 막는다. 오류 출력의 `sk-ant-…` 패턴은 모두 가린다.
    - 실제 발생 사례: ① 붙여넣기에 앞 공백이 섞여 인증 실패 ② `pbpaste` 방식은 명령어를 복사하는 순간 클립보드의 토큰이 덮여 **명령어 문자열이 등록**됨 ③ 화면에서 잘린 토큰이 형식 검사만 통과해 등록됨 ④ 앱 대화창의 `!` 명령 입력에서는 대화형 입력이 안 돼 아무것도 등록되지 않음. 그래서 위 스크립트만 쓴다.
 4. 토큰이 유출됐거나 팀을 떠나면 해당 Secret을 삭제하고 Claude 계정에서 토큰을 폐기한다.
-5. 등록 확인: 본인 PR의 Actions 실행 요약에 "✅ PR 작성자 본인 토큰"이 보이면 정상, "⚠️ 미등록"이면 Secret 이름을 확인한다. "✅"인데 `Claude execution failed: result is_error:true`로 실패하면 토큰 값(공백·잘림·만료) 또는 구독 사용량 한도를 의심한다.
+5. 등록 확인: 본인 PR의 Actions 실행 요약에 "✅ PR 작성자 본인 토큰"이 보이면 정상, "⏭️ 미등록"이면 리뷰가 건너뛰어진 것이니 Secret 이름을 확인한다. "✅"인데 `Claude execution failed: result is_error:true`로 실패하면 토큰 값(공백·잘림·만료) 또는 구독 사용량 한도를 의심한다.
 
 ### 알려진 보안 한계 — 저장소 Secret (화요일 D-07에서 수용 여부 결정)
 - `CLAUDE_TOKEN_*`는 **저장소 레벨 Secret**이다. 쓰기 권한이 있는 Collaborator는 자기 브랜치에 `on: push` 워크플로를 올려 **다른 팀원의 토큰을 읽을 수 있다.** `ai-review.yml`의 main 버전 검증·ruleset은 이 경로를 막지 못한다.

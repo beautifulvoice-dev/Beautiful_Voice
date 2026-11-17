@@ -8,7 +8,8 @@
 #   - 자동 리뷰는 PR 작성자, `/review`는 코멘트 작성자 본인의 구독에서 차감된다.
 #   - Secret 이름: CLAUDE_TOKEN_<GitHub 아이디 대문자, 영숫자 외 문자는 _>
 #     예) parkganghyun123-sketch → CLAUDE_TOKEN_PARKGANGHYUN123_SKETCH
-#   - 본인 토큰이 없으면 공용 토큰 CLAUDE_CODE_OAUTH_TOKEN 으로 대신 실행하고 경고를 남긴다.
+#   - 본인 토큰이 없으면 리뷰를 건너뛴다(공용 토큰 없음). "자기 PR은 자기 LLM이 리뷰" 원칙 —
+#     Claude 구독이 없는 팀원은 본인 LLM 리뷰(예: Codex 코드 리뷰)를 쓴다.
 #   - 등록 절차: docs/kickoff/04-dev-rules.md §6 "AI 리뷰 토큰"
 # 운영 전 액션 버전을 커밋 SHA로 고정할 것.
 name: AI Review
@@ -55,20 +56,23 @@ jobs:
         run: |
           name="CLAUDE_TOKEN_$(printf '%s' "$LOGIN" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9' '_')"
           echo "secret_name=$name" >> "$GITHUB_OUTPUT"
-      - name: 토큰 출처 기록
+      - name: 토큰 확인 (없으면 건너뜀)
+        id: token
         env:
           SECRET_NAME: ${{ steps.who.outputs.secret_name }}
           HAS_OWN: ${{ secrets[steps.who.outputs.secret_name] != '' }}
         run: |
+          echo "has_own=$HAS_OWN" >> "$GITHUB_OUTPUT"
           if [ "$HAS_OWN" = "true" ]; then
             echo "✅ 본인 토큰($SECRET_NAME)으로 리뷰" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "⚠️ $SECRET_NAME 미등록 → 공용 토큰(CLAUDE_CODE_OAUTH_TOKEN)으로 리뷰" >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning::$SECRET_NAME 미등록. 공용 토큰 사용 중 — 04-dev-rules.md §6 참고해 본인 토큰을 등록하세요."
+            echo "⏭️ $SECRET_NAME 미등록 → Claude 리뷰 건너뜀 (본인 LLM 리뷰 사용, 04-dev-rules.md §6)" >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::$SECRET_NAME 미등록이라 Claude 리뷰를 건너뜁니다. 자기 PR은 자기 LLM으로 리뷰합니다(04-dev-rules.md §6)."
           fi
       - uses: anthropics/claude-code-action@v1
+        if: steps.token.outputs.has_own == 'true'
         with:
-          claude_code_oauth_token: ${{ secrets[steps.who.outputs.secret_name] || secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_code_oauth_token: ${{ secrets[steps.who.outputs.secret_name] }}
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}

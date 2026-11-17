@@ -1,5 +1,5 @@
 # 이슈·PR 코멘트에서 @claude 로 AI 에이전트 호출 (쓰기 권한이 있는 협업자만 실행됨).
-# 인증: **@claude 를 호출한 사람 본인의** Claude 구독 토큰(CLAUDE_TOKEN_<아이디>), 없으면 공용 토큰.
+# 인증: **@claude 를 호출한 사람 본인의** Claude 구독 토큰(CLAUDE_TOKEN_<아이디>). 없으면 실행하지 않는다(공용 토큰 없음).
 #   이름 규칙·등록 절차는 ai-review.yml 상단과 docs/kickoff/04-dev-rules.md §6 참고.
 # 쓰기(커밋·코멘트)는 설치된 Claude GitHub 앱 권한으로 수행하므로 워크플로 토큰은 읽기 전용(최소 권한).
 # 에이전트는 브랜치에 커밋하고 PR을 제안할 수 있지만 main 직접 push·머지는 브랜치 보호로 차단한다.
@@ -42,19 +42,22 @@ jobs:
         run: |
           name="CLAUDE_TOKEN_$(printf '%s' "$LOGIN" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9' '_')"
           echo "secret_name=$name" >> "$GITHUB_OUTPUT"
-      - name: 토큰 출처 기록
+      - name: 토큰 확인 (없으면 건너뜀)
+        id: token
         env:
           SECRET_NAME: ${{ steps.who.outputs.secret_name }}
           HAS_OWN: ${{ secrets[steps.who.outputs.secret_name] != '' }}
         run: |
+          echo "has_own=$HAS_OWN" >> "$GITHUB_OUTPUT"
           if [ "$HAS_OWN" = "true" ]; then
             echo "✅ 호출자 본인 토큰($SECRET_NAME) 사용" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "⚠️ $SECRET_NAME 미등록 → 공용 토큰(CLAUDE_CODE_OAUTH_TOKEN) 사용" >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning::$SECRET_NAME 미등록. 공용 토큰 사용 중 — 04-dev-rules.md §6 참고해 본인 토큰을 등록하세요."
+            echo "⏭️ $SECRET_NAME 미등록 → @claude 실행 안 함 (04-dev-rules.md §6)" >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::$SECRET_NAME 미등록이라 @claude 를 실행하지 않습니다. 본인 토큰을 등록하세요(04-dev-rules.md §6)."
           fi
       - uses: anthropics/claude-code-action@v1
+        if: steps.token.outputs.has_own == 'true'
         with:
-          claude_code_oauth_token: ${{ secrets[steps.who.outputs.secret_name] || secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_code_oauth_token: ${{ secrets[steps.who.outputs.secret_name] }}
           additional_permissions: |
             actions: read
