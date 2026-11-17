@@ -108,7 +108,7 @@ erDiagram
 | `customer` | name, phone?(정규화 저장, **필수 아님** — 원장 메모·장부에서 전화번호 없이 생성 가능), birth_partial?, memo, archived_at, erasure_requested_at(보관·파기 분리), (동의 항목?) — 이름만 필수, 동명이인은 확인 필요로 표시(PD-50) | P2-02 ✅ |
 | `service_item` | name, duration_min, buffer_min(준비·정리 합쳐 기본 30, PD-13), price?, active — 실제 메뉴 데이터는 명세서로 전달 | P2-03·04 |
 | `schedule_rule` | business_hours, closed_days(원장 입력), max_overlap=2 | P2-04 ✅ PD-11·12 |
-| `appointment` | customer_id, service_item_id, `period tstzrange`(**시술 시간만** — 준비·정리 30분은 겹침 판정에 넣지 않음, PD-13), `lane`(1=일반, 2=강제 저장 자리), service_snapshot(예약 시점 메뉴명·소요·가격), status, source(web/voice/phone/import), version | P2-03 |
+| `appointment` | customer_id, service_item_id, `period tstzrange`(**시술 시간만** — 준비·정리 30분은 겹침 판정에 넣지 않음, PD-13), `lane`(1·2, 동시 최대 2건 보장용 내부 번호), `is_forced`(원장 강제 저장 여부), service_snapshot(예약 시점 메뉴명·소요·가격), status, source(web/voice/phone/import), version | P2-03 |
 | `appointment_event` | appointment_id, type, before, after, actor, source_ref | P2-03·11 |
 | `action_proposal` | kind, target_ref, target_version(제안 시점 레코드 버전), preview_hash(원장이 본 미리보기), before, after, status(pending/approved/rejected/expired/superseded/executed/failed), idempotency_key, expires_at, superseded_by, source_ref | P2-06, P3-06·07 |
 | `import_batch` / `import_row` | recording_id, row_payload, match_candidates, decision | P2-08·09 |
@@ -121,17 +121,25 @@ erDiagram
 - 겹침 판정은 **시술 시간만**으로 한다. 준비·정리 시간(합쳐 기본 30분)은 포함하지 않는다(PD-13). 점유 시간 계산 세부는 상세 기능 명세서(BEA-83)로 온다.
 - 원장이 만든 예약(웹 입력, 음성·채팅 변경안 승인)은 **승인 = 확정**. `requested`는 전화 접수처럼 원장이 아닌 경로만 쓴다(PD-18).
 
-설계안 — 예약마다 자리(`lane`)를 두고 자리별로 겹침을 금지한다:
+설계안 — **자리(`lane`)는 DB가 "동시 최대 2건"을 보장하기 위한 내부 번호**다. 일반/강제 저장과 결합하지 않으며 사용자에게 보이지 않는다. 강제 저장 여부는 `is_forced` + 이력(`appointment_event`)으로 따로 남긴다.
 ```sql
 ALTER TABLE appointment ADD CONSTRAINT lane_valid CHECK (lane IN (1, 2));
 ALTER TABLE appointment ADD CONSTRAINT no_overlap_per_lane
   EXCLUDE USING gist (shop_id WITH =, lane WITH =, period WITH &&)
-  WHERE (status IN ('confirmed', 'completed'));
+  WHERE (status IN ('confirmed', 'completed'))
+  DEFERRABLE INITIALLY DEFERRED;  -- 재배정 중 일시 위반 허용, 커밋 시 검사
 ```
-- 일반 저장은 `lane = 1`만 시도한다. 원장이 "강제 저장"을 고른 경우에만 `lane = 2`로 저장하고 이력(`appointment_event`)에 강제 저장을 남긴다. 3번째 겹침은 두 자리 모두 막혀 DB가 거부한다.
+두 자리 각각에서 구간이 겹치지 않으면 어느 순간에도 확정 예약은 2건 이하다. 저장은 **매장 단위 잠금(`pg_advisory_xact_lock(shop)`)을 건 트랜잭션 하나**에서 아래 순서로 한다.
+1. 영업시간·휴무·임시 차단(`schedule_block`)을 검사한다. 걸리면 거절(강제 저장으로도 불가). ASSUMPTION: 임시 차단 시간에는 예약 불가 — 명세서로 확인.
+2. 새 예약과 겹치는 확정 예약을 **두 자리 전체**에서 찾는다.
+3. 겹치는 예약이 있고 일반 저장이면 `409 APPOINTMENT_CONFLICT` → 화면에서 "시간 옮기기 / 강제 저장". (자리가 비어 있어도 거절 — 리뷰 반례 1)
+4. 겹치는 예약이 없으면 `lane = 1`로 저장한다(겹치는 예약이 없으므로 항상 가능).
+5. 강제 저장이면, 새 예약과 이어서 겹치는 예약 묶음 전체를 **시작 시각 순으로 자리를 다시 배정**한다(구간을 시작 순으로 비어 있는 가장 낮은 자리에 넣으면 필요한 최소 자리 수가 나온다). 2자리로 배정되면 기존 예약의 `lane`을 갱신하고 새 예약을 `is_forced = true`로 저장, 3자리가 필요하면 "동시 최대 2건 초과"로 거절한다. (빈 자리가 있는데 거절되는 문제와, 기존 배정 때문에 거절되는 문제 — 리뷰 반례 2·추가 반례)
+6. 예약 변경(시간 이동)은 "기존 예약 제외 후 1~5"로 처리한다. 취소는 자리를 비우기만 하고 재배정하지 않는다.
 - AI 제안(`ActionProposal`)은 강제 저장을 스스로 고를 수 없다. 원장이 승인 화면에서 고른다.
-- 임시 차단(`schedule_block`)과 영업시간·휴무는 다른 테이블이라 한 제약으로 묶을 수 없다. 도메인 서비스가 저장 트랜잭션 안에서 매장 단위 잠금(`pg_advisory_xact_lock(shop)`) 후 검사한다. ASSUMPTION: 임시 차단 시간에는 두 자리 모두 예약 불가 — 명세서로 확인.
-- 이 방식(자리 + 잠금)이 동시 저장에서 지켜지는지 S4에서 병렬 저장 테스트로 확인한다.
+- 모든 쓰기 경로(웹·음성 승인·채팅 승인·장부·전화)는 이 도메인 서비스 하나만 호출한다. DB 제약은 서비스 우회·버그에 대한 최종 방어선이다.
+- 대안(검토 후 기각): 자리 없이 매장 잠금 + 서비스의 동시 건수 계산만 쓰면 더 단순하지만, 서비스를 우회한 쓰기를 DB가 막지 못한다(절대 규칙 4 "예약 충돌은 DB 제약으로 최종 보장").
+- S4 검증 사례(반례 고정): ① B(10:30~11:30)만 남은 상태에서 C(10:45~11:15) 일반 저장 → 409 ② A(10:00~11:00)·B(10:30~11:30) 상태에서 C(11:00~12:00) 강제 저장 → 허용 ③ A(09:00~11:00, 자리1)·B(12:00~14:00, 자리2) 상태에서 C(10:00~13:00) 강제 저장 → 재배정 후 허용 ④ 3건째 동시 겹침 강제 저장 → 거절 ⑤ 영업시간 밖·임시 차단 → 강제 저장도 거절 ⑥ 같은 시간 병렬 저장 100회 → 규칙 유지.
 - 애플리케이션 메모리 검사만으로는 동시 저장 시 이중 예약이 생긴다(이전 코드에서 확인된 결함). **DB 제약 + 병렬 저장 테스트(S4)를 필수**로 한다.
 - `CHECK (upper(period) > lower(period))`, 영업시간·휴무 검사는 도메인 서비스에서 저장 직전에 수행(조회용 가용성 API가 검사를 생략하지 않도록 같은 함수 사용).
 
