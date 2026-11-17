@@ -118,9 +118,9 @@ erDiagram
 ```sql
 ALTER TABLE appointment ADD CONSTRAINT no_overlap
   EXCLUDE USING gist (shop_id WITH =, period WITH &&)
-  WHERE (status IN ('confirmed'));
+  WHERE (status IN ('confirmed') AND NOT allow_overlap);
 ```
-동시 수용 N>1이면 리소스(베드) 단위 컬럼을 추가하거나 트랜잭션 내 잠금+카운트로 처리 → ❓Q6 결과에 따라 결정.
+✅ Q6·Q18(11/17): 매장당 동시 1명, 준비·정리 기본 30분(점유 구간에 포함), **원장 강제 저장 허용** — 일반 저장은 충돌 시 `409`, 원장이 "강제 저장"을 고른 경우만 `allow_overlap = true`로 제약에서 제외하고 이력(`appointment_event`)에 남긴다. AI 제안은 강제 저장을 선택할 수 없다. 임시 차단(개인 일정)도 같은 겹침 규칙 대상.
 - 애플리케이션 메모리 검사만으로는 동시 저장 시 이중 예약이 생긴다(이전 코드에서 확인된 결함). **DB 제약 + 병렬 저장 테스트(S4)를 필수**로 한다.
 - `CHECK (upper(period) > lower(period))`, 영업시간·휴무 검사는 도메인 서비스에서 저장 직전에 수행(조회용 가용성 API가 검사를 생략하지 않도록 같은 함수 사용).
 
