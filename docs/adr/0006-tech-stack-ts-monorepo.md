@@ -5,6 +5,8 @@
 - 결정자: 개발팀 — 주드(리더)·옵마·해나 (제안: 옵마)
 - 관련: D-06, COM-01~03, P1-02·08·09, P2-01~04, R7·R9·R12, 스파이크 S3·S4, [ADR-0001](0001-modular-monolith-single-postgres.md), [08 A3·A10](../kickoff/08-architecture-tradeoffs.md)
 
+> 전제: 이 결정은 [ADR-0001](0001-modular-monolith-single-postgres.md)(모듈형 모놀리스 + PostgreSQL 1개)의 구성을 구체화한다. ADR-0001은 아직 Proposed이며 따로 확정한다 — 0001이 바뀌면 이 ADR도 다시 본다.
+
 ## 맥락
 ADR-0001(모듈형 모놀리스 + PostgreSQL 1개)을 실제 프레임워크로 구체화해야 첫 주 작업(모노레포 초기화·CI·COM-01·03, S3·S4)을 시작할 수 있다.
 이 서비스에서 스택이 감당해야 하는 것:
