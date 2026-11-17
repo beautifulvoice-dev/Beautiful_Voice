@@ -62,7 +62,12 @@ export function overlaps(a: Interval, b: Interval): boolean {
 
 /**
  * 새 예약(또는 시간을 옮기는 예약)을 저장할 수 있는지 판정하고 자리를 정한다.
- * @param active 겹침 대상인 확정·완료 예약. 시간을 옮기는 예약 자신은 빼고 넘긴다.
+ *
+ * 호출 규약 — 저장 서비스(C-07)가 지키고 서비스 테스트로 확인한다:
+ * - `active`에는 **같은 매장(shop_id)** 의 예약만 넘긴다. 이 함수는 매장을 구분하지 않는다(절대 규칙 5).
+ * - `active`에는 확정·완료 예약만 넘긴다. 시간을 옮기는 예약은 **자기 자신을 빼고** 넘긴다
+ *   (빼지 않으면 자기 자신과 겹쳐 거절된다).
+ * - 매장 단위 잠금을 건 트랜잭션 안에서 부르고, `reassign`과 새 자리를 같은 트랜잭션에서 저장한다.
  */
 export function decideSave(
   request: SaveRequest,
