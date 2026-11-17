@@ -53,7 +53,8 @@
 | 구성 | 내용 |
 |---|---|
 | [`CLAUDE.md`](CLAUDE.md) | 모든 AI 코딩 도구가 따르는 프로젝트 규칙 |
-| `.claude/skills/` | 팀 공용 스킬: `story-to-issue`(백로그→이슈), `write-adr`(결정 기록), `contract-change`(API 계약 변경), `legacy-code-analysis`(이전 코드 분석) |
+| `.claude/skills/` | 팀 공용 스킬: `story-to-issue`(백로그→이슈), `write-adr`(결정 기록), `contract-change`(API 계약 변경), `legacy-code-analysis`(이전 코드 분석); 외부 스킬 `frontend-design`(화면 디자인), `webapp-testing`(Playwright 웹앱 확인) — [anthropics/skills](https://github.com/anthropics/skills) `e4bb5d9`, Apache-2.0 |
+| `.mcp.json` | 팀 공용 MCP: `playwright`(Claude가 브라우저로 웹앱 확인, headless), `context7`(라이브러리 최신 문서). 버전 고정, 처음 `claude` 실행 시 승인 필요 |
 | AI 자동 리뷰 (`ai-review.yml`) | PR을 **열 때 1회** 실행, 🔴 필수만 인라인, 제안·질문은 요약에. 수정 후 다시 보려면 PR에 `/review` 코멘트 |
 | `@claude` (`claude.yml`) | 이슈·PR 코멘트에서 AI 에이전트 호출 |
 | 인증 | 각자 본인 Claude 구독 토큰(`CLAUDE_TOKEN_<아이디>`), 추가 종량제 비용 없음 |
