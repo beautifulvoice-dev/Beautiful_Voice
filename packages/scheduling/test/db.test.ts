@@ -60,8 +60,8 @@ describe("appointment 배타 제약 (PostgreSQL)", { skip: !DB_URL && "TEST_DATA
     reset();
     psql(insert(SHOP_A, "10:00", "11:00", 1));
     psql(insert(SHOP_A, "10:00", "11:00", 2));
-    assert.ok(psqlError(insert(SHOP_A, "10:30", "11:30", 1)));
-    assert.ok(psqlError(insert(SHOP_A, "10:30", "11:30", 2)));
+    assert.match(psqlError(insert(SHOP_A, "10:30", "11:30", 1)) ?? "", /appointment_no_overlap_per_lane/);
+    assert.match(psqlError(insert(SHOP_A, "10:30", "11:30", 2)) ?? "", /appointment_no_overlap_per_lane/);
     assert.equal(count(), 2);
   });
 
@@ -111,10 +111,13 @@ describe("appointment 배타 제약 (PostgreSQL)", { skip: !DB_URL && "TEST_DATA
     const attempts = Array.from({ length: 100 }, (_, i) =>
       run("psql", [DB_URL!, "-X", "-qAt", "-v", "ON_ERROR_STOP=1", "-c", `SET search_path TO ${SCHEMA}, public; ${insert(SHOP_A, "10:00", "11:00", (i % 2) + 1)}`])
         .then(() => "ok")
-        .catch(() => "rejected"),
+        .catch((e: { stderr?: string }) => String(e.stderr ?? e)),
     );
     const results = await Promise.all(attempts);
-    assert.equal(results.filter((r) => r === "ok").length, 2);
+    const rejected = results.filter((r) => r !== "ok");
+    assert.equal(results.length - rejected.length, 2);
+    // 연결 수 초과 같은 인프라 오류가 거절로 섞이지 않았는지: 거절 98건 모두 배타 제약 위반이어야 한다.
+    for (const err of rejected) assert.match(err, /appointment_no_overlap_per_lane/);
     assert.equal(count(), 2);
   });
 });
