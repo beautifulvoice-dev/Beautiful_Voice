@@ -1,0 +1,22 @@
+{
+  "name": "@bv/customers",
+  "version": "0.0.0",
+  "private": true,
+  "description": "고객 입력 검증·정규화, 동명이인 판정, 수정 이력(P2-02, C-02) — 순수 도메인 로직",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": "./src/customer.ts",
+    "./duplicates": "./src/duplicates.ts",
+    "./history": "./src/history.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0"
+  }
+}
