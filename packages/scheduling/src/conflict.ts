@@ -109,10 +109,14 @@ export function checkShopRules(period: Interval, schedule: ShopSchedule): Reject
   const windows = schedule.weeklyHours[startLocal.weekday] ?? [];
   if (windows.length === 0) return "CLOSED_DAY";
 
-  // 예약 전체가 같은 현지 날짜의 영업 구간 하나 안에 있어야 한다. 자정을 넘는 예약은 영업시간 밖으로 본다.
-  const from = startLocal.minutes;
-  const to = from + (period.end.getTime() - period.start.getTime()) / 60_000;
-  const inside = windows.some((w) => from >= toMinutes(w.open) && to <= toMinutes(w.close));
+  // 예약 전체가 시작일(현지)의 영업 구간 하나 안에 있어야 한다. 자정을 넘는 예약은 영업시간 밖이 된다.
+  // 영업 구간 경계를 실제 시각으로 바꿔 비교한다 — 현지 시각에 경과 시간을 더하면
+  // UTC 오프셋이 바뀌는 날(서머타임 전환일)에 종료 시각이 어긋난다.
+  const inside = windows.some((w) => {
+    const open = localTimeToInstant(startLocal.date, w.open, schedule.timeZone);
+    const close = localTimeToInstant(startLocal.date, w.close, schedule.timeZone);
+    return period.start.getTime() >= open && period.end.getTime() <= close;
+  });
   if (!inside) return "OUTSIDE_BUSINESS_HOURS";
 
   if (schedule.blocks.some((b) => overlaps(b, period))) return "BLOCKED";
@@ -158,16 +162,10 @@ function ids(list: { id: string }[]): string[] {
   return list.map((a) => a.id);
 }
 
-function toMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(":").map(Number);
-  return h! * 60 + m!;
-}
-
 const WEEKDAYS: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
-/** UTC 시각을 매장 현지 날짜·요일·자정 이후 분(소수 포함)으로 바꾼다. */
-function toLocal(at: Date, timeZone: string): { date: string; weekday: number; minutes: number } {
-  const parts = Object.fromEntries(
+function localParts(at: number, timeZone: string): Record<string, string> {
+  return Object.fromEntries(
     new Intl.DateTimeFormat("en-US", {
       timeZone,
       hourCycle: "h23",
@@ -182,11 +180,32 @@ function toLocal(at: Date, timeZone: string): { date: string; weekday: number; m
       .formatToParts(at)
       .map((p) => [p.type, p.value]),
   );
-  const minutes =
-    Number(parts.hour) * 60 + Number(parts.minute) + Number(parts.second) / 60 + at.getUTCMilliseconds() / 60_000;
-  return {
-    date: `${parts.year}-${parts.month}-${parts.day}`,
-    weekday: WEEKDAYS[parts.weekday!]!,
-    minutes,
-  };
+}
+
+/** UTC 시각의 매장 현지 날짜("YYYY-MM-DD")와 요일(0=일). */
+function toLocal(at: Date, timeZone: string): { date: string; weekday: number } {
+  const p = localParts(at.getTime(), timeZone);
+  return { date: `${p.year}-${p.month}-${p.day}`, weekday: WEEKDAYS[p.weekday!]! };
+}
+
+/** 그 시각에 매장 시간대가 UTC보다 몇 ms 앞서는지(서울 +9h, 뉴욕 겨울 -5h). */
+function offsetAt(instant: number, timeZone: string): number {
+  const p = localParts(instant, timeZone);
+  const asUtc = Date.UTC(+p.year!, +p.month! - 1, +p.day!, +p.hour!, +p.minute!, +p.second!);
+  return asUtc - (instant - (((instant % 1000) + 1000) % 1000));
+}
+
+/**
+ * 매장 현지 날짜 + "HH:MM"을 실제 시각(epoch ms)으로 바꾼다. "24:00"은 다음 날 0시.
+ * 오프셋을 한 번 더 확인해 전환일에도 맞춘다. 전환으로 존재하지 않는 현지 시각(봄 전환의 빈 1시간)은
+ * 전환 전 오프셋으로 해석된다 — 영업 경계가 그 시각에 걸리는 경우는 드물어 단순화했다.
+ */
+function localTimeToInstant(date: string, hhmm: string, timeZone: string): number {
+  const [y, mo, d] = date.split("-").map(Number);
+  const [h, mi] = hhmm.split(":").map(Number);
+  const naive = Date.UTC(y!, mo! - 1, d!, h!, mi!);
+  let instant = naive - offsetAt(naive, timeZone);
+  const corrected = offsetAt(instant, timeZone);
+  if (naive - corrected !== instant) instant = naive - corrected;
+  return instant;
 }

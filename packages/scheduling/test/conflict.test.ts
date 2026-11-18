@@ -145,6 +145,41 @@ describe("checkShopRules — 경계", () => {
   });
 });
 
+describe("checkShopRules — UTC 오프셋 전환일 (PR #19 리뷰 회귀)", () => {
+  // 합성 매장. 뉴욕은 2026-03-08(일) 02:00 → 03:00(봄), 2026-11-01(일) 02:00 → 01:00(가을) 전환.
+  const ny = (open: string, close: string): ShopSchedule => ({
+    timeZone: "America/New_York",
+    weeklyHours: { 0: [{ open, close }] },
+    closedDates: [],
+    blocks: [],
+  });
+  const at = (iso: string) => new Date(iso);
+
+  it("봄 전환일: 영업 01:00~03:30에 현지 01:30~04:00 예약은 영업시간 밖", () => {
+    // 01:30 EST = 06:30Z, 04:00 EDT = 08:00Z. 마감 03:30 EDT = 07:30Z.
+    const r = { start: at("2026-03-08T06:30:00Z"), end: at("2026-03-08T08:00:00Z") };
+    assert.equal(checkShopRules(r, ny("01:00", "03:30")), "OUTSIDE_BUSINESS_HOURS");
+  });
+
+  it("봄 전환일: 마감 시각에 딱 끝나면 허용", () => {
+    // 01:30 EST = 06:30Z ~ 03:30 EDT = 07:30Z (실제 1시간)
+    const r = { start: at("2026-03-08T06:30:00Z"), end: at("2026-03-08T07:30:00Z") };
+    assert.equal(checkShopRules(r, ny("01:00", "03:30")), null);
+  });
+
+  it("가을 전환일: 영업 00:00~03:00에 현지 00:30~02:30(실제 3시간)은 허용", () => {
+    // 00:30 EDT = 04:30Z, 02:30 EST = 07:30Z. 마감 03:00 EST = 08:00Z.
+    const r = { start: at("2026-11-01T04:30:00Z"), end: at("2026-11-01T07:30:00Z") };
+    assert.equal(checkShopRules(r, ny("00:00", "03:00")), null);
+  });
+
+  it("가을 전환일: 마감을 넘으면 거절", () => {
+    // 00:30 EDT = 04:30Z ~ 03:30 EST = 08:30Z
+    const r = { start: at("2026-11-01T04:30:00Z"), end: at("2026-11-01T08:30:00Z") };
+    assert.equal(checkShopRules(r, ny("00:00", "03:00")), "OUTSIDE_BUSINESS_HOURS");
+  });
+});
+
 describe("자리 배정 성질 — 무작위 검증", () => {
   it("허용된 결과는 언제나 자리별로 겹치지 않고 자리는 1·2뿐", () => {
     let seed = 7;
