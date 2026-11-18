@@ -195,17 +195,26 @@ function offsetAt(instant: number, timeZone: string): number {
   return asUtc - (instant - (((instant % 1000) + 1000) % 1000));
 }
 
+const DAY_MS = 86_400_000;
+
 /**
  * 매장 현지 날짜 + "HH:MM"을 실제 시각(epoch ms)으로 바꾼다. "24:00"은 다음 날 0시.
- * 오프셋을 한 번 더 확인해 전환일에도 맞춘다. 전환으로 존재하지 않는 현지 시각(봄 전환의 빈 1시간)은
- * 전환 전 오프셋으로 해석된다 — 영업 경계가 그 시각에 걸리는 경우는 드물어 단순화했다.
+ * UTC 오프셋 전환일의 해석 규칙(JavaScript Temporal·Java의 기본값 "compatible"과 같다):
+ * - 존재하지 않는 현지 시각(봄 전환으로 건너뛴 구간)은 **전환 전 오프셋**으로 해석한다
+ *   → 건너뛴 길이만큼 뒤로 밀린다(뉴욕 2026-03-08 02:30 → 03:30 EDT). 개점이 앞당겨지지 않는다.
+ * - 두 번 있는 현지 시각(가을 전환으로 반복되는 구간)은 **먼저 오는 쪽**으로 해석한다.
+ * 하루에 전환은 최대 한 번이라고 본다.
  */
-function localTimeToInstant(date: string, hhmm: string, timeZone: string): number {
+export function localTimeToInstant(date: string, hhmm: string, timeZone: string): number {
   const [y, mo, d] = date.split("-").map(Number);
   const [h, mi] = hhmm.split(":").map(Number);
   const naive = Date.UTC(y!, mo! - 1, d!, h!, mi!);
-  let instant = naive - offsetAt(naive, timeZone);
-  const corrected = offsetAt(instant, timeZone);
-  if (naive - corrected !== instant) instant = naive - corrected;
-  return instant;
+  // 전환 전·후 오프셋 후보. 각 후보로 해석한 시각이 실제로 그 오프셋을 갖는지 확인한다.
+  const before = offsetAt(naive - DAY_MS, timeZone);
+  const after = offsetAt(naive + DAY_MS, timeZone);
+  const valid = [...new Set([before, after])]
+    .map((offset) => naive - offset)
+    .filter((instant) => naive - offsetAt(instant, timeZone) === instant);
+  if (valid.length === 0) return naive - before; // 존재하지 않는 시각
+  return Math.min(...valid); // 하나뿐이거나, 두 번 있으면 먼저 오는 쪽
 }
