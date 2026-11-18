@@ -21,7 +21,7 @@ const appt = (status: AppointmentStatus): AppointmentState => ({ status, start: 
 const owner = (now: Date, source: TransitionContext["source"] = "web"): TransitionContext => ({ actor: "owner", source, now });
 const system = (now: Date): TransitionContext => ({ actor: "system", source: "system", now });
 
-describe("initialStatus — PD-18 승인 = 확정", () => {
+describe("initialStatus — R-7 승인 = 확정", () => {
   it("원장이 만들면 확정, 충돌 검사 필요", () => {
     const r = initialStatus(owner(BEFORE));
     assert.ok(r.ok);
@@ -48,7 +48,7 @@ describe("initialStatus — PD-18 승인 = 확정", () => {
   });
 });
 
-describe("effectiveStatus — PD-19 자동 완료", () => {
+describe("effectiveStatus — R-8·R-9 자동 완료", () => {
   it("확정 예약은 끝 시각부터 완료로 보인다", () => {
     assert.equal(effectiveStatus(appt("confirmed"), DURING), "confirmed");
     assert.equal(effectiveStatus(appt("confirmed"), t("11:00")), "completed");
