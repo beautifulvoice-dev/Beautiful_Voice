@@ -12,6 +12,10 @@
     "./status": "./src/status.ts"
   },
   "scripts": {
+    "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0"
   }
 }

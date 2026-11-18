@@ -8,7 +8,7 @@
 # 저장소 Secrets 쓰기 권한(관리자)이 있는 gh 계정으로 실행해야 한다.
 set -euo pipefail
 
-REPO="parkganghyun123-sketch/Beautiful_Voice"
+REPO="beautifulvoice-dev/Beautiful_Voice"
 login="${1:?사용법: bash scripts/register-claude-token.sh <GitHub 아이디>}"
 
 # 워크플로(.github/workflows/*.yml)의 Secret 이름 규칙과 동일해야 한다.

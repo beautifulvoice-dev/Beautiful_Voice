@@ -8,9 +8,33 @@
 | 2 | 같은 웹앱의 CRM(고객·예약·충돌 확인) + 음성·채팅 조회·변경(승인 후) + 장부 낭독 입력 + 기초 인사이트 |
 | 3 | AI 전화 수신·접수 → 승인 후 처리·고객 발송 |
 
-> **현재 상태:** 개발 착수 준비 단계. 킥오프 회의 2026-11-17. 기술 스택 확정 전이라 실행 코드는 없다.
+> **현재 상태:** 2A CRM 개발 착수. 로컬 개발환경은 아래 절차로 실행합니다.
 > 회의용 요약은 **[07. 개발팀 입장 정리](docs/kickoff/07-dev-position.md)**부터 본다.
 
+
+## 로컬 개발
+
+Node.js는 .node-version, pnpm은 package.json의 packageManager 버전을 사용합니다. 로컬 DB에는 Docker와 Compose가 필요합니다.
+
+```sh
+corepack enable pnpm
+pnpm install --frozen-lockfile
+docker compose up -d --wait db
+pnpm dev
+```
+
+브라우저에서 http://127.0.0.1:5173 을 열고 **API 연결 확인**을 누릅니다. http://127.0.0.1:3000/api/health 응답으로 API 기동을 따로 확인할 수 있습니다. 로컬 PostgreSQL은 127.0.0.1:5432에서 시작합니다. 값을 바꿀 때는 .env.example을 .env로 복사한 후 수정합니다.
+
+```sh
+docker compose exec -T db psql -U bv_local -d beautifulvoice -c "SELECT 1;"
+pnpm lint
+pnpm typecheck
+pnpm build
+pnpm test
+docker compose down
+```
+
+DB 사용자와 데이터베이스 이름을 바꿨다면 점검 명령에도 같은 값을 사용합니다. API의 상태 확인은 프로세스 기동을 검증합니다. CRM 스키마와 앱의 DB 연결은 F-03에서 추가합니다.
 ## 문서
 
 | 문서 | 내용 |
@@ -23,7 +47,7 @@
 | [06. PM 질문](docs/kickoff/06-pm-questions.md) | 제품 결정 요청 목록(Q1~Q25) |
 | [07. 개발팀 입장 정리](docs/kickoff/07-dev-position.md) | 회의 안건별 제안·첫 주 계획·온보딩 |
 | [08. 아키텍처 트레이드오프](docs/kickoff/08-architecture-tradeoffs.md) | PM용 — 백로그 근거로 본 선택지·이점·포기하는 것 |
-| [ADR](docs/adr/) | 기술 결정 기록 (0001~0006, 모두 Proposed). 스택 제안은 [ADR-0006](docs/adr/0006-tech-stack-ts-monorepo.md) |
+| [ADR](docs/adr/) | 기술 결정 기록. 0001~0005 Proposed, 스택은 [ADR-0006](docs/adr/0006-tech-stack-ts-monorepo.md) Accepted |
 
 ### 저장소에 없는 자료 (로컬 전용, git 제외)
 
