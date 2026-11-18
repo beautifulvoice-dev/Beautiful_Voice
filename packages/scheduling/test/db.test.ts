@@ -15,7 +15,7 @@ const SHOP_B = "00000000-0000-4000-8000-00000000000b";
 const run = promisify(execFile);
 
 function psql(sql: string): string {
-  return execFileSync("psql", [DB_URL!, "-X", "-qAt", "-v", "ON_ERROR_STOP=1", "-c", `SET search_path TO ${SCHEMA}, public; ${sql}`], {
+  return execFileSync("psql", [DB_URL!, "-X", "-qAt", "-v", "ON_ERROR_STOP=1", "-v", "VERBOSITY=verbose", "-c", `SET search_path TO ${SCHEMA}, public; ${sql}`], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   }).trim();
@@ -94,6 +94,26 @@ describe("appointment 배타 제약 (PostgreSQL)", { skip: !DB_URL && "TEST_DATA
         VALUES (gen_random_uuid(), '${SHOP_A}', tstzrange('2026-11-24 10:00+09','2026-11-24 11:00+09'), ${occ}, 1, 'confirmed');`);
     assert.match(bad("tstzrange('2026-11-24 09:50+09','2026-11-24 11:00+09')") ?? "", /appointment_occupied_check/);
     assert.match(bad("tstzrange('2026-11-24 10:00+09','2026-11-24 10:30+09')") ?? "", /appointment_occupied_check/);
+  });
+
+  it("끝이 없는 점유 구간은 CHECK 위반(23514)으로 거절 — 무한 구간이 자리를 영구히 막지 않게 (리뷰 #20)", () => {
+    reset();
+    const unbounded = (occ: string) =>
+      psqlError(`INSERT INTO appointment (id, shop_id, period, occupied, lane, status)
+        VALUES (gen_random_uuid(), '${SHOP_A}', tstzrange('2026-11-24 10:00+09','2026-11-24 11:00+09'), ${occ}, 1, 'confirmed');`);
+    for (const occ of [
+      "tstzrange('2026-11-24 10:00+09', NULL)", // 상한 없음
+      "tstzrange('2026-11-24 10:00+09', 'infinity')", // 상한 infinity
+    ]) {
+      const err = unbounded(occ) ?? "";
+      assert.match(err, /23514/, occ);
+      assert.match(err, /appointment_occupied_check/, occ);
+    }
+    // 세션 구간(period) 자체가 끝없는 경우도 거절
+    const badPeriod = psqlError(`INSERT INTO appointment (id, shop_id, period, occupied, lane, status)
+      VALUES (gen_random_uuid(), '${SHOP_A}', tstzrange('2026-11-24 10:00+09', NULL), tstzrange('2026-11-24 10:00+09', NULL), 1, 'confirmed');`) ?? "";
+    assert.match(badPeriod, /23514/);
+    assert.equal(count(), 0);
   });
 
   it("취소·요청·노쇼는 자리를 차지하지 않는다", () => {

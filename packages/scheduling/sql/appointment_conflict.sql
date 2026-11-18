@@ -27,12 +27,17 @@ CREATE TABLE appointment (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT appointment_lane_check CHECK (lane IN (1, 2)),
+  -- 양 끝이 없거나(NULL — 비교식이 NULL이 되어 CHECK를 통과해 버림, 리뷰 #20) 'infinity'면
+  -- 끝없는 확정 예약이 그 자리의 이후 예약을 모두 막는다. 양 끝이 유한한 값인지 명시적으로 검사한다.
   CONSTRAINT appointment_period_check CHECK (
-    NOT isempty(period) AND lower_inc(period) AND NOT upper_inc(period)
-    AND lower(period) IS NOT NULL AND upper(period) IS NOT NULL
+    NOT isempty(period) AND NOT lower_inf(period) AND NOT upper_inf(period)
+    AND isfinite(lower(period)) AND isfinite(upper(period))
+    AND lower_inc(period) AND NOT upper_inc(period)
   ),
   CONSTRAINT appointment_occupied_check CHECK (
-    lower_inc(occupied) AND NOT upper_inc(occupied)
+    NOT isempty(occupied) AND NOT lower_inf(occupied) AND NOT upper_inf(occupied)
+    AND isfinite(lower(occupied)) AND isfinite(upper(occupied))
+    AND lower_inc(occupied) AND NOT upper_inc(occupied)
     AND lower(occupied) = lower(period) AND upper(occupied) >= upper(period)
   ),
   -- 요청·확정·취소·노쇼·완료(R-6)
