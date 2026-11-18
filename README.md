@@ -35,19 +35,23 @@ docker compose down
 ```
 
 DB 사용자와 데이터베이스 이름을 바꿨다면 점검 명령에도 같은 값을 사용합니다. API의 상태 확인은 프로세스 기동을 검증합니다. CRM 스키마와 앱의 DB 연결은 F-03에서 추가합니다.
+
+직접 테스트하는 방법(도메인 로직·DB 통합 테스트 포함)은 [docs/dev/testing.md](docs/dev/testing.md)를 본다.
+
 ## 문서
 
 | 문서 | 내용 |
 |---|---|
 | [01. 백로그 검토](docs/kickoff/01-backlog-review.md) | Phase 2 중심 의존성·난도·불명확 사항 |
-| [02. 아키텍처 초안](docs/kickoff/02-architecture.md) | 구조·데이터 모델·인터페이스·스택 후보·이전 코드 재사용 방침(§7) |
+| [02. 아키텍처 초안](docs/kickoff/02-architecture.md) | 구조·데이터 모델·인터페이스·스택(확정)·이전 코드 재사용 방침(§7) |
 | [03. 기술 리스크](docs/kickoff/03-tech-risks.md) | 리스크·스파이크·eval 설계 원칙 |
 | [04. 개발 규칙](docs/kickoff/04-dev-rules.md) | Git·PR·리뷰·AI 활용·CI/CD·토큰 등록 |
 | [05. R&R](docs/kickoff/05-rnr.md) | 리더·역할 분담 초안 |
 | [06. PM 질문](docs/kickoff/06-pm-questions.md) | 제품 결정 요청 목록(Q1~Q25) |
 | [07. 개발팀 입장 정리](docs/kickoff/07-dev-position.md) | 회의 안건별 제안·첫 주 계획·온보딩 |
 | [08. 아키텍처 트레이드오프](docs/kickoff/08-architecture-tradeoffs.md) | PM용 — 백로그 근거로 본 선택지·이점·포기하는 것 |
-| [ADR](docs/adr/) | 기술 결정 기록. 0001~0005 Proposed, 스택은 [ADR-0006](docs/adr/0006-tech-stack-ts-monorepo.md) Accepted |
+| [09. 1차 스프린트 작업 분해표](docs/kickoff/09-sprint1-2a-breakdown.md) | 2A CRM 작업 23개·진행 상태·크리티컬 패스 (~11/25) |
+| [ADR](docs/adr/) | 기술 결정 기록. 0001~0005 Proposed, 스택 [ADR-0006](docs/adr/0006-tech-stack-ts-monorepo.md)·호스팅 [ADR-0007](docs/adr/0007-hosting-aws-ec2-rds.md) Accepted |
 
 ### 저장소에 없는 자료 (로컬 전용, git 제외)
 

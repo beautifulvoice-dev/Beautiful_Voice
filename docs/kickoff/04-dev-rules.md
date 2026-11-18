@@ -29,7 +29,7 @@ flowchart LR
 | 커밋 메시지 | Conventional Commits: `feat(appointments): 저장 직전 충돌 재검사 (#42)` |
 | 머지 방식 | Squash merge만 허용. PR 제목이 최종 커밋 메시지 |
 | `main` 보호 (목표) | 직접 push 금지, CI 통과 + 승인 1명 필수, 대화(리뷰 코멘트) 해결 필수, 새 커밋이 올라오면 기존 승인 무효화(Dismiss stale approvals), CODEOWNERS 승인 필수, Squash만 |
-| `main` 보호 (현재 적용) | ruleset `main-protection`: PR 필수·직접 push/강제 push/삭제 금지·코멘트 해결 필수·승인 무효화·Squash만·**승인 1명**(11/16 팀원 초대 후 상향). CODEOWNERS·CI 필수 미적용 — CODEOWNERS 작성 시 해당 옵션, CI 작성 시 status check를 켠다. **작성자 본인은 승인할 수 없으므로 모든 PR은 다른 팀원 1명의 승인이 필요하다** |
+| `main` 보호 (현재 적용) | ruleset `main-protection`: PR 필수·직접 push/강제 push/삭제 금지·코멘트 해결 필수·승인 무효화·Squash만·**승인 1명**(11/16 팀원 초대 후 상향)·**CI `verify` 통과 필수**(11/18, GitHub Actions 체크만 인정, 최신 main 반영 강제는 끔). CODEOWNERS 필수는 미적용 — CODEOWNERS 작성 시 켠다. **작성자 본인은 승인할 수 없으므로 모든 PR은 다른 팀원 1명의 승인이 필요하다** |
 | 큰 기능 | 피처 플래그로 미완성 기능을 숨기고 `main`에 자주 통합 (장기 브랜치 금지) |
 
 ## 3. 이슈 관리 (D-09 초안)
@@ -86,10 +86,10 @@ flowchart LR
 |---|---|---|---|
 | AI 리뷰 | PR 열 때·Ready 전환·`/review` 코멘트 | `.github/workflows/ai-review.yml` (Claude Code Action, **PR 작성자 본인 구독 토큰**). Claude 토큰이 없는 작성자는 본인 LLM 리뷰(예: Codex) | 동작 중(아래) |
 | 문서 검사 | PR | Markdown 링크·형식 검사 | 스택 결정 후 CI에 통합 |
-| CI | PR, main push | lint · typecheck · unit test · 계약 검사(OpenAPI diff) · 마이그레이션 검사 · 의존성/시크릿 스캔 | **스택 결정 후 작성** |
+| CI | PR, main push | `.github/workflows/ci.yml` 작업 `verify`: 설치(`--frozen-lockfile`) · lint · typecheck · build · test · Compose Postgres 기동(`SELECT 1`). **main 머지 필수 체크** | **동작 중**(#22). 남은 것: DB 통합 테스트 실행(`TEST_DATABASE_URL`), 계약 검사(OpenAPI diff), 마이그레이션 검사, 의존성/시크릿 스캔 |
 | AI eval | `ai/` 또는 프롬프트 변경 PR | 골든 세트 정확도 리포트 코멘트 | 스파이크 S2 이후 |
-| CD staging | main 머지 | 자동 배포 + 스모크 테스트 | 호스팅 결정 후 |
-| CD production | 릴리스 태그 | 수동 승인(GitHub Environment) 후 배포, 마이그레이션 선행 | 호스팅 결정 후 |
+| CD staging | main 머지 | 자동 배포 + 스모크 테스트 | 호스팅 확정(AWS EC2 + RDS, [ADR-0007](../adr/0007-hosting-aws-ec2-rds.md)). 배포 자동화는 F-08에서 |
+| CD production | 릴리스 태그 | 수동 승인(GitHub Environment) 후 배포, 마이그레이션 선행 | 파일럿 전 결정 |
 
 - 의존성 업데이트: Dependabot/Renovate 주 1회 묶음 PR.
 - 시크릿: GitHub Environments(`staging`, `production`)로 분리, production은 승인자 지정.
