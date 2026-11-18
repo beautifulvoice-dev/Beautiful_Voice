@@ -1,0 +1,31 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm build
+      - run: pnpm test
+      - name: Check local PostgreSQL setup
+        run: |
+          docker compose up --detach --wait --wait-timeout 60 db
+          docker compose exec -T db psql -v ON_ERROR_STOP=1 -U bv_local -d beautifulvoice -c 'SELECT 1;'
+      - name: Stop local PostgreSQL
+        if: always()
+        run: docker compose down
