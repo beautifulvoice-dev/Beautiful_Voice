@@ -70,9 +70,12 @@ const PHONE_ALLOWED = /^\+?[\d\s\-.()]+$/u;
 const MOBILE = /^(?:010\d{8}|01[16789]\d{7,8})$/u;
 const LANDLINE = /^(?:02\d{7,8}|0(?:3[1-3]|4[1-4]|5[1-5]|6[1-4])\d{7,8}|070\d{8})$/u;
 
-/** 전화번호를 숫자만 남겨 정규화하고 국내 휴대폰·유선 형식인지 확인한다. 빈 값 처리는 호출 측(validate*)이 한다. */
+/**
+ * 전화번호를 숫자만 남겨 정규화하고 국내 휴대폰·유선 형식인지 확인한다. 빈 값 처리는 호출 측(validate*)이 한다.
+ * 검사 전에 NFKC로 바꿔 전각 숫자·기호(STT·일부 키보드 입력, "０１０－…")를 표준 문자로 맞춘다.
+ */
 export function normalizePhone(raw: string): PhoneResult {
-  const trimmed = raw.trim();
+  const trimmed = raw.normalize("NFKC").trim();
   if (!PHONE_ALLOWED.test(trimmed)) return { ok: false, code: "PHONE_INVALID_CHARACTERS" };
   let digits = trimmed.replace(/\D/gu, "");
   // ASSUMPTION: +82로 시작하면 국가번호를 떼고 0을 붙인다(+82 10-… → 010-…, +82 (0)10-… 도 허용).

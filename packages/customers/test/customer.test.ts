@@ -49,6 +49,8 @@ describe("normalizePhone — 숫자만 남기고 국내 휴대폰·유선만 받
     ["지역번호 10자리", "051-000-1111", "0510001111", "landline"],
     ["지역번호 11자리", "031-0000-1111", "03100001111", "landline"],
     ["인터넷전화", "070-0000-1111", "07000001111", "landline"],
+    ["전각 숫자(STT·키보드)", "０１０-0000-1111", "01000001111", "mobile"],
+    ["전각 숫자·하이픈·괄호", "（０２）０００－１１１１", "020001111", "landline"],
   ];
   for (const [label, raw, phone, kind] of ok) {
     it(`통과: ${label}`, () => assert.deepEqual(normalizePhone(raw), { ok: true, phone, kind }));
@@ -58,6 +60,8 @@ describe("normalizePhone — 숫자만 남기고 국내 휴대폰·유선만 받
     ["글자 섞임(오타를 조용히 지우지 않음)", "010-0000-111o", "PHONE_INVALID_CHARACTERS"],
     ["내선 표기", "02-000-1111 ext 2", "PHONE_INVALID_CHARACTERS"],
     ["+가 가운데", "010+0000+1111", "PHONE_INVALID_CHARACTERS"],
+    ["전각이어도 글자 섞이면 거절", "０１０-0000-111ｏ", "PHONE_INVALID_CHARACTERS"],
+    ["050x 안심번호(PM 확인 필요)", "0507-0000-1111", "PHONE_INVALID_FORMAT"],
     ["010인데 7자리", "010-000-1111", "PHONE_INVALID_FORMAT"],
     ["010인데 9자리", "010-00000-1111", "PHONE_INVALID_FORMAT"],
     ["0 없이 시작", "10-0000-1111", "PHONE_INVALID_FORMAT"],
