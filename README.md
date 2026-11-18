@@ -19,11 +19,14 @@ Node.js는 .node-version, pnpm은 package.json의 packageManager 버전을 사�
 ```sh
 corepack enable pnpm
 pnpm install --frozen-lockfile
+cp .env.example .env
 docker compose up -d --wait db
+docker compose exec -T db psql -U bv_local -d beautifulvoice -f /bv/local-role.sql
+pnpm --filter @bv/server db:migrate
 pnpm dev
 ```
 
-브라우저에서 http://127.0.0.1:5173 을 열고 **API 연결 확인**을 누릅니다. http://127.0.0.1:3000/api/health 응답으로 API 기동을 따로 확인할 수 있습니다. 로컬 PostgreSQL은 127.0.0.1:5432에서 시작합니다. 값을 바꿀 때는 .env.example을 .env로 복사한 후 수정합니다.
+브라우저에서 http://127.0.0.1:5173 을 열고 **API 연결 확인**을 누릅니다. http://127.0.0.1:3000/api/health 응답으로 API 기동을 따로 확인할 수 있습니다. 로컬 PostgreSQL 기본 주소는 127.0.0.1:5432입니다. DB 설정을 바꾸면 `.env`의 URL과 위 명령에도 같은 값을 적용합니다.
 
 ```sh
 docker compose exec -T db psql -U bv_local -d beautifulvoice -c "SELECT 1;"
@@ -31,10 +34,13 @@ pnpm lint
 pnpm typecheck
 pnpm build
 pnpm test
+pnpm --filter @bv/server db:test
 docker compose down
 ```
 
-DB 사용자와 데이터베이스 이름을 바꿨다면 점검 명령에도 같은 값을 사용합니다. API의 상태 확인은 프로세스 기동을 검증합니다. CRM 스키마와 앱의 DB 연결은 F-03에서 추가합니다.
+마이그레이션은 `DATABASE_MIGRATION_URL`로 실행하고 적용 기록을 `crm.schema_migration`에 남깁니다. 새 SQL 파일은 `apps/server/db/migrations/`에 다음 번호로 추가합니다. DB 테스트는 합성 매장 두 곳을 만들 수 있는 로컬 DB에서 실행합니다.
+
+앱은 `DATABASE_URL`로 접속합니다. 배포 환경에서는 마이그레이션 계정과 별도로 `bv_app` 권한 그룹 및 이 그룹을 상속하는 앱 로그인 역할을 프로비저닝합니다. 서버는 기동 시 앱 역할의 권한을 검사합니다. 인증된 매장 ID를 사용하는 트랜잭션만 해당 매장 행에 접근할 수 있습니다.
 ## 문서
 
 | 문서 | 내용 |
