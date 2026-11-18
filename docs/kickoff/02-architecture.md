@@ -106,9 +106,9 @@ erDiagram
 | `task` / `clarification` | record_entry_id, evidence_span, status(open/done/dismissed) | P1-05·07 |
 | `revision` | target_type, target_id, before, after, actor, reason | COM-02, P1-09 |
 | `customer` | name, phone?(정규화 저장, **필수 아님** — 원장 메모·장부에서 전화번호 없이 생성 가능), birth_partial?, memo, archived_at, erasure_requested_at(보관·파기 분리), (동의 항목?) — 이름만 필수, 동명이인은 확인 필요로 표시(PD-50) | P2-02 ✅ |
-| `service_item` | name, duration_min, buffer_min(준비·정리 합쳐 기본 30, PD-13), price?, active — 실제 메뉴 데이터는 명세서로 전달 | P2-03·04 |
+| `service_item` | name, duration_min, price, active — 이름·소요시간·가격(SET-1). 준비 시간은 메뉴가 아니라 세션마다 정한다(CAL-6, 기본 10분) | P2-03·04 |
 | `schedule_rule` | business_hours, closed_days(원장 입력), max_overlap=2 | P2-04 ✅ PD-11·12 |
-| `appointment` | customer_id, service_item_id, `period tstzrange`(**시술 시간만** — 준비·정리 30분은 겹침 판정에 넣지 않음, PD-13), `lane`(1·2, 동시 최대 2건 보장용 내부 번호), `is_forced`(원장 강제 저장 여부), service_snapshot(예약 시점 메뉴명·소요·가격), status, source(web/voice/phone/import), version | P2-03 |
+| `appointment` | customer_id, service_item_id, `period tstzrange`(세션 시간), `occupied tstzrange`(**세션 + 그 뒤 준비 시간** — 겹침 판정 기준, R-3), `prep_minutes`(기본 10, CAL-6), `lane`(1·2, 동시 최대 2건 보장용 내부 번호), `is_forced`(원장 강제 저장 여부), service_snapshot(예약 시점 메뉴명·소요·가격), status, source(web/voice/phone/import), version | P2-03 |
 | `appointment_event` | appointment_id, type, before, after, actor, source_ref | P2-03·11 |
 | `action_proposal` | kind, target_ref, target_version(제안 시점 레코드 버전), preview_hash(원장이 본 미리보기), before, after, status(pending/approved/rejected/expired/superseded/executed/failed), idempotency_key, expires_at, superseded_by, source_ref | P2-06, P3-06·07 |
 | `import_batch` / `import_row` | recording_id, row_payload, match_candidates, decision | P2-08·09 |
@@ -116,10 +116,10 @@ erDiagram
 | `chat_message` | role, text, referenced_records, hidden_at — 90일 보관, 숨기기는 삭제가 아님 | P2-07 (PD-42) |
 | `job` (큐) | type, payload, attempts, status | P1-02 |
 
-**충돌 보장 (P2-04)** — Linear「MLP 범위·제품 결정」PD-11~14·18 기준:
+**충돌 보장** — Linear「[P2] 2. 상세 기능 명세서」R-1~R-7(11/18, 옛 PD-11~18 대체) 기준:
 - 같은 시간 겹치는 예약은 **매장당 최대 2건**. 일반 저장은 겹치면 실패(`409 APPOINTMENT_CONFLICT`) → 화면에서 "시간 옮기기 / 강제 저장". 원장이 강제 저장해도 **2건을 넘을 수 없고, 영업시간 밖은 불가**.
-- 겹침 판정은 **시술 시간만**으로 한다. 준비·정리 시간(합쳐 기본 30분)은 포함하지 않는다(PD-13). 점유 시간 계산 세부는 상세 기능 명세서(BEA-83)로 온다.
-- 원장이 만든 예약(웹 입력, 음성·채팅 변경안 승인)은 **승인 = 확정**. `requested`는 전화 접수처럼 원장이 아닌 경로만 쓴다(PD-18).
+- 겹침 판정은 **점유 구간 = 세션 + 그 뒤 준비 시간**으로 한다(R-3). 준비 시간은 기본 10분이고 세션마다 바꿀 수 있으며, 그 시간에는 예약을 받지 않는다(CAL-6, AC-3). 11/18 명세가 옛 PD-13(준비·정리 30분, 판정 제외)을 대체했다. 구현: `packages/scheduling`(#19·#20).
+- 원장이 만든 예약(웹 입력, 음성·채팅 변경안 승인)은 **승인 = 확정**. `requested`는 전화 접수처럼 원장이 아닌 경로만 쓴다(R-7).
 
 설계안 — **자리(`lane`)는 DB가 "동시 최대 2건"을 보장하기 위한 내부 번호**다. 일반/강제 저장과 결합하지 않으며 사용자에게 보이지 않는다. 강제 저장 여부는 `is_forced` + 이력(`appointment_event`)으로 따로 남긴다.
 ```sql
