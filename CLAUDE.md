@@ -11,7 +11,8 @@ Phase 1: 음성 기록 → 전사·구조화 → 웹앱 정리함 / Phase 2: 같
 - 회의 입장·첫 주 계획: `docs/kickoff/07-dev-position.md`
 
 ## 현재 단계
-킥오프 전(2026-11-17 회의). **기술 스택 제안: ADR-0006**(TS 모노레포 — React+Vite PWA / NestJS API·워커 / PostgreSQL, Proposed). 합의(Accepted) 전에는 스택을 가정한 코드를 만들지 말 것. 확정되면 이 섹션에 빌드·테스트 명령을 추가한다.
+1차 스프린트(2026-11-18 ~ 11-25 자정): **Phase 2 모듈 2A CRM 기반**(P2-01·02·03·04·10 + COM-01~03) 완성. Phase 1은 PM이 별도 저장소에서 만들며, 여기서는 플로우·정책만 참고한다.
+**기술 스택 확정: ADR-0006**(Accepted, 11/17) — TS 모노레포(pnpm+Turborepo) / React+Vite PWA / NestJS API·워커 / PostgreSQL. 빌드·테스트 명령은 저장소 뼈대(분해표 F-02)가 들어오면 이 섹션에 추가한다.
 역할: 리더·서버 기반 주드 / CRM·웹앱 옵마 / 음성·AI 해나 (`docs/kickoff/05-rnr.md`).
 이전 프로젝트 코드는 **설계만 참고하고 새로 작성**한다(ADR-0005, Proposed). `.private/`의 이전 코드를 복사해 넣지 않는다.
 
