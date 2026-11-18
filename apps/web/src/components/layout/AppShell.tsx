@@ -1,13 +1,15 @@
 // 웹셸: 모든 화면이 공유하는 틀 (P2-01, 분해표 C-10).
 // 스마트폰은 하단 탭, 노트북(md 이상)은 왼쪽 메뉴. 각 화면은 <Outlet />에 들어온다.
-import { CalendarDays, NotebookText, Settings, Users } from 'lucide-react';
+import { CalendarDays, ChartColumn, Settings, Users } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router';
 import { cn } from '@/lib/utils';
 
+// 메뉴 구성: 분해표 C-10(11/18 명세 반영).
+// ASSUMPTION: 기록 검색(SRC-1~3)은 메뉴가 아니라 고객 화면 안에 둔다 — 명세에 위치가 없다(C-09에서 확정).
 export const NAV_ITEMS = [
-  { to: '/customers', label: '고객', icon: Users },
   { to: '/calendar', label: '캘린더', icon: CalendarDays },
-  { to: '/records', label: '기록', icon: NotebookText },
+  { to: '/customers', label: '고객', icon: Users },
+  { to: '/revenue', label: '매출', icon: ChartColumn },
   { to: '/settings', label: '설정', icon: Settings },
 ] as const;
 

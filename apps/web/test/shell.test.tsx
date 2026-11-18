@@ -13,11 +13,11 @@ function renderAt(path: string) {
 }
 
 describe('웹셸 내비게이션', () => {
-  it('주 메뉴에 고객·캘린더·기록·설정 4개가 있다', () => {
+  it('주 메뉴에 캘린더·고객·매출·설정 4개가 있다', () => {
     renderAt('/customers');
     const nav = screen.getByRole('navigation', { name: '주 메뉴' });
     const links = Array.from(nav.querySelectorAll('a')).map((a) => a.textContent);
-    expect(links).toEqual(['고객', '캘린더', '기록', '설정']);
+    expect(links).toEqual(['캘린더', '고객', '매출', '설정']);
   });
 
   it('첫 주소(/)는 캘린더로 보낸다', () => {
