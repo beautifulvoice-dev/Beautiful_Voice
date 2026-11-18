@@ -46,7 +46,10 @@ export function customerCreated(values: CustomerValues, ctx: HistoryContext): Cu
   return event("created", changes, ctx);
 }
 
-/** 수정 이력. 바뀐 필드가 없으면 null — 이력을 남기지 않고 저장도 생략할 수 있다. */
+/**
+ * 수정 이력. 바뀐 필드가 없으면 null — 이력을 남기지 않고 저장도 생략할 수 있다.
+ * before·after 모두 정규화된 값이어야 한다(after = applyPatch(before, validateCustomerPatch 결과)). 정규화 전 값을 넘기면 공백만 다른 값도 변경으로 남는다.
+ */
 export function customerUpdated(before: CustomerValues, after: CustomerValues, ctx: HistoryContext): CustomerEvent | null {
   const changes = FIELDS.filter((f) => before[f] !== after[f]).map((f) => ({ field: f, from: before[f], to: after[f] }));
   return changes.length === 0 ? null : event("updated", changes, ctx);
