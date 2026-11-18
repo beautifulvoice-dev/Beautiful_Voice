@@ -1,6 +1,6 @@
 # 02. 아키텍처 초안
 
-> 상태: **제안(Proposed)**, 일부 확정. 11/15 이전 프로젝트 코드 분석(비공개, §7 요약) 결과를 반영했다. 스택(§5)은 11/17 확정(ADR-0006), 호스팅은 11/18 AWS(ADR-0007). 데이터 모델(§3)은 PM 데이터 스키마(11/19)와 대조해 갱신한다.
+> 상태: **구조 확정**(ADR-0001·0002·0003·0006·0007 Accepted), 세부는 갱신 중. 11/15 이전 프로젝트 코드 분석(비공개, §7 요약) 결과를 반영했다. 스택(§5)은 11/17 확정(ADR-0006), 호스팅은 11/18 AWS(ADR-0007). DB 접근은 순수 SQL + `pg`(ADR-0006). 데이터 모델(§3)은 PM 데이터 스키마(11/19)와 대조해 갱신한다. 제품 규칙 정본은 Linear「[P2] 2. 상세 기능 명세서」.
 > 구분: ✅ 개발팀 권고(되돌리기 쉬움/근거 충분) · 🟡 후보(기존 코드·PM 답변 후 결정) · ❓ PM 결정 필요
 
 ## 1. 설계 원칙 (PM 공통 원칙 → 기술 원칙)
@@ -64,7 +64,7 @@ flowchart LR
    → [장부 낭독] import_batch 저장 예정 목록  (P2-08)
 각 단계 실패 시 failed_at_stage + 재시도 가능, 원본은 불변
 ```
-- 기록 vs 명령 구분 방식은 ❓[Q3]. 구조상으로는 "구조화 단계의 의도 분류 결과"로 분기하므로 **어떤 정책이든 수용 가능**하게 설계한다.
+- 기록 vs 명령 구분 ✅ (11/17·11/18): Phase 2 마이크는 **쓰기(변경·명령)만**, 조회 요청은 실행하지 않고 승인창에 "화면에서 확인"으로 남긴다(AG-4). 구조상으로는 "구조화 단계의 의도 분류 결과"로 분기하므로 **어떤 정책이든 수용 가능**하게 설계한다.
 
 ## 3. 공통 데이터 모델 (초안) 🟡
 
@@ -97,7 +97,7 @@ erDiagram
 | 엔티티 | 핵심 필드 | 백로그 |
 |---|---|---|
 | `shop` | name, timezone, 영업 설정 | COM-01 |
-| `user_membership` | user_id, role(owner/staff?) | COM-01 ❓Q5 |
+| `user_membership` | user_id — 매장당 원장 1명, 직원 계정 없음(U-1). F-03 #25에서 `shop_id` UNIQUE | COM-01 ✅ |
 | `device` | serial, auth_token_hash, last_seen | P1-01 |
 | `recording` | device_id, client_recording_id(**멱등키**), recorded_at(기기), received_at(서버), object_key, duration, status, failed_stage | P1-01·02 |
 | `transcript` | recording_id, version, provider, text, segments(json, 타임스탬프) | P1-03 |

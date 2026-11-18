@@ -1,6 +1,6 @@
 # 04. 개발 규칙 초안 — AI 네이티브 개발 프로세스
 
-> 상태: 초안. 화요일 D-07·D-08·D-09에서 확정. 확정 후 이 문서와 `CLAUDE.md`가 공식 규칙이다.
+> 상태: **적용 중** — 11/17 킥오프 이후 이 문서와 `CLAUDE.md`가 공식 규칙이다(PR 규칙·브랜치 보호·CI 필수 체크 적용).
 > 기본 원칙: **AI는 적극 사용하되, 머지된 코드의 책임은 PR 작성자와 승인자에게 있다.**
 
 ## 1. 전체 흐름 (이슈 → 배포)
@@ -85,7 +85,7 @@ flowchart LR
 | 단계 | 트리거 | 내용 | 상태 |
 |---|---|---|---|
 | AI 리뷰 | PR 열 때·Ready 전환·`/review` 코멘트 | `.github/workflows/ai-review.yml` (Claude Code Action, **PR 작성자 본인 구독 토큰**). Claude 토큰이 없는 작성자는 본인 LLM 리뷰(예: Codex) | 동작 중(아래) |
-| 문서 검사 | PR | Markdown 링크·형식 검사 | 스택 결정 후 CI에 통합 |
+| 문서 검사 | PR | Markdown 링크·형식 검사 | 미적용 — CI(`ci.yml`)에 추가 예정 |
 | CI | PR, main push | `.github/workflows/ci.yml` 작업 `verify`: 설치(`--frozen-lockfile`) · lint · typecheck · build · test · Compose Postgres 기동(`SELECT 1`). **main 머지 필수 체크** | **동작 중**(#22). 남은 것: DB 통합 테스트 실행(`TEST_DATABASE_URL`), 계약 검사(OpenAPI diff), 마이그레이션 검사, 의존성/시크릿 스캔 |
 | AI eval | `ai/` 또는 프롬프트 변경 PR | 골든 세트 정확도 리포트 코멘트 | 스파이크 S2 이후 |
 | CD staging | main 머지 | 자동 배포 + 스모크 테스트 | 호스팅 확정(AWS EC2 + RDS, [ADR-0007](../adr/0007-hosting-aws-ec2-rds.md)). 배포 자동화는 F-08에서 |
@@ -129,7 +129,7 @@ AI 리뷰(`ai-review.yml`)는 **PR 작성자**, `@claude`(`claude.yml`)는 **호
 - Draft PR, `ai-review:skip` 라벨이 붙은 PR, fork에서 올린 PR.
 - 다음 워크플로 PR 예정: `ai-review:skip` 라벨이 `docs/**` 외 파일 변경 PR에 붙으면 무시하고 리뷰를 실행, skip 사유를 실행 요약에 기록.
 
-## 7. 코드 컨벤션 (스택 결정 후 구체화)
+## 7. 코드 컨벤션 (TypeScript·ESLint `typescript-eslint` recommended — #22 기준)
 - 포매터·린터는 CI에서 강제, 스타일 논쟁은 리뷰에서 하지 않는다.
 - 도메인 규칙(예약 충돌, 상태 전이, 권한)은 UI·라우터가 아닌 **도메인 서비스**에 둔다.
 - 로그에 개인정보(이름·전화번호·전사문) 원문을 남기지 않는다. ID로 참조.
