@@ -76,6 +76,12 @@ importers:
 
   packages/contracts: {}
 
+  packages/customers:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.0.0
+        version: 24.19.2
+
   packages/scheduling:
     devDependencies:
       '@types/node':
