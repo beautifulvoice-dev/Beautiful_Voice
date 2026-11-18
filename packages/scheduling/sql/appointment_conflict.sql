@@ -1,21 +1,27 @@
--- 예약 충돌의 최종 방어선 (P2-04, 분해표 C-05, CLAUDE.md 절대 규칙 4).
--- 02-architecture §3 "충돌 보장"의 DB 부분만 담는다. 테이블의 나머지 컬럼·복합 FK·강제 RLS는
--- 공통 DB 기반(F-03, ADR-0003)의 마이그레이션에서 합친다. 마이그레이션 도구는 S4에서 확정(ADR-0006).
+-- 예약 충돌의 최종 방어선 (분해표 C-05, CLAUDE.md 절대 규칙 4).
+-- 02-architecture §3 "충돌 보장"의 DB 부분만 담는다. 테이블의 나머지 컬럼·`crm` 스키마·shop FK·`(shop_id, id)`·강제 RLS는
+-- C-07에서 F-03 마이그레이션 방식(apps/server/db/migrations)에 맞춰 옮긴다.
 --
--- 보장: 매장마다 자리(lane) 1·2 각각에서 확정·완료 예약 구간이 겹치지 않는다
---       → 어느 순간에도 같은 매장의 확정·완료 예약은 최대 2건(PD-11).
--- 영업시간·휴무·임시 차단, 일반/강제 저장 구분은 도메인 서비스(src/conflict.ts)가 저장 직전에 검사한다.
+-- 규칙(Linear「[P2] 2. 상세 기능 명세서」11/18): 같은 시간에 겹치는 세션은 매장당 최대 2건(R-1),
+-- 세션 뒤 준비 시간(기본 10분, 세션마다 변경 — CAL-6)에는 예약을 받지 않고 겹침 판정에 포함(R-3).
+-- 보장: 매장마다 자리(lane) 1·2 각각에서 확정·완료 예약의 점유 구간(세션 + 준비 시간)이 겹치지 않는다
+--       → 어느 순간에도 같은 매장의 확정·완료 예약 점유는 최대 2건.
+-- 운영 시간·휴무·관리 불가 시간, 일반/그대로 저장 구분은 도메인 서비스(src/conflict.ts)가 저장 직전에 검사한다.
 
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 
 CREATE TABLE appointment (
   id uuid PRIMARY KEY,
   shop_id uuid NOT NULL,
-  -- 시술 시간만. 준비·정리 시간은 넣지 않는다(PD-13). 반열림 [start, end).
+  -- 세션(관리 제공) 시간. 반열림 [start, end).
   period tstzrange NOT NULL,
+  -- 점유 구간 = 세션 시작 ~ 세션 끝 + 준비 시간. 앱(conflict.ts occupied())이 계산해 넣는다.
+  -- 생성 컬럼(GENERATED)으로 만들지 않는 이유: timestamptz + interval은 IMMUTABLE이 아니라 생성 컬럼·제약식에 쓸 수 없다.
+  -- 대신 아래 CHECK로 세션과 시작이 같고 끝이 세션 끝 이후인지 강제한다.
+  occupied tstzrange NOT NULL,
   -- 동시 최대 2건을 DB가 보장하기 위한 내부 번호. 사용자에게 보이지 않는다.
   lane smallint NOT NULL,
-  -- 원장이 겹침을 알고 강제 저장했는지. 이력은 appointment_event에 따로 남긴다.
+  -- 원장이 겹침을 알고 "그대로 저장"했는지. 이력은 appointment_event에 따로 남긴다.
   is_forced boolean NOT NULL DEFAULT false,
   status text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -25,13 +31,17 @@ CREATE TABLE appointment (
     NOT isempty(period) AND lower_inc(period) AND NOT upper_inc(period)
     AND lower(period) IS NOT NULL AND upper(period) IS NOT NULL
   ),
-  -- 요청·확정·취소·노쇼·완료(PD-17)
+  CONSTRAINT appointment_occupied_check CHECK (
+    lower_inc(occupied) AND NOT upper_inc(occupied)
+    AND lower(occupied) = lower(period) AND upper(occupied) >= upper(period)
+  ),
+  -- 요청·확정·취소·노쇼·완료(R-6)
   CONSTRAINT appointment_status_check CHECK (
     status IN ('requested', 'confirmed', 'canceled', 'no_show', 'completed')
   ),
-  -- 강제 저장 재배정 중에는 잠시 겹칠 수 있으므로 커밋 시점에 검사한다.
+  -- 그대로 저장 재배정 중에는 잠시 겹칠 수 있으므로 커밋 시점에 검사한다.
   CONSTRAINT appointment_no_overlap_per_lane
-    EXCLUDE USING gist (shop_id WITH =, lane WITH =, period WITH &&)
+    EXCLUDE USING gist (shop_id WITH =, lane WITH =, occupied WITH &&)
     WHERE (status IN ('confirmed', 'completed'))
     DEFERRABLE INITIALLY DEFERRED
 );

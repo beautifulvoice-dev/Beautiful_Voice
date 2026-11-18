@@ -31,9 +31,11 @@ function psqlError(sql: string): string | null {
   }
 }
 
-const insert = (shop: string, from: string, to: string, lane: number, status = "confirmed") =>
-  `INSERT INTO appointment (id, shop_id, period, lane, status)
-   VALUES (gen_random_uuid(), '${shop}', tstzrange('2026-11-24 ${from}+09', '2026-11-24 ${to}+09'), ${lane}, '${status}');`;
+// prep = 세션 뒤 준비 시간(분). occupied = 세션 시작 ~ 끝 + 준비 시간(R-3).
+const insert = (shop: string, from: string, to: string, lane: number, status = "confirmed", prep = 0) =>
+  `INSERT INTO appointment (id, shop_id, period, occupied, lane, status)
+   SELECT gen_random_uuid(), '${shop}', p, tstzrange(lower(p), upper(p) + interval '${prep} minutes'), ${lane}, '${status}'
+   FROM (SELECT tstzrange('2026-11-24 ${from}+09', '2026-11-24 ${to}+09') AS p) AS s;`;
 
 const count = (shop = SHOP_A) =>
   Number(psql(`SELECT count(*) FROM appointment WHERE shop_id = '${shop}' AND status IN ('confirmed','completed');`));
@@ -77,6 +79,23 @@ describe("appointment 배타 제약 (PostgreSQL)", { skip: !DB_URL && "TEST_DATA
     assert.equal(count(), 2);
   });
 
+  it("준비 시간(R-3): 세션 뒤 10분 안에 같은 자리 예약은 거절, 준비 시간이 끝나면 허용", () => {
+    reset();
+    psql(insert(SHOP_A, "10:00", "11:00", 1, "confirmed", 10));
+    assert.match(psqlError(insert(SHOP_A, "11:05", "12:00", 1)) ?? "", /appointment_no_overlap_per_lane/);
+    psql(insert(SHOP_A, "11:10", "12:00", 1));
+    assert.equal(count(), 2);
+  });
+
+  it("점유 구간은 세션과 시작이 같고 세션보다 짧을 수 없다 (CHECK)", () => {
+    reset();
+    const bad = (occ: string) =>
+      psqlError(`INSERT INTO appointment (id, shop_id, period, occupied, lane, status)
+        VALUES (gen_random_uuid(), '${SHOP_A}', tstzrange('2026-11-24 10:00+09','2026-11-24 11:00+09'), ${occ}, 1, 'confirmed');`);
+    assert.match(bad("tstzrange('2026-11-24 09:50+09','2026-11-24 11:00+09')") ?? "", /appointment_occupied_check/);
+    assert.match(bad("tstzrange('2026-11-24 10:00+09','2026-11-24 10:30+09')") ?? "", /appointment_occupied_check/);
+  });
+
   it("취소·요청·노쇼는 자리를 차지하지 않는다", () => {
     reset();
     psql(insert(SHOP_A, "10:00", "11:00", 1, "canceled"));
@@ -96,9 +115,9 @@ describe("appointment 배타 제약 (PostgreSQL)", { skip: !DB_URL && "TEST_DATA
   it("강제 저장 재배정: 한 트랜잭션 안의 일시적 겹침은 커밋 시 검사(DEFERRABLE)", () => {
     reset();
     // 반례 ③: A(09-11, 자리1), B(12-14, 자리2)에 C(10-13) → B를 자리1로, C를 자리2로
-    psql(`INSERT INTO appointment (id, shop_id, period, lane, status) VALUES
-      ('00000000-0000-4000-8000-0000000000a1', '${SHOP_A}', tstzrange('2026-11-24 09:00+09','2026-11-24 11:00+09'), 1, 'confirmed'),
-      ('00000000-0000-4000-8000-0000000000b1', '${SHOP_A}', tstzrange('2026-11-24 12:00+09','2026-11-24 14:00+09'), 2, 'confirmed');`);
+    psql(`INSERT INTO appointment (id, shop_id, period, occupied, lane, status) VALUES
+      ('00000000-0000-4000-8000-0000000000a1', '${SHOP_A}', tstzrange('2026-11-24 09:00+09','2026-11-24 11:00+09'), tstzrange('2026-11-24 09:00+09','2026-11-24 11:00+09'), 1, 'confirmed'),
+      ('00000000-0000-4000-8000-0000000000b1', '${SHOP_A}', tstzrange('2026-11-24 12:00+09','2026-11-24 14:00+09'), tstzrange('2026-11-24 12:00+09','2026-11-24 14:00+09'), 2, 'confirmed');`);
     psql(`BEGIN;
       ${insert(SHOP_A, "10:00", "13:00", 2)}
       UPDATE appointment SET lane = 1 WHERE id = '00000000-0000-4000-8000-0000000000b1';
