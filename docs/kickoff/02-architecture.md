@@ -192,7 +192,7 @@ ALTER TABLE appointment ADD CONSTRAINT no_overlap_per_lane
 **이전 코드 분석 시사점:** 이전 프로젝트 3개 모두 TypeScript(Bun)였으나 **코드는 새로 작성**하기로 제안하므로(§7) 언어 선택의 결정적 근거는 아니다. A안에 약간 유리. Bun 채택은 별도 판단.
 
 **스택 무관 고정 권고 ✅:** PostgreSQL(범위 타입·배타 제약·JSONB), S3 호환 오브젝트 스토리지, OpenAPI 계약, Docker 기반 로컬 환경, GitHub Actions CI.
-**호스팅 ✅ (11/18):** AWS EC2 + RDS PostgreSQL — [ADR-0007](../adr/0007-hosting-aws-ec2-rds.md). 개인정보(고객 음성·연락처)를 다루므로 **국내 리전**(AWS 서울) 사용을 확인한다(ADR-0007 ❔). 해외 AI API로의 음성·텍스트 전송은 ❓Q9(국외 이전 고지·동의) 확인 후 결정.
+**호스팅 ✅ (11/18):** AWS EC2 + RDS PostgreSQL — [ADR-0007](../adr/0007-hosting-aws-ec2-rds.md). 개인정보(고객 음성·연락처)를 다루므로 **국내 리전 AWS 서울(ap-northeast-2)**, RDS PostgreSQL 18로 구성됐다(11/18, ADR-0007). 해외 AI API로의 음성·텍스트 전송은 ❓Q9(국외 이전 고지·동의) 확인 후 결정.
 
 ## 6. 환경 구성 (D-08 초안)
 

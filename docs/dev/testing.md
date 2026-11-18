@@ -60,7 +60,13 @@ pnpm --filter @bv/scheduling test
 
 ## 4. DB 통합 테스트 (예약 충돌 배타 제약)
 
-`TEST_DATABASE_URL`이 있을 때만 돈다. 없으면 건너뛴다(CI에서도 아직 건너뜀 — [04 §6](../kickoff/04-dev-rules.md)). `psql` CLI가 필요하다.
+`TEST_DATABASE_URL`이 있을 때만 돈다. 없으면 이 스위트만 건너뛰고 나머지 테스트는 돈다. `psql` CLI가 필요하다.
+
+| 어디서 | 지금(11/18) |
+|---|---|
+| 로컬 | 위 변수를 직접 지정해야 돈다(아래 명령) |
+| CI — `main` | 아직 돌지 않는다. 예약 DB 테스트가 `main`에 없다(#20 머지 전) |
+| CI — #20 브랜치 | **실제로 돈다.** `ci.yml`이 Compose DB를 테스트 전에 띄우고 `TEST_DATABASE_URL`을 주입한다(`turbo.json` `passThroughEnv`). #20이 머지되면 `main`과 모든 PR에서 같은 방식으로 돈다 — [04 §6](../kickoff/04-dev-rules.md) |
 
 Docker Compose DB를 쓰는 경우(.env를 바꿨다면 그 값으로):
 
