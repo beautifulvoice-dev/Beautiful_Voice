@@ -1,18 +1,28 @@
 // 예약 충돌 판정 (P2-04, 분해표 C-05). 외부 의존성 없는 순수 함수.
-// 규칙 출처: 02-architecture §3 "충돌 보장", Linear PD-11~15.
+// 규칙 출처: Linear「[P2] 2. 상세 기능 명세서」예약 규칙 R-1~R-5(2026-11-18), CAL-2·6, AC-2·3. 설계: 02-architecture §3.
 // - 구간은 반열림 [start, end). 10:00~11:00과 11:00~12:00은 겹치지 않는다.
-// - 겹침 판정은 시술 시간만 쓴다. 준비·정리 시간은 넣지 않는다(PD-13).
-// - 일반 저장은 겹치면 거절. 원장 강제 저장도 동시 최대 2건·영업시간·휴무·임시 차단은 지킨다(PD-11·14·15).
+// - 세션 뒤에 준비 시간이 붙는다(기본 10분, 세션마다 바꿀 수 있음 — CAL-6). 준비 시간에는 예약을 받지 않으며
+//   겹침 판정에 세션과 준비 시간을 함께 넣는다(R-3, AC-3). 이 "세션 + 준비 시간"을 점유 구간이라 부른다.
+// - 일반 저장은 겹치면 거절. 원장 강제 저장("그대로 저장")도 동시 최대 2건·운영 시간·휴무·관리 불가 시간은 지킨다(R-1·R-2·R-4).
 // - "자리(lane)"는 DB 배타 제약이 동시 최대 2건을 보장하게 하는 내부 번호다. 사용자에게 보이지 않는다.
 
 export const MAX_CONCURRENT = 2;
+
+/** 세션 뒤 준비 시간 기본값(분). 세션마다 바꿀 수 있다(CAL-6). 호출 측이 세션의 값을 넘긴다. */
+export const DEFAULT_PREP_MINUTES = 10;
 
 export interface Interval {
   start: Date;
   end: Date;
 }
 
-export interface BookedAppointment extends Interval {
+/** 세션 구간(start~end)과 그 뒤 준비 시간. */
+export interface Session extends Interval {
+  /** 세션 뒤 준비 시간(분, 0 이상). */
+  prepMinutes: number;
+}
+
+export interface BookedAppointment extends Session {
   id: string;
   lane: number;
 }
@@ -24,11 +34,11 @@ export interface ShopSchedule {
   weeklyHours: Partial<Record<number, { open: string; close: string }[]>>;
   /** 매장 현지 날짜 "YYYY-MM-DD"의 휴무일. */
   closedDates: string[];
-  /** 임시 차단(PD-15). ASSUMPTION: 차단 시간에는 강제 저장도 불가 — 명세서로 확인. */
+  /** 관리 불가 시간(임시 차단). 예약을 받지 않는다(R-2, CAL-7). */
   blocks: Interval[];
 }
 
-export interface SaveRequest extends Interval {
+export interface SaveRequest extends Session {
   /** 원장이 "강제 저장"을 골랐는지. AI 제안은 스스로 true를 고를 수 없다. */
   force: boolean;
 }
@@ -60,6 +70,11 @@ export function overlaps(a: Interval, b: Interval): boolean {
   return a.start.getTime() < b.end.getTime() && b.start.getTime() < a.end.getTime();
 }
 
+/** 점유 구간 = 세션 시작 ~ 세션 끝 + 준비 시간(R-3). 겹침·자리 배정은 이 구간으로 판단한다. */
+export function occupied(s: Session): Interval {
+  return { start: s.start, end: new Date(s.end.getTime() + s.prepMinutes * 60_000) };
+}
+
 /**
  * 새 예약(또는 시간을 옮기는 예약)을 저장할 수 있는지 판정하고 자리를 정한다.
  *
@@ -77,7 +92,10 @@ export function decideSave(
   const ruleViolation = checkShopRules(request, schedule);
   if (ruleViolation) return { ok: false, reason: ruleViolation, conflictingIds: [] };
 
-  const direct = active.filter((a) => overlaps(a, request));
+  // 이후 판정은 모두 점유 구간(세션 + 준비 시간)으로 한다.
+  const mine = occupied(request);
+  const others = active.map((a) => ({ ...a, ...occupied(a) }));
+  const direct = others.filter((a) => overlaps(a, mine));
   if (direct.length === 0) {
     return { ok: true, lane: 1, isForced: false, reassign: new Map() };
   }
@@ -87,7 +105,7 @@ export function decideSave(
   }
 
   const NEW = "\u0000new";
-  const cluster = overlapCluster({ id: NEW, lane: 0, ...request }, active);
+  const cluster = overlapCluster({ id: NEW, lane: 0, prepMinutes: 0, ...mine }, others);
   const lanes = assignLanes(cluster);
   if (!lanes) {
     return { ok: false, reason: "CAPACITY_EXCEEDED", conflictingIds: ids(direct) };
@@ -100,9 +118,14 @@ export function decideSave(
   return { ok: true, lane: lanes.get(NEW)!, isForced: true, reassign };
 }
 
-/** 영업시간·휴무·임시 차단 검사. 강제 저장으로도 넘을 수 없다. */
-export function checkShopRules(period: Interval, schedule: ShopSchedule): RejectReason | null {
+/**
+ * 운영 시간·휴무·관리 불가 시간 검사(R-2). 강제 저장으로도 넘을 수 없다.
+ * ASSUMPTION: 운영 시간 안에 들어와야 하는 것은 세션이다 — 마지막 세션의 준비 시간은 마감 뒤로 넘어가도 된다.
+ * ASSUMPTION: 관리 불가 시간은 점유 구간(세션 + 준비 시간)과 겹치면 안 된다 — 준비도 원장이 하는 일이다.
+ */
+export function checkShopRules(period: Session, schedule: ShopSchedule): RejectReason | null {
   if (!(period.start.getTime() < period.end.getTime())) return "INVALID_PERIOD";
+  if (!Number.isInteger(period.prepMinutes) || period.prepMinutes < 0) return "INVALID_PERIOD";
 
   const startLocal = toLocal(period.start, schedule.timeZone);
   if (schedule.closedDates.includes(startLocal.date)) return "CLOSED_DAY";
@@ -119,7 +142,8 @@ export function checkShopRules(period: Interval, schedule: ShopSchedule): Reject
   });
   if (!inside) return "OUTSIDE_BUSINESS_HOURS";
 
-  if (schedule.blocks.some((b) => overlaps(b, period))) return "BLOCKED";
+  const occ = occupied(period);
+  if (schedule.blocks.some((b) => overlaps(b, occ))) return "BLOCKED";
   return null;
 }
 
