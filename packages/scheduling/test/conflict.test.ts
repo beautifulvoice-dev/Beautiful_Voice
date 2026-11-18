@@ -8,7 +8,8 @@ import {
   checkShopRules,
   decideSave,
   DEFAULT_PREP_MINUTES,
-  localTimeToInstant,
+  seoulTimeToInstant,
+  toSeoul,
   occupied,
   overlaps,
 } from "../src/conflict.ts";
@@ -32,7 +33,6 @@ const req = (from: string, to: string, force = false, date = "2026-11-24", prepM
 
 const OPEN = [{ open: "09:00", close: "21:00" }];
 const schedule: ShopSchedule = {
-  timeZone: "Asia/Seoul",
   weeklyHours: { 1: OPEN, 2: OPEN, 3: OPEN, 4: OPEN, 5: OPEN, 6: OPEN }, // 일요일 휴무
   closedDates: ["2026-11-25"],
   blocks: [{ start: kst("15:00"), end: kst("16:00") }],
@@ -197,104 +197,30 @@ describe("checkShopRules — 경계", () => {
   });
 });
 
-describe("checkShopRules — UTC 오프셋 전환일 (PR #19 리뷰 회귀)", () => {
-  // 합성 매장. 뉴욕은 2026-03-08(일) 02:00 → 03:00(봄), 2026-11-01(일) 02:00 → 01:00(가을) 전환.
-  const ny = (open: string, close: string): ShopSchedule => ({
-    timeZone: "America/New_York",
-    weeklyHours: { 0: [{ open, close }] },
-    closedDates: [],
-    blocks: [],
+describe("서울 시간대 고정 — 2A 범위 (UTC+9, 서머타임 없음)", () => {
+  it("UTC 15:00은 서울 다음 날 00:00 — 날짜·요일이 서울 기준으로 바뀐다", () => {
+    assert.deepEqual(toSeoul(new Date("2026-11-23T14:59:00Z")), { date: "2026-11-23", weekday: 1 }); // 월 23:59
+    assert.deepEqual(toSeoul(new Date("2026-11-23T15:00:00Z")), { date: "2026-11-24", weekday: 2 }); // 화 00:00
   });
-  const at = (iso: string) => new Date(iso);
-
-  it("봄 전환일: 영업 01:00~03:30에 현지 01:30~04:00 예약은 영업시간 밖", () => {
-    // 01:30 EST = 06:30Z, 04:00 EDT = 08:00Z. 마감 03:30 EDT = 07:30Z.
-    const r = { prepMinutes: 0, start: at("2026-03-08T06:30:00Z"), end: at("2026-03-08T08:00:00Z") };
-    assert.equal(checkShopRules(r, ny("01:00", "03:30")), "OUTSIDE_BUSINESS_HOURS");
+  it("서울 날짜·시각 → 실제 시각(UTC), 24:00은 다음 날 0시", () => {
+    assert.equal(seoulTimeToInstant("2026-11-24", "09:00"), Date.parse("2026-11-24T00:00:00Z"));
+    assert.equal(seoulTimeToInstant("2026-11-24", "00:00"), Date.parse("2026-11-23T15:00:00Z"));
+    assert.equal(seoulTimeToInstant("2026-11-24", "24:00"), Date.parse("2026-11-24T15:00:00Z"));
   });
-
-  it("봄 전환일: 마감 시각에 딱 끝나면 허용", () => {
-    // 01:30 EST = 06:30Z ~ 03:30 EDT = 07:30Z (실제 1시간)
-    const r = { prepMinutes: 0, start: at("2026-03-08T06:30:00Z"), end: at("2026-03-08T07:30:00Z") };
-    assert.equal(checkShopRules(r, ny("01:00", "03:30")), null);
-  });
-
-  it("가을 전환일: 영업 00:00~03:00에 현지 00:30~02:30(실제 3시간)은 허용", () => {
-    // 00:30 EDT = 04:30Z, 02:30 EST = 07:30Z. 마감 03:00 EST = 08:00Z.
-    const r = { prepMinutes: 0, start: at("2026-11-01T04:30:00Z"), end: at("2026-11-01T07:30:00Z") };
-    assert.equal(checkShopRules(r, ny("00:00", "03:00")), null);
-  });
-
-  it("봄 전환일: 존재하지 않는 개점 02:30은 03:30 EDT로 밀린다 — 01:35~01:50 예약 거절 (리뷰 2차 재현)", () => {
-    // 01:35 EST = 06:35Z, 01:50 EST = 06:50Z. 개점 02:30(존재 안 함) → 03:30 EDT = 07:30Z.
-    const r = { prepMinutes: 0, start: at("2026-03-08T06:35:00Z"), end: at("2026-03-08T06:50:00Z") };
-    assert.equal(checkShopRules(r, ny("02:30", "04:00")), "OUTSIDE_BUSINESS_HOURS");
-  });
-
-  it("봄 전환일: 밀린 개점(03:30 EDT)부터는 허용", () => {
-    // 03:30 EDT = 07:30Z ~ 04:00 EDT = 08:00Z
-    const r = { prepMinutes: 0, start: at("2026-03-08T07:30:00Z"), end: at("2026-03-08T08:00:00Z") };
-    assert.equal(checkShopRules(r, ny("02:30", "04:00")), null);
-  });
-
-  it("가을 전환일: 두 번 있는 01:30 개점은 먼저 오는 쪽(EDT)", () => {
-    // 01:30 EDT = 05:30Z. 01:40 EDT(05:40Z)~02:00 EST(07:00Z) 허용, 01:00 EDT(05:00Z) 시작은 거절.
-    assert.equal(checkShopRules({ prepMinutes: 0, start: at("2026-11-01T05:40:00Z"), end: at("2026-11-01T07:00:00Z") }, ny("01:30", "03:00")), null);
+  it("자정 직전에 끝나는 세션은 그날 영업(00:00~24:00)에 들어가고, 자정을 넘으면 영업시간 밖", () => {
+    const allDay: ShopSchedule = { ...schedule, weeklyHours: { 2: [{ open: "00:00", close: "24:00" }] }, closedDates: [], blocks: [] };
+    // 23:00~다음 날 00:00 = 그날 영업 끝(24:00)에 딱 맞음
+    assert.equal(checkShopRules({ start: kst("23:00"), end: kst("00:00", "2026-11-25"), prepMinutes: 0 }, allDay), null);
     assert.equal(
-      checkShopRules({ prepMinutes: 0, start: at("2026-11-01T05:00:00Z"), end: at("2026-11-01T05:20:00Z") }, ny("01:30", "03:00")),
+      checkShopRules({ start: kst("23:30"), end: kst("00:30", "2026-11-25"), prepMinutes: 0 }, allDay),
       "OUTSIDE_BUSINESS_HOURS",
     );
   });
-
-  it("가을 전환일: 마감을 넘으면 거절", () => {
-    // 00:30 EDT = 04:30Z ~ 03:30 EST = 08:30Z
-    const r = { prepMinutes: 0, start: at("2026-11-01T04:30:00Z"), end: at("2026-11-01T08:30:00Z") };
-    assert.equal(checkShopRules(r, ny("00:00", "03:00")), "OUTSIDE_BUSINESS_HOURS");
+  it("서울 새벽 시작 세션의 휴무 판정은 서울 날짜 기준 (UTC로는 전날)", () => {
+    // 2026-11-29(일, 서울) 00:30 = UTC 11/28(토) 15:30. 일요일 휴무여야 한다.
+    const r = { start: kst("00:30", "2026-11-29"), end: kst("01:00", "2026-11-29"), prepMinutes: 0 };
+    assert.equal(checkShopRules(r, schedule), "CLOSED_DAY");
   });
-});
-
-describe("localTimeToInstant — 전환일 전수 검사", () => {
-  // 전환이 있는 시간대들의 전환일 하루를 15분 간격으로 전부 확인한다.
-  const cases: [string, string][] = [
-    ["America/New_York", "2026-03-08"],
-    ["America/New_York", "2026-11-01"],
-    ["Europe/London", "2026-03-29"],
-    ["Europe/London", "2026-10-25"],
-    ["Australia/Sydney", "2026-04-05"],
-    ["Australia/Sydney", "2026-10-04"],
-    ["Asia/Seoul", "2026-11-24"],
-  ];
-  const wall = (instant: number, timeZone: string) =>
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      hourCycle: "h23",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-      .format(instant)
-      .replace(",", "");
-
-  for (const [tz, date] of cases) {
-    it(`${tz} ${date}: 있는 시각은 그대로·순서 유지, 없는 시각은 건너뛴 1시간만큼 뒤로`, () => {
-      const hhmmOf = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-      let prevExisting = -Infinity;
-      for (let m = 0; m < 24 * 60; m += 15) {
-        const hhmm = hhmmOf(m);
-        const instant = localTimeToInstant(date, hhmm, tz);
-        const back = wall(instant, tz);
-        if (back === `${date} ${hhmm}`) {
-          assert.ok(instant > prevExisting, `${tz} ${date} ${hhmm}: 있는 시각끼리 순서가 뒤집힘`);
-          prevExisting = instant;
-        } else {
-          // 존재하지 않는 시각(봄 전환): 건너뛴 길이(이 시간대들은 1시간)만큼 뒤 — 앞당겨지면 안 된다.
-          assert.equal(back, `${date} ${hhmmOf(m + 60)}`, `${tz} ${date} ${hhmm}`);
-        }
-      }
-    });
-  }
 });
 
 describe("자리 배정 성질 — 무작위 검증", () => {

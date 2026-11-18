@@ -27,9 +27,12 @@ export interface BookedAppointment extends Session {
   lane: number;
 }
 
-/** 매장 영업 규칙. 시각 문자열은 매장 현지 시각 "HH:MM". */
+/**
+ * 매장 영업 규칙. 시각 문자열은 **서울 시각** "HH:MM", 날짜는 서울 날짜 "YYYY-MM-DD".
+ * 2A는 서울 시간대(Asia/Seoul)만 지원한다(리더 결정, PR #19 리뷰 11/18). 서울은 서머타임이 없어 UTC+9 고정이다.
+ * 예약 시각(Date)은 UTC 시점이며 DB에도 UTC(timestamptz)로 저장한다. 해외 매장은 지원 범위가 넓어질 때 시간대 필드와 함께 다시 넣는다.
+ */
 export interface ShopSchedule {
-  timeZone: string;
   /** 요일(0=일 ~ 6=토)별 영업 구간. 없는 요일은 휴무. */
   weeklyHours: Partial<Record<number, { open: string; close: string }[]>>;
   /** 매장 현지 날짜 "YYYY-MM-DD"의 휴무일. */
@@ -127,17 +130,16 @@ export function checkShopRules(period: Session, schedule: ShopSchedule): RejectR
   if (!(period.start.getTime() < period.end.getTime())) return "INVALID_PERIOD";
   if (!Number.isInteger(period.prepMinutes) || period.prepMinutes < 0) return "INVALID_PERIOD";
 
-  const startLocal = toLocal(period.start, schedule.timeZone);
+  const startLocal = toSeoul(period.start);
   if (schedule.closedDates.includes(startLocal.date)) return "CLOSED_DAY";
   const windows = schedule.weeklyHours[startLocal.weekday] ?? [];
   if (windows.length === 0) return "CLOSED_DAY";
 
-  // 예약 전체가 시작일(현지)의 영업 구간 하나 안에 있어야 한다. 자정을 넘는 예약은 영업시간 밖이 된다.
-  // 영업 구간 경계를 실제 시각으로 바꿔 비교한다 — 현지 시각에 경과 시간을 더하면
-  // UTC 오프셋이 바뀌는 날(서머타임 전환일)에 종료 시각이 어긋난다.
+  // 세션 전체가 시작일(서울)의 영업 구간 하나 안에 있어야 한다. 자정을 넘는 세션은 영업시간 밖이 된다.
+  // 영업 구간 경계를 실제 시각으로 바꿔 세션과 비교한다.
   const inside = windows.some((w) => {
-    const open = localTimeToInstant(startLocal.date, w.open, schedule.timeZone);
-    const close = localTimeToInstant(startLocal.date, w.close, schedule.timeZone);
+    const open = seoulTimeToInstant(startLocal.date, w.open);
+    const close = seoulTimeToInstant(startLocal.date, w.close);
     return period.start.getTime() >= open && period.end.getTime() <= close;
   });
   if (!inside) return "OUTSIDE_BUSINESS_HOURS";
@@ -186,59 +188,18 @@ function ids(list: { id: string }[]): string[] {
   return list.map((a) => a.id);
 }
 
-const WEEKDAYS: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+/** 서울 = UTC+9 고정(서머타임 없음). */
+const SEOUL_OFFSET_MS = 9 * 3_600_000;
 
-function localParts(at: number, timeZone: string): Record<string, string> {
-  return Object.fromEntries(
-    new Intl.DateTimeFormat("en-US", {
-      timeZone,
-      hourCycle: "h23",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      weekday: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    })
-      .formatToParts(at)
-      .map((p) => [p.type, p.value]),
-  );
+/** UTC 시각의 서울 날짜("YYYY-MM-DD")와 요일(0=일). */
+export function toSeoul(at: Date): { date: string; weekday: number } {
+  const shifted = new Date(at.getTime() + SEOUL_OFFSET_MS);
+  return { date: shifted.toISOString().slice(0, 10), weekday: shifted.getUTCDay() };
 }
 
-/** UTC 시각의 매장 현지 날짜("YYYY-MM-DD")와 요일(0=일). */
-function toLocal(at: Date, timeZone: string): { date: string; weekday: number } {
-  const p = localParts(at.getTime(), timeZone);
-  return { date: `${p.year}-${p.month}-${p.day}`, weekday: WEEKDAYS[p.weekday!]! };
-}
-
-/** 그 시각에 매장 시간대가 UTC보다 몇 ms 앞서는지(서울 +9h, 뉴욕 겨울 -5h). */
-function offsetAt(instant: number, timeZone: string): number {
-  const p = localParts(instant, timeZone);
-  const asUtc = Date.UTC(+p.year!, +p.month! - 1, +p.day!, +p.hour!, +p.minute!, +p.second!);
-  return asUtc - (instant - (((instant % 1000) + 1000) % 1000));
-}
-
-const DAY_MS = 86_400_000;
-
-/**
- * 매장 현지 날짜 + "HH:MM"을 실제 시각(epoch ms)으로 바꾼다. "24:00"은 다음 날 0시.
- * UTC 오프셋 전환일의 해석 규칙(JavaScript Temporal·Java의 기본값 "compatible"과 같다):
- * - 존재하지 않는 현지 시각(봄 전환으로 건너뛴 구간)은 **전환 전 오프셋**으로 해석한다
- *   → 건너뛴 길이만큼 뒤로 밀린다(뉴욕 2026-03-08 02:30 → 03:30 EDT). 개점이 앞당겨지지 않는다.
- * - 두 번 있는 현지 시각(가을 전환으로 반복되는 구간)은 **먼저 오는 쪽**으로 해석한다.
- * 하루에 전환은 최대 한 번이라고 본다.
- */
-export function localTimeToInstant(date: string, hhmm: string, timeZone: string): number {
+/** 서울 날짜 + "HH:MM"을 실제 시각(epoch ms)으로 바꾼다. "24:00"은 다음 날 0시. */
+export function seoulTimeToInstant(date: string, hhmm: string): number {
   const [y, mo, d] = date.split("-").map(Number);
   const [h, mi] = hhmm.split(":").map(Number);
-  const naive = Date.UTC(y!, mo! - 1, d!, h!, mi!);
-  // 전환 전·후 오프셋 후보. 각 후보로 해석한 시각이 실제로 그 오프셋을 갖는지 확인한다.
-  const before = offsetAt(naive - DAY_MS, timeZone);
-  const after = offsetAt(naive + DAY_MS, timeZone);
-  const valid = [...new Set([before, after])]
-    .map((offset) => naive - offset)
-    .filter((instant) => naive - offsetAt(instant, timeZone) === instant);
-  if (valid.length === 0) return naive - before; // 존재하지 않는 시각
-  return Math.min(...valid); // 하나뿐이거나, 두 번 있으면 먼저 오는 쪽
+  return Date.UTC(y!, mo! - 1, d!, h!, mi!) - SEOUL_OFFSET_MS;
 }
