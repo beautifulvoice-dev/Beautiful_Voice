@@ -6,9 +6,9 @@
     "dev": "node --env-file-if-exists=../../.env ./node_modules/@nestjs/cli/bin/nest.js start --watch",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/health.test.cjs",
+    "test": "node --test test/health.test.cjs test/conventions.test.cjs",
     "db:migrate": "node --env-file-if-exists=../../.env db/migrate.cjs",
-    "db:test": "node --env-file-if-exists=../../.env --test test/database.test.cjs"
+    "db:test": "node --env-file-if-exists=../../.env --test test/database.test.cjs test/idempotency.test.cjs"
   },
   "dependencies": {
     "@bv/contracts": "workspace:*",
