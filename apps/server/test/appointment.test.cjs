@@ -10,9 +10,17 @@ const { ApiError } = require('../dist/common/api-error.js');
 const { requestFingerprint } = require('../dist/common/idempotency.js');
 const { AppointmentService } = require('../dist/appointments/appointment.service.js');
 
+// 테스트 전용: 매일 00:00~24:00 영업, 휴무·차단 없음. 서비스는 운영시간 reader를 필수로 받는다(#33 리뷰).
+// 운영 규칙(R-2) 판정 자체는 packages/scheduling conflict.test에서 확인한다.
+const allDay = [{ open: '00:00', close: '24:00' }];
+const ALWAYS_OPEN = {
+  async read() {
+    return { weeklyHours: Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, allDay])), closedDates: [], blocks: [] };
+  },
+};
 const admin = new Client({ connectionString: process.env.DATABASE_MIGRATION_URL });
 const db = new DatabaseService();
-const service = new AppointmentService(db);
+const service = new AppointmentService(db, ALWAYS_OPEN);
 const shops = [];
 const ctx = { actor: 'owner', source: 'web', now: new Date('2026-11-20T00:00:00+09:00') };
 const at = (hhmm) => new Date(`2026-12-01T${hhmm}:00+09:00`);
@@ -147,6 +155,21 @@ test('매장 격리: 다른 매장 예약은 판정에 들어가지 않고, 다�
   assert.equal((await create(shopB, slot('10:00', '11:00'))).status, 'confirmed');
   await rejectsWith(service.cancel(shopB, a.id, ctx), 404, 'APPOINTMENT_NOT_FOUND');
   await rejectsWith(service.move(shopB, a.id, slot('16:00', '17:00'), ctx), 404, 'APPOINTMENT_NOT_FOUND');
+});
+
+test('#33 리뷰 반례: 하루 넘게 이어진 겹침 묶음도 끝까지 읽어 저장 가능한 그대로 저장을 거절하지 않는다', async () => {
+  // 1시간 세션 + 준비 20시간, 20시간 간격 → A(자리1)·B(2)·C(1)·D(2)가 하루 넘게 이어진 하나의 묶음.
+  const shop = await newShop();
+  const h = (hours, minutes = 60) => {
+    const start = new Date(at('00:00').getTime() + hours * 3_600_000);
+    return { start, end: new Date(start.getTime() + minutes * 60_000), prepMinutes: 1200, force: true };
+  };
+  const [a, b, c, d] = [await create(shop, h(0)), await create(shop, h(20)), await create(shop, h(40)), await create(shop, h(60))];
+  assert.deepEqual(await lanes(shop), { [a.id]: 1, [b.id]: 2, [c.id]: 1, [d.id]: 2 });
+  // N(50시간째)은 C와만 직접 겹친다. 앞뒤 하루만 읽으면 A가 빠져 B를 자리1로 옮기다 A와 부딪힌다(DB 23P01).
+  // 묶음 전체를 보면 기존 자리를 그대로 두고 N을 자리2에 넣을 수 있다.
+  const n = await create(shop, { ...h(50), prepMinutes: 0 });
+  assert.deepEqual(await lanes(shop), { [a.id]: 1, [b.id]: 2, [c.id]: 1, [d.id]: 2, [n.id]: 2 });
 });
 
 test('잘못된 시간(끝이 시작보다 앞)은 400 INVALID_PERIOD', async () => {

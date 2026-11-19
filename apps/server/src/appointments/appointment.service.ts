@@ -46,22 +46,15 @@ export interface ShopScheduleReader {
   read(client: PoolClient, shopId: string, around: Interval): Promise<ShopSchedule>;
 }
 
-// ASSUMPTION: C-01·C-06 전까지는 매일 00:00~24:00 영업, 휴무·차단 없음으로 본다. 운영 규칙(R-2) 검사는 그때 붙는다.
-export const ALWAYS_OPEN: ShopScheduleReader = {
-  async read() {
-    const allDay = [{ open: '00:00', close: '24:00' }];
-    return { weeklyHours: { 0: allDay, 1: allDay, 2: allDay, 3: allDay, 4: allDay, 5: allDay, 6: allDay }, closedDates: [], blocks: [] };
-  },
-};
-
 type Idempotency = { key: string; fingerprint: string } | null;
-const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_PREP_MINUTES = 1440;
 
 export class AppointmentService {
+  // schedules는 필수다 — 기본값을 두면 API 연결 때 운영 시간·휴무·관리 불가 시간(R-2)이 조용히 무시된다(#33 리뷰).
+  // 실제 구현은 C-01(설정)·C-06(관리 불가 시간)에서 넣는다.
   constructor(
     private readonly database: Pick<DatabaseService, 'withShop'>,
-    private readonly schedules: ShopScheduleReader = ALWAYS_OPEN,
+    private readonly schedules: ShopScheduleReader,
   ) {}
 
   /** 저장하지 않고 판정만 한다(`:check`). */
@@ -167,18 +160,32 @@ export class AppointmentService {
     if (!isValidPeriod(request)) {
       return { ok: false as const, reason: 'INVALID_PERIOD' as const, conflictingIds: [] };
     }
-    // 겹침이 이어진 묶음(자리 재배정 대상)을 다 보려고 앞뒤 하루를 읽는다. 세션은 영업일 안에 있으므로 충분하다.
-    const occ = occupied(request);
-    const around = { start: new Date(occ.start.getTime() - DAY_MS), end: new Date(occ.end.getTime() + DAY_MS) };
-    const schedule = await this.schedules.read(client, shopId, around);
-    const { rows } = await client.query<{ id: string; s: Date; e: Date; prep_minutes: number; lane: number }>(
-      `SELECT id, lower(period) AS s, upper(period) AS e, prep_minutes, lane FROM crm.appointment
-       WHERE shop_id = $1 AND status IN ('confirmed', 'completed') AND occupied && tstzrange($2, $3)
-         AND id IS DISTINCT FROM $4::uuid`,
-      [shopId, around.start, around.end, excludeId],
-    );
-    const active: BookedAppointment[] = rows.map((r) => ({ id: r.id, start: r.s, end: r.e, prepMinutes: r.prep_minutes, lane: r.lane }));
+    const active = await this.loadConnected(client, shopId, occupied(request), excludeId);
+    const schedule = await this.schedules.read(client, shopId, occupied(request));
     return decideSave(request, schedule, active);
+  }
+
+  /**
+   * 요청 점유 구간과 이어서 겹치는 예약 묶음 전체를 읽는다(자리 재배정은 묶음 전체로 해야 한다 — #33 리뷰).
+   * 읽은 예약의 점유 구간 바깥 끝까지 창을 넓히며 더 붙는 예약이 없을 때까지 반복한다.
+   * 매장 잠금 안이라 반복하는 동안 목록이 바뀌지 않는다. 창 안의 묶음 밖 예약도 섞일 수 있지만 decideSave가 직접·연결 겹침만 쓴다.
+   */
+  private async loadConnected(client: PoolClient, shopId: string, from: Interval, excludeId: string | null) {
+    let window = from;
+    for (;;) {
+      const { rows } = await client.query<{ id: string; s: Date; e: Date; oe: Date; prep_minutes: number; lane: number }>(
+        `SELECT id, lower(period) AS s, upper(period) AS e, upper(occupied) AS oe, prep_minutes, lane FROM crm.appointment
+         WHERE shop_id = $1 AND status IN ('confirmed', 'completed') AND occupied && tstzrange($2, $3)
+           AND id IS DISTINCT FROM $4::uuid`,
+        [shopId, window.start, window.end, excludeId],
+      );
+      const start = Math.min(window.start.getTime(), ...rows.map((r) => r.s.getTime()));
+      const end = Math.max(window.end.getTime(), ...rows.map((r) => r.oe.getTime()));
+      if (start === window.start.getTime() && end === window.end.getTime()) {
+        return rows.map((r): BookedAppointment => ({ id: r.id, start: r.s, end: r.e, prepMinutes: r.prep_minutes, lane: r.lane }));
+      }
+      window = { start: new Date(start), end: new Date(end) };
+    }
   }
 
   private async decideOrThrow(client: PoolClient, shopId: string, input: SessionInput, excludeId: string | null) {
