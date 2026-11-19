@@ -86,7 +86,7 @@ TEST_DATABASE_URL=postgresql://bv_local:bv_local_only@127.0.0.1:5432/beautifulvo
 
 ## 5. 매장 격리·멱등 DB 테스트 (`apps/server`, F-03·F-05)
 
-위 2번의 앱 계정·마이그레이션을 마친 DB에서 돈다. 다른 매장 행 조회·변경 차단, 마이그레이션 계정으로 앱 기동 거부, `Idempotency-Key` 재전송·동시 요청·롤백 후 재시도·매장별 키 분리를 확인한다.
+위 2번의 앱 계정·마이그레이션을 마친 DB에서 돈다. 다른 매장 행 조회·변경 차단, 마이그레이션 계정으로 앱 기동 거부, `Idempotency-Key` 재전송·동시 요청·롤백 후 재시도·매장별 키 분리를 , 예약 저장(C-07: AC-2 최대 2건·AC-3 준비 시간·그대로 저장 자리 재배정·동시 저장 10회·시간 변경·취소·매장 격리)을 확인한다.
 
 ```bash
 pnpm --filter @bv/server db:test
