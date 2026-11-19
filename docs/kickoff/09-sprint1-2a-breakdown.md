@@ -69,6 +69,17 @@ M1 끝나는 조건: 원장이 로그인해 고객을 등록하고 예약을 넣
 | C-04 상태 전이(#23) | BEA-178 | **다시 작성** — 새 상태 5종과 정정 규칙 |
 | C-07 저장 서비스 뼈대(#33, 006 마이그레이션) | BEA-176·177 | 저장 순서(잠금 → 재검사 → 저장)와 멱등 연결은 재사용. 자리·최대 2건 로직과 `crm.appointment`(006)는 BEA-155 스키마로 교체 |
 
+### 2-1. BEA-176(예약 쓰기 함수)에서 함께 정리할 옛 코드
+
+BEA-155 스키마 위에 예약 쓰기 함수를 새로 만들 때 아래를 지운다. 새 규칙은 `packages/scheduling/src/booking.ts`·`appointment-status.ts`(#36)에 있다.
+
+- [ ] `packages/scheduling/src/conflict.ts`·`status.ts`와 테스트(`conflict.test.ts`·`status.test.ts`) — 매장 최대 2건·자리·그대로 저장·세션 뒤 준비 시간, 요청·확정·자동 완료
+- [ ] `packages/scheduling/sql/appointment_conflict.sql`·`test/db.test.ts` — 자리(lane) 배타 제약. 담당자 배타 제약은 BEA-155 스키마가 맡는다
+- [ ] `apps/server/src/appointments/appointment.service.ts`·`test/appointment.test.cjs`(#33) — 저장 순서(잠금 → 재검사 → 저장)와 멱등 연결은 새 함수로 옮기고, 자리 재배정·`loadConnected`는 버린다
+- [ ] `apps/server/db/migrations/006-appointment.sql` — `crm.appointment`·`appointment_event`를 BEA-155 스키마로 교체(마이그레이션 이어가기 방식은 2F가 정함)
+- [ ] `packages/customers/src/history.ts` — 변경 이력이 DB 트리거(`crm_change`)로 바뀜. 웹(`apps/web`)이 쓰는 검증·정규화 함수는 유지
+- [ ] 코드 주석의 옛 ID(C-0x·F-0x)와 규칙 번호(R-x·CAL-x)를 BEA·기능 번호로
+
 ## 3. 포커 전에 정할 것
 
 | # | 내용 |
