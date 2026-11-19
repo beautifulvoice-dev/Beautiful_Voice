@@ -1,9 +1,10 @@
 import type { OwnerSessionResponse, OwnerShopResponse } from '@bv/contracts';
 import {
-  Controller, Get, Header, HttpException, Param, Query, Redirect, Req, Res,
+  Controller, Get, Header, Param, Query, Redirect, Req, Res,
 } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { ApiError } from './common/api-error';
 import { DatabaseService } from './database.service';
 import { authenticateKakaoOwner, KakaoLoginError, kakaoAuthorizationUrl } from './kakao-login';
 import {
@@ -44,12 +45,12 @@ export class OwnerAuthController {
     if (!expected || typeof code !== 'string' || typeof state !== 'string') throw unauthorized();
     const owner = await authenticateKakaoOwner(config, { code, state }, expected, this.database).catch((error: unknown) => {
       if (!(error instanceof KakaoLoginError)) throw error;
-      if (error.reason === 'unavailable') throw new HttpException({
-        code: 'KAKAO_UNAVAILABLE', message: '카카오 로그인에 연결할 수 없습니다.',
-      }, 503);
+      if (error.reason === 'unavailable') {
+        throw new ApiError(503, 'KAKAO_UNAVAILABLE', '카카오 로그인에 연결할 수 없습니다.');
+      }
       throw unauthorized();
     });
-    if (!owner) throw new HttpException({ code: 'OWNER_NOT_REGISTERED', message: '등록된 원장 계정이 아닙니다.' }, 403);
+    if (!owner) throw new ApiError(403, 'OWNER_NOT_REGISTERED', '등록된 원장 계정이 아닙니다.');
     const session = signCookie(config.key, 'owner-session', owner.userId + ':' + owner.shopId, SESSION_SECONDS);
     response.setHeader('Set-Cookie', [clearState, makeCookie(SESSION_COOKIE, session, SESSION_SECONDS, '/api', config.secure)]);
   }
@@ -87,14 +88,14 @@ export class OwnerAuthController {
 
 function requireConfig() {
   const config = authConfig();
-  if (!config) throw new HttpException({ code: 'AUTH_UNAVAILABLE', message: '로그인을 사용할 수 없습니다.' }, 503);
+  if (!config) throw new ApiError(503, 'AUTH_UNAVAILABLE', '로그인을 사용할 수 없습니다.');
   return config;
 }
 
-function unauthorized(): HttpException {
-  return new HttpException({ code: 'UNAUTHENTICATED', message: '다시 로그인해 주세요.' }, 401);
+function unauthorized(): ApiError<'UNAUTHENTICATED'> {
+  return new ApiError(401, 'UNAUTHENTICATED', '다시 로그인해 주세요.');
 }
 
-function shopNotFound(): HttpException {
-  return new HttpException({ code: 'SHOP_NOT_FOUND', message: '매장을 찾을 수 없습니다.' }, 404);
+function shopNotFound(): ApiError<'SHOP_NOT_FOUND'> {
+  return new ApiError(404, 'SHOP_NOT_FOUND', '매장을 찾을 수 없습니다.');
 }

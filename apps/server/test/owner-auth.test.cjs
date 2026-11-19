@@ -5,6 +5,7 @@ const { test } = require('node:test');
 const { Module } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 const { DatabaseService } = require('../dist/database.service.js');
+const { ApiExceptionFilter } = require('../dist/common/api-exception.filter.js');
 const { OwnerAuthController } = require('../dist/owner-auth.controller.js');
 const { verifyCookie, signCookie } = require('../dist/owner-session.js');
 
@@ -61,6 +62,7 @@ test('browser login issues a session and only authorizes the current shop', asyn
   class TestModule {}
   Module({ controllers: [OwnerAuthController], providers: [{ provide: DatabaseService, useValue: database }] })(TestModule);
   const app = await NestFactory.create(TestModule, { logger: false });
+  app.useGlobalFilters(new ApiExceptionFilter());
   t.after(() => app.close());
   await app.listen(0, '127.0.0.1');
   const base = await app.getUrl();
@@ -86,7 +88,7 @@ test('browser login issues a session and only authorizes the current shop', asyn
   const unknownOwner = await request(callback + state, stateCookie);
   assert.equal(unknownOwner.status, 403);
   assert.deepEqual(await unknownOwner.json(), {
-    code: 'OWNER_NOT_REGISTERED', message: '등록된 원장 계정이 아닙니다.',
+    code: 'OWNER_NOT_REGISTERED', message: '등록된 원장 계정이 아닙니다.', details: {},
   });
   isOwner = true;
   const login = await request(callback + state, stateCookie);
