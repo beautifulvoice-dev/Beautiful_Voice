@@ -1,4 +1,4 @@
-// C-03 수용 기준: 모바일 화면에서 목록·검색·고객 카드. 데이터는 합성(절대 규칙 8).
+// C-03 수용 기준: 모바일 화면에서 등록 → 검색 → 수정. 데이터는 합성(절대 규칙 8).
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
@@ -49,6 +49,48 @@ describe('고객 목록·검색', () => {
     fail = false;
     await userEvent.click(screen.getByRole('button', { name: '다시 시도' }));
     expect(await screen.findByRole('list', { name: '고객 목록' })).toBeInTheDocument();
+  });
+});
+
+describe('고객 등록 → 검색 → 수정', () => {
+  it('이름이 없으면 저장하지 않는다', async () => {
+    renderAt('/customers/new');
+    await userEvent.click(await screen.findByRole('button', { name: '저장' }));
+    expect(screen.getByText('이름을 입력해 주세요.')).toBeInTheDocument();
+  });
+
+  it('등록하고, 목록에서 찾고, 전화번호를 고친다', async () => {
+    const router = renderAt('/customers/new');
+    await userEvent.type(await screen.findByLabelText('이름 (필수)'), '최가람');
+    await userEvent.click(screen.getByRole('button', { name: '저장' }));
+    expect(await screen.findByRole('heading', { level: 1, name: '최가람' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '개인 정보' })).toHaveTextContent('전화번호없음');
+
+    await router.navigate('/customers?q=가람');
+    await userEvent.click(await screen.findByRole('link', { name: /최가람/ }));
+    await userEvent.click(await screen.findByRole('link', { name: '수정' }));
+    const phone = await screen.findByLabelText('전화번호');
+    await userEvent.type(phone, '010-0000-12');
+    await userEvent.click(screen.getByRole('button', { name: '저장' }));
+    expect(screen.getByText(/전화번호 형식이 맞지 않아요/)).toBeInTheDocument();
+
+    await userEvent.type(phone, '34');
+    await userEvent.click(screen.getByRole('button', { name: '저장' }));
+    expect(await screen.findByRole('region', { name: '개인 정보' })).toHaveTextContent('010-0000-1234');
+  });
+
+  it('같은 이름이 있으면 확인을 받고, 원장이 다른 고객이라 하면 따로 저장한다', async () => {
+    const api = createMemoryCustomerApi();
+    renderAt('/customers/new', api);
+    await userEvent.type(await screen.findByLabelText('이름 (필수)'), '김하늘');
+    await userEvent.click(screen.getByRole('button', { name: '저장' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('같은 이름의 고객이 있어요');
+    expect(within(alert).getAllByRole('listitem')).toHaveLength(2);
+
+    await userEvent.click(screen.getByRole('button', { name: '다른 고객이에요, 저장' }));
+    expect(await screen.findByRole('heading', { level: 1, name: '김하늘' })).toBeInTheDocument();
+    expect(await api.list('김하늘')).toHaveLength(3);
   });
 });
 
