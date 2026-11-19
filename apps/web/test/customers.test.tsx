@@ -21,23 +21,39 @@ function renderAt(path: string, api: CustomerApi = createMemoryCustomerApi()) {
 const names = () => within(screen.getByRole('list', { name: '고객 목록' })).getAllByRole('link').map((a) => a.textContent);
 
 describe('고객 목록·검색', () => {
-  it('이름으로 찾는다 — 띄어쓰기는 무시', async () => {
-    renderAt('/customers');
+  const search = async (text: string) => {
     await screen.findByRole('list', { name: '고객 목록' });
-    await userEvent.type(screen.getByRole('searchbox', { name: '고객 검색' }), '이 서윤');
+    await userEvent.type(screen.getByRole('searchbox', { name: '고객 검색' }), text);
+  };
+
+  it('이름으로 찾는다 — 띄어쓰기는 무시, 검색어는 주소에 남기지 않는다', async () => {
+    const router = renderAt('/customers');
+    await search('이 서윤');
     expect(names()).toEqual(['이서윤010-0000-0003']);
+    expect(router.state.location.search).toBe('');
   });
 
   it('전화번호 일부로 찾는다', async () => {
-    renderAt('/customers?q=0002');
-    await screen.findByRole('list', { name: '고객 목록' });
+    renderAt('/customers');
+    await search('0002');
     expect(names()).toEqual(['김하늘010-0000-0002']);
   });
 
   it('검색 결과 없음과 불러오기 실패를 다르게 보여 준다', async () => {
-    renderAt('/customers?q=없는사람');
+    renderAt('/customers');
+    await search('없는사람');
     expect(await screen.findByText('검색 결과가 없어요')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('고객 카드에서 뒤로 오면 검색이 유지된다', async () => {
+    const router = renderAt('/customers');
+    await search('서윤');
+    await userEvent.click(screen.getByRole('link', { name: /이서윤/ }));
+    await screen.findByRole('heading', { level: 1, name: '이서윤' });
+    await router.navigate(-1);
+    expect(await screen.findByRole('searchbox', { name: '고객 검색' })).toHaveValue('서윤');
+    expect(names()).toEqual(['이서윤010-0000-0003']);
   });
 
   it('불러오기에 실패하면 다시 시도할 수 있다', async () => {
