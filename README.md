@@ -72,7 +72,7 @@ docker compose down
 | [06. PM 질문](docs/kickoff/06-pm-questions.md) | 제품 결정 요청 목록(Q1~Q25) |
 | [07. 개발팀 입장 정리](docs/kickoff/07-dev-position.md) | 회의 안건별 제안·첫 주 계획·온보딩 |
 | [08. 아키텍처 트레이드오프](docs/kickoff/08-architecture-tradeoffs.md) | PM용 — 백로그 근거로 본 선택지·이점·포기하는 것 |
-| [09. 1차 스프린트 작업 분해표](docs/kickoff/09-sprint1-2a-breakdown.md) | 2A CRM 작업 23개·진행 상태·크리티컬 패스 (~11/25) |
+| [09. M1 작업 분해표](docs/kickoff/09-sprint1-2a-breakdown.md) | Phase 2 M1(손으로 쓰는 CRM) 이슈 BEA-155~179·선행·담당 제안, 옛 작업 ID 대응 |
 | [ADR](docs/adr/) | 기술 결정 기록. 0001·0002·0003·0005·[0006 스택](docs/adr/0006-tech-stack-ts-monorepo.md)·[0007 호스팅](docs/adr/0007-hosting-aws-ec2-rds.md) Accepted, 0004(Phase 3 전화)만 Proposed |
 
 ### 저장소에 없는 자료 (로컬 전용, git 제외)

@@ -11,7 +11,7 @@ Phase 1: 음성 기록 → 전사·구조화 → 웹앱 정리함 / Phase 2: 같
 - 회의 입장·첫 주 계획: `docs/kickoff/07-dev-position.md`
 
 ## 현재 단계
-1차 스프린트(2026-11-18 ~ 11-25 자정): **Phase 2 모듈 2A CRM 기반**(P2-01·02·03·04·10 + COM-01~03) 완성. Phase 1은 PM이 별도 저장소에서 만들며, 여기서는 플로우·정책만 참고한다.
+1차 스프린트(2026-11-18 ~ 11-25 자정): **Phase 2 마일스톤 M1 손으로 쓰는 CRM**(2F 기반·2P-1 운영 등록·2A-1 설정·2A-2 고객·2A-3 캘린더·예약, Linear BEA-155~179). 기준은 Linear「[P2] 명세 0~3」(11/19 최종판), 작업 분해는 `docs/kickoff/09-sprint1-2a-breakdown.md`. Phase 1은 PM이 별도 저장소에서 만들며, 여기서는 플로우·정책만 참고한다.
 **기술 스택 확정: ADR-0006**(Accepted, 11/17) — TS 모노레포(pnpm+Turborepo) / React+Vite PWA / NestJS API·워커 / PostgreSQL. 로컬 실행은 README.md를 따른다. 빌드·검사는 pnpm build, pnpm lint, pnpm typecheck, pnpm test를 사용한다(직접 테스트 안내: `docs/dev/testing.md`). PR은 CI `verify` 통과가 머지 필수 조건이다. 호스팅은 AWS EC2 + RDS(ADR-0007).
 역할: 리더·서버 기반 주드 / CRM·웹앱 옵마 / 음성·AI 해나 (`docs/kickoff/05-rnr.md`).
 이전 프로젝트 코드는 **설계만 참고하고 새로 작성**한다(ADR-0005, Accepted). `.private/`의 이전 코드를 복사해 넣지 않는다.
