@@ -1,12 +1,20 @@
 import { Navigate, type RouteObject } from 'react-router';
 import { AppShell } from '@/components/layout/AppShell';
 import { EmptyState } from '@/components/states/DataState';
+import { RequireSession } from '@/features/auth/RequireSession';
+import { LoginPage } from '@/pages/LoginPage';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 
 export const routes: RouteObject[] = [
+  { path: 'login', element: <LoginPage /> },
   {
-    element: <AppShell />,
+    // 로그인한 원장만 매장 화면을 본다 (U-1·U-2, F-04).
+    element: (
+      <RequireSession>
+        <AppShell />
+      </RequireSession>
+    ),
     children: [
       // ASSUMPTION: 첫 화면은 메뉴 첫 칸인 캘린더 — 와이어프레임(11/21)으로 확인.
       { index: true, element: <Navigate to="/calendar" replace /> },
