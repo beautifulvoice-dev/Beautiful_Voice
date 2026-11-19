@@ -1,6 +1,6 @@
 # 01. Phase 2 ERD 설계 (개발팀안)
 
-> 상태: 🟡 **제안** — 2F(BEA-155 스키마) 담당 리뷰 후 확정. 확정되면 마이그레이션은 이 문서를 따른다.
+> 상태: 🟡 **참고 자료** — ERD는 주드(2F)가 작성하고 팀이 리뷰한다(11/20 결정). 이 문서는 명세 초안을 docker로 검증한 결과와 최적화 아이디어를 주드에게 넘기는 참고안이다.
 > 기준: Linear「[P2] 명세 1·2」(11/19 최종판). 명세 2는 **불변식·권한은 지켜야 하고, 열 타입·이름·트리거 구성·SQL 초안은 개발팀에 위임**했다(명세 2 "문서의 지위"). 이 문서는 그 위임 범위에서 구조를 최적화한 개발팀안이다. 명세 본문은 옮기지 않고 불변식 번호(①~⑳)와 기능 번호로 가리킨다.
 > 확인: 명세 2의 SQL 초안은 PostgreSQL 18(docker)에서 오류 없이 적용되고 핵심 불변식(담당자 겹침·생성 상태·변경 이력·행위자 필수)이 동작함을 11/19 확인했다. 아래 최적화는 그 초안을 출발점으로 한다.
 
@@ -28,6 +28,28 @@
 | D11 | (명세 밖) | **`idempotency_key` 유지**(F-05, #28) | 모든 쓰기 API의 멱등. 문자·업무의 멱등(⑮)과 별개로 API 계층에 필요 | ⑮ |
 | D12 | Phase 1 테이블을 `ALTER` | **Phase 2 DB에서 `CREATE`**. Phase 1 전용 `entry`·`task`는 만들지 않음 | 명세 결정 T1(별도 DB) | — |
 | D13 | `v_appointment_conflict` 뷰 | **M1에 포함**(차단 충돌 표시용) | 차단 생성은 기존 예약을 막지 않고 충돌로 표시(BEA-179) | §3.2 차단 |
+
+## 1-1. 공통 열 규칙 (11/19 멘토링 반영)
+
+멘토 피드백: 모든 테이블에 `created_at`·`updated_at`·`deleted_at`·`status`, 소프트 삭제, PK·FK 명확. 명세의 필수 규칙(추가 전용 장부, 암묵적 삭제 없음)과 부딪히지 않게 **테이블 성격별로** 적용한다.
+
+| 테이블 성격 | 해당 테이블(M1) | `created_at` | `updated_at` | `deleted_at` | 상태 열 |
+|---|---|---|---|---|---|
+| **고치거나 지울 수 있는 엔터티** | `app_user`, `shop`, `shop_settings`, `shop_closure`, `menu`, `staff`, `message_template`, `customer`, `device` | ✅ | ✅ | ✅ 소프트 삭제 | `status`: `active` / `inactive` (+ 삭제는 `deleted_at`) |
+| **업무 상태가 있는 엔터티** | `appointment`(예정·완료·취소·노쇼·무효), `calendar_block`(활성·제거) | ✅ | ✅ | ✅ 소프트 삭제(평소엔 업무 상태로 처리) | `status` = **업무 상태**(명세 값 그대로) |
+| **추가만 하는 장부** | `crm_change`, `consent`, `device_assignment` (M2부터 `wallet_entry`, `crm_task_event`) | ✅ | ❌ | ❌ | 없음 — 명세상 수정·삭제 자체가 금지(불변식 ⑥) |
+| **연결 테이블** | `calendar_block_staff` | ✅ | ❌ | ❌ | 없음 — 바뀌면 행을 지우고 다시 넣음, 이력은 차단 대상으로 `crm_change`에 |
+| **기술 테이블** | `idempotency_key` | ✅ | ❌ | ❌ | 없음 |
+
+규칙:
+1. **물리 삭제는 하지 않는다.** 삭제 요청은 `deleted_at = now()`(+ `status`가 있으면 그대로 두거나 `inactive`). 모든 FK는 `ON DELETE NO ACTION`(명세 §3.2 "암묵적 삭제 없음")
+2. **`status`와 `deleted_at`의 역할을 나눈다.** `status`는 "쓰는 중/멈춤"(`active`/`inactive`) 또는 업무 상태, `deleted_at`은 "목록·검색에서 사라짐". `deleted` 값을 `status`에 따로 두지 않아 두 열이 어긋날 일이 없다
+3. **명세 용어와 대응:** 고객 "삭제" = 비활성화(결정 R30) → `customer.status = 'inactive'`(명세의 `active`·`deactivated_at`을 `status`·`status_changed_at`으로). 재활성화 = `active`. 고객을 정말 지우는 경우(개인정보 파기 요청 등)만 `deleted_at`
+4. **조회 기본값:** 화면·API 목록은 `deleted_at IS NULL`만 보인다. 부분 인덱스 `WHERE deleted_at IS NULL`로 성능 유지
+5. **`updated_at`은 트리거가 채운다**(공통 함수 하나). 앱이 깜빡해도 맞게
+6. **PK·FK:** 모든 테이블 PK는 `id uuid`(연결 테이블은 복합 PK). 매장 소속 테이블은 `UNIQUE (shop_id, id)`, 자식은 `(shop_id, 부모_id)` 복합 FK(불변식 ①)
+
+> ERD 그림에는 위 공통 열을 테이블마다 다시 적지 않았다. 표의 성격대로 붙는다고 보면 된다.
 
 ## 2. ERD
 
