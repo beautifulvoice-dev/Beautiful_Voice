@@ -4,7 +4,8 @@
 SELECT 'CREATE ROLE bv_app NOLOGIN'
 WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'bv_app')
 \gexec
-SELECT format('CREATE ROLE bv_app_local LOGIN PASSWORD %L', :'app_password')
+SELECT 'CREATE ROLE bv_app_local LOGIN'
 WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'bv_app_local')
 \gexec
+ALTER ROLE bv_app_local PASSWORD :'app_password';
 GRANT bv_app TO bv_app_local;
