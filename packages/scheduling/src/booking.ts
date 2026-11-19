@@ -170,7 +170,10 @@ export function blockedAppointmentIds(block: ActiveBlock, appointments: readonly
 
 function checkHours(session: Interval, hours: ShopHours): BookingReject | null {
   const local = toSeoul(session.start);
-  if (hours.closures.some((c) => isClosed(c, local))) return "CLOSED_DAY";
+  // 휴무는 관리가 걸치는 모든 날(서울)로 판정한다. 영업시간을 넣지 않은 매장에서 자정을 넘는 관리가
+  // 다음 날 휴무에 걸치는 경우도 막는다(#36 리뷰). 영업시간이 있으면 자정을 넘는 관리는 아래에서 어차피 거부된다.
+  const lastDay = toSeoul(new Date(session.end.getTime() - 1));
+  if (hours.closures.some((c) => isClosed(c, local) || isClosed(c, lastDay))) return "CLOSED_DAY";
   if (hours.businessHours === null) return null;
 
   const windows = hours.businessHours[local.weekday] ?? [];

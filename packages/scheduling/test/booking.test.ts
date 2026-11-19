@@ -107,6 +107,13 @@ describe("영업시간·휴무 (AC-S2-1)", () => {
     );
   });
 
+  it("영업시간을 넣지 않은 매장에서도 자정을 넘어 다음 날 휴무에 걸치면 거부(#36 리뷰)", () => {
+    // 12/02(수) 휴무. 12/01 23:30 시작 60분은 12/02 00:30까지 간다.
+    const wednesdayOff: ShopHours = { businessHours: null, closures: [{ kind: "weekly", weekday: 3 }] };
+    assert.equal(reasonOf(checkBooking(req("A", "23:30"), wednesdayOff, [], [])), "CLOSED_DAY");
+    assert.equal(reasonOf(checkBooking(req("A", "23:00"), wednesdayOff, [], [])), "ok");
+  });
+
   it("자정을 넘는 관리는 영업시간 밖", () => {
     const allDay: ShopHours = { businessHours: { 2: [{ open: "00:00", close: "24:00" }] }, closures: [] };
     assert.equal(reasonOf(checkBooking(req("A", "23:30"), allDay, [], [])), "OUTSIDE_BUSINESS_HOURS");
