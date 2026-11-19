@@ -11,7 +11,8 @@
     ".": "./src/conflict.ts",
     "./status": "./src/status.ts",
     "./booking": "./src/booking.ts",
-    "./appointment-status": "./src/appointment-status.ts"
+    "./appointment-status": "./src/appointment-status.ts",
+    "./shop-settings": "./src/shop-settings.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
