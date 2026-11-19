@@ -23,7 +23,7 @@ docker compose up -d --wait db
 pnpm dev
 ```
 
-브라우저에서 http://127.0.0.1:5173 을 열고 **API 연결 확인**을 누릅니다. http://127.0.0.1:3000/api/health 응답으로 API 기동을 따로 확인할 수 있습니다. 로컬 PostgreSQL은 127.0.0.1:5432에서 시작합니다. 값을 바꿀 때는 .env.example을 .env로 복사한 후 수정합니다.
+브라우저에서 http://127.0.0.1:5173/settings 를 열고 **API 연결 확인**을 누릅니다. http://127.0.0.1:3000/api/health 응답으로 API 기동을 따로 확인할 수 있습니다. 로컬 PostgreSQL은 127.0.0.1:5432에서 시작합니다. 값을 바꿀 때는 .env.example을 .env로 복사한 후 수정합니다.
 
 ```sh
 docker compose exec -T db psql -U bv_local -d beautifulvoice -c "SELECT 1;"

@@ -5,10 +5,16 @@
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
     "strict": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "types": ["vite/client", "@testing-library/jest-dom"]
   },
   "include": [
     "src",
+    "test",
     "vite.config.ts"
   ]
 }
