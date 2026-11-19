@@ -4,7 +4,8 @@
 Phase 1: 음성 기록 → 전사·구조화 → 웹앱 정리함 / Phase 2: 같은 웹앱의 CRM을 음성·채팅으로 조작 / Phase 3: AI 전화 수신.
 
 ## 반드시 읽을 문서
-- 제품 요구사항(원천, **수정 금지**): `docs/product/source/product-backlog-v1.0.md`
+- **Phase 2 명세 정본(11/19 최종판, 최우선):** Linear 프로젝트 「Phase 2 : AI CRM」의 「[P2] 명세 0. README」~「[P2] 명세 3. 기능 모듈과 마일스톤」(본문은 첨부 md). 옛 「[P2] 2. 상세 기능 명세서」·「[P2] 4. 데이터」와 백로그 v1.0과 다르면 이 명세를 따른다. 본문을 저장소에 옮기지 않는다.
+- 제품 요구사항(원천, **수정 금지**): `docs/product/source/product-backlog-v1.0.md` — 초기 백로그. Phase 2는 위 명세가 대체한다
   - 공개 저장소라 git에 포함되지 않는 로컬 전용 폴더다. 파일이 없으면 사용자에게 Slack 기획 자료 채널에서 받아 넣어 달라고 요청한다. 절대 커밋하지 않는다.
 - 아키텍처: `docs/kickoff/02-architecture.md` · 개발 규칙: `docs/kickoff/04-dev-rules.md`
 - 기술 결정: `docs/adr/` (새 결정은 `write-adr` 스킬로 작성)
