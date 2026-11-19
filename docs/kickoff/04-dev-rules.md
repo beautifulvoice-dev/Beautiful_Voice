@@ -86,7 +86,7 @@ flowchart LR
 |---|---|---|---|
 | AI 리뷰 | PR 열 때·Ready 전환·`/review` 코멘트 | `.github/workflows/ai-review.yml` (Claude Code Action, **PR 작성자 본인 구독 토큰**). Claude 토큰이 없는 작성자는 본인 LLM 리뷰(예: Codex) | 동작 중(아래) |
 | 문서 검사 | PR | Markdown 링크·형식 검사 | 미적용 — CI(`ci.yml`)에 추가 예정 |
-| CI | PR, main push | `.github/workflows/ci.yml` 작업 `verify`: 설치(`--frozen-lockfile`) · lint · typecheck · build · test · Compose Postgres 기동(`SELECT 1`). **main 머지 필수 체크** | **동작 중**(#22). 남은 것: DB 통합 테스트 실행(`TEST_DATABASE_URL`), 계약 검사(OpenAPI diff), 마이그레이션 검사, 의존성/시크릿 스캔 |
+| CI | PR, main push | `.github/workflows/ci.yml` 작업 `verify`: 설치(`--frozen-lockfile`) · lint · typecheck · build · test · Compose Postgres 기동 후 예약 DB 통합 테스트(`TEST_DATABASE_URL`, #20) · 마이그레이션 2회(멱등)·매장 격리 DB 테스트(#25). **main 머지 필수 체크** | **동작 중**(#22·#20·#25). 남은 것: 계약 검사(OpenAPI diff), 의존성/시크릿 스캔 |
 | AI eval | `ai/` 또는 프롬프트 변경 PR | 골든 세트 정확도 리포트 코멘트 | 스파이크 S2 이후 |
 | CD staging | main 머지 | 자동 배포 + 스모크 테스트 | 호스팅 확정(AWS EC2 + RDS, [ADR-0007](../adr/0007-hosting-aws-ec2-rds.md)). 배포 자동화는 F-08에서 |
 | CD production | 릴리스 태그 | 수동 승인(GitHub Environment) 후 배포, 마이그레이션 선행 | 파일럿 전 결정 |

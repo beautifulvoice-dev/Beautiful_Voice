@@ -25,15 +25,25 @@ pnpm test
 
 ## 2. 앱 직접 띄워 보기
 
+처음 한 번은 README대로 `.env`를 만들고 앱 DB 계정·마이그레이션을 준비한다(`cp .env.example .env`).
+
 ```bash
 docker compose up -d --wait db
+```
+
+```bash
+docker compose exec -T db psql -U bv_local -d beautifulvoice -f /bv/local-role.sql
+```
+
+```bash
+pnpm --filter @bv/server db:migrate
 ```
 
 ```bash
 pnpm dev
 ```
 
-- 웹: http://127.0.0.1:5173 → **API 연결 확인** 버튼 → "연결 정상"
+- 웹: http://127.0.0.1:5173 → 하단 탭(폰)·왼쪽 메뉴(노트북) 캘린더·고객·매출·설정. **설정 → API 연결 확인** 버튼 → "연결 정상"
 - API: http://127.0.0.1:3000/api/health → `{"status":"ok"}`
 - 끝나면 `docker compose down`
 
@@ -42,7 +52,6 @@ Docker가 없으면 DB 없이 `pnpm build` 후 API만 띄워 확인할 수 있�
 ## 3. 예약 도메인 로직 (`packages/scheduling`)
 
 예약 충돌 판정(C-05)·상태 전이(C-04)는 DB 없이 도는 순수 함수다. 테스트가 곧 규칙 명세다.
-(11/18 기준 PR #19·#20·#23 리뷰 중 — 머지 전에는 아래 `gh pr checkout`으로 확인)
 
 ```bash
 pnpm --filter @bv/scheduling test
@@ -50,7 +59,7 @@ pnpm --filter @bv/scheduling test
 
 | 테스트 파일 | 확인하는 규칙 |
 |---|---|
-| `test/conflict.test.ts` | 동시 최대 2건, 일반 저장은 겹치면 거절, 강제 저장 자리 재배정, 영업시간·휴무·임시 차단, 서머타임 전환일 |
+| `test/conflict.test.ts` | 동시 최대 2건, 일반 저장은 겹치면 거절, 강제 저장 자리 재배정, 영업시간·휴무·임시 차단, 준비 시간 겹침(R-3), 서울 시간 경계 |
 | `test/status.test.ts` | 상태 5종 전이 표(상태 × 동작 × 시각), 원장 생성 = 확정, 자동 완료, 노쇼 정정 |
 | `test/db.test.ts` | 실제 PostgreSQL 배타 제약 — 아래 4번 |
 
@@ -62,11 +71,10 @@ pnpm --filter @bv/scheduling test
 
 `TEST_DATABASE_URL`이 있을 때만 돈다. 없으면 이 스위트만 건너뛰고 나머지 테스트는 돈다. `psql` CLI가 필요하다.
 
-| 어디서 | 지금(11/18) |
+| 어디서 | 지금(11/19) |
 |---|---|
 | 로컬 | 위 변수를 직접 지정해야 돈다(아래 명령) |
-| CI — `main` | 아직 돌지 않는다. 예약 DB 테스트가 `main`에 없다(#20 머지 전) |
-| CI — #20 브랜치 | **실제로 돈다.** `ci.yml`이 Compose DB를 테스트 전에 띄우고 `TEST_DATABASE_URL`을 주입한다(`turbo.json` `passThroughEnv`). #20이 머지되면 `main`과 모든 PR에서 같은 방식으로 돈다 — [04 §6](../kickoff/04-dev-rules.md) |
+| CI — `main`·모든 PR | **실제로 돈다.** `ci.yml`이 Compose DB를 테스트 전에 띄우고 `TEST_DATABASE_URL`을 주입한다(`turbo.json` `passThroughEnv`, #20) — [04 §6](../kickoff/04-dev-rules.md) |
 
 Docker Compose DB를 쓰는 경우(.env를 바꿨다면 그 값으로):
 
@@ -75,6 +83,16 @@ TEST_DATABASE_URL=postgresql://bv_local:bv_local_only@127.0.0.1:5432/beautifulvo
 ```
 
 확인하는 것: 같은 자리 겹침 거절, 3건째 거절, 취소·요청·노쇼는 자리 미점유, 매장 간 독립, 강제 저장 재배정 트랜잭션, **병렬 저장 100회 후 정확히 2건**. 테스트마다 임시 스키마를 만들고 지우므로 로컬 DB 데이터는 건드리지 않는다.
+
+## 5. 매장 격리 DB 테스트 (`apps/server`, F-03)
+
+위 2번의 앱 계정·마이그레이션을 마친 DB에서 돈다. 다른 매장 행 조회·변경 차단, 마이그레이션 계정으로 앱 기동 거부를 확인한다.
+
+```bash
+pnpm --filter @bv/server db:test
+```
+
+`.env`의 `BV_LOCAL_APP_DB_PASSWORD`를 바꿨다면 `docker compose up -d --wait db`로 컨테이너를 다시 만든 뒤 `local-role.sql`을 다시 실행한다(앱 계정 비밀번호가 새 값으로 바뀐다).
 
 ## 데이터 규칙
 

@@ -97,7 +97,7 @@ erDiagram
 | 엔티티 | 핵심 필드 | 백로그 |
 |---|---|---|
 | `shop` | name, timezone, 영업 설정 | COM-01 |
-| `user_membership` | user_id — 매장당 원장 1명, 직원 계정 없음(U-1). F-03 #25에서 `shop_id` UNIQUE | COM-01 ✅ |
+| `user_membership` | user_id — 매장당 원장 1명, 직원 계정 없음(U-1). F-03(#25)에서 `shop_id` UNIQUE | COM-01 ✅ |
 | `device` | serial, auth_token_hash, last_seen | P1-01 |
 | `recording` | device_id, client_recording_id(**멱등키**), recorded_at(기기), received_at(서버), object_key, duration, status, failed_stage | P1-01·02 |
 | `transcript` | recording_id, version, provider, text, segments(json, 타임스탬프) | P1-03 |
