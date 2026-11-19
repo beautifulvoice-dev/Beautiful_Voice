@@ -1,0 +1,72 @@
+openapi: 3.1.0
+info:
+  title: Beautiful Voice owner authentication
+  version: '0.1.0'
+paths:
+  /api/auth/kakao/start:
+    get:
+      summary: Start Kakao login in the web browser
+      responses:
+        '302': {description: Redirect to Kakao and set a short-lived state cookie}
+        '503': {$ref: '#/components/responses/Error'}
+  /api/auth/kakao/callback:
+    get:
+      summary: Verify Kakao authorization and start an owner session
+      parameters:
+        - {in: query, name: code, schema: {type: string}}
+        - {in: query, name: state, schema: {type: string}}
+      responses:
+        '302': {description: Set the HttpOnly session cookie and redirect to the web app}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /api/auth/session:
+    get:
+      summary: Read the signed-in owner's current shop
+      security: [{ownerSession: []}]
+      responses:
+        '200':
+          description: Current session
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [shopId]
+                properties:
+                  shopId: {type: string, format: uuid}
+        '401': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /api/shops/{shopId}:
+    get:
+      summary: Read the owner's own shop
+      security: [{ownerSession: []}]
+      parameters:
+        - {in: path, name: shopId, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: Shop
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, name]
+                properties:
+                  id: {type: string, format: uuid}
+                  name: {type: string}
+        '401': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+components:
+  securitySchemes:
+    ownerSession: {type: apiKey, in: cookie, name: bv_session}
+  responses:
+    Error:
+      description: Request could not be completed
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [code, message]
+            properties:
+              code: {type: string}
+              message: {type: string}

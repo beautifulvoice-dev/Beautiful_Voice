@@ -6,7 +6,7 @@
     "dev": "node --env-file-if-exists=../../.env ./node_modules/@nestjs/cli/bin/nest.js start --watch",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/health.test.cjs test/kakao-login.test.cjs",
+    "test": "node --test test/health.test.cjs test/kakao-login.test.cjs test/owner-auth.test.cjs",
     "db:migrate": "node --env-file-if-exists=../../.env db/migrate.cjs",
     "db:register-local-owner": "pnpm run build && node --env-file-if-exists=../../.env db/register-local-owner.cjs",
     "db:test": "node --env-file-if-exists=../../.env --test test/database.test.cjs"
