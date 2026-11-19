@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
 import { describe, expect, it } from 'vitest';
+import { SessionLoaderProvider } from '@/features/auth/session';
 import { createMemoryCustomerApi, CustomerApiProvider, type CustomerApi } from '@/features/customers/api';
 import { visitStatusText, walletBalance, type WalletEntry } from '@/features/customers/model';
 import { routes } from '@/routes';
@@ -11,9 +12,11 @@ import { routes } from '@/routes';
 function renderAt(path: string, api: CustomerApi = createMemoryCustomerApi()) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
   render(
-    <CustomerApiProvider value={api}>
-      <RouterProvider router={router} />
-    </CustomerApiProvider>,
+    <SessionLoaderProvider value={async () => ({ shopId: 'shop-1' })}>
+      <CustomerApiProvider value={api}>
+        <RouterProvider router={router} />
+      </CustomerApiProvider>
+    </SessionLoaderProvider>,
   );
   return router;
 }
@@ -53,6 +56,7 @@ describe('고객 목록·검색', () => {
     await screen.findByRole('heading', { level: 1, name: '이서윤' });
     await router.navigate(-1);
     expect(await screen.findByRole('searchbox', { name: '고객 검색' })).toHaveValue('서윤');
+    await screen.findByRole('list', { name: '고객 목록' });
     expect(names()).toEqual(['이서윤010-0000-0003']);
   });
 
