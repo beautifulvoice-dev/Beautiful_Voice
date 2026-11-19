@@ -47,7 +47,7 @@ export interface CustomerEvent {
   reason?: string;
 }
 
-const FIELDS: readonly CustomerField[] = ["name", "phone", "memo"];
+const FIELDS: readonly CustomerField[] = ["name", "phone", "memo", "birthdate", "address"];
 
 /** 생성 이력. values는 validateNewCustomer를 통과한 값이어야 한다. */
 export function customerCreated(values: CustomerValues, ctx: HistoryContext): { ok: true; event: CustomerEvent } | HistoryError {

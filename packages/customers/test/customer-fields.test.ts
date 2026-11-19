@@ -69,3 +69,17 @@ describe("비활성화·재활성화 (AC-CRM-4, 결정 R30·S4)", () => {
     assert.deepEqual(changeActive({ active: false, deactivatedAt: at }, false, at), { ok: false, error: "NO_CHANGE" });
   });
 });
+
+describe("이력: 새 필드도 변경으로 남는다(DB 트리거로 바뀌기 전까지)", async () => {
+  const { customerCreated, customerUpdated } = await import("../src/history.ts");
+  const ctx = { actor: "owner" as const, source: "web" as const, now: new Date("2026-11-20T01:00:00Z") };
+  it("생성·수정 이력에 생년월일·거주지가 포함된다", () => {
+    const before = { name: "김하늘", phone: null, memo: null, birthdate: "1990-02-28", address: null };
+    const created = customerCreated(before, ctx);
+    assert.ok(created.ok);
+    assert.deepEqual(created.event.changes.map((c) => c.field), ["name", "birthdate"]);
+    const updated = customerUpdated(before, { ...before, address: "합성시" }, ctx);
+    assert.ok(updated.ok && updated.event);
+    assert.deepEqual(updated.event.changes, [{ field: "address", from: null, to: "합성시" }]);
+  });
+});
