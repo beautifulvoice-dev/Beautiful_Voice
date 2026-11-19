@@ -152,4 +152,28 @@ test('매장 격리: 다른 매장 예약은 판정에 들어가지 않고, 다�
 test('잘못된 시간(끝이 시작보다 앞)은 400 INVALID_PERIOD', async () => {
   const shop = await newShop();
   await rejectsWith(service.create(shop, slot('11:00', '10:00'), ctx), 400, 'INVALID_PERIOD');
+  await rejectsWith(service.create(shop, slot('10:00', '11:00', { prepMinutes: 1441 }), ctx), 400, 'INVALID_PERIOD');
+});
+
+test('요청 상태(원장이 아닌 경로)는 자리를 차지하지 않지만 잘못된 시간은 똑같이 400', async () => {
+  const shop = await newShop();
+  const external = { ...ctx, actor: 'external', source: 'phone' };
+  await create(shop, slot('10:00', '11:00'));
+  await create(shop, slot('10:00', '11:00', { force: true }));
+  const requested = (await service.create(shop, slot('10:00', '11:00'), external)).body;
+  assert.equal(requested.status, 'requested');
+  await rejectsWith(service.create(shop, slot('11:00', '10:00'), external), 400, 'INVALID_PERIOD');
+  await rejectsWith(service.create(shop, slot('10:00', '11:00', { prepMinutes: -1 }), external), 400, 'INVALID_PERIOD');
+});
+
+test('시간 변경 + 그대로 저장: 옮긴 예약과 겹치는 묶음의 자리를 다시 배정한다', async () => {
+  const shop = await newShop();
+  const x = await create(shop, slot('10:00', '11:00'));
+  const z = await create(shop, slot('10:30', '11:30', { force: true }));
+  const y = await create(shop, slot('11:40', '12:30'));
+  const n = await create(shop, slot('14:00', '15:00'));
+  await rejectsWith(service.move(shop, n.id, slot('11:00', '11:50'), ctx), 409, 'APPOINTMENT_CONFLICT');
+  const moved = (await service.move(shop, n.id, slot('11:00', '11:50', { force: true }), ctx)).body;
+  assert.equal(moved.isForced, true);
+  assert.deepEqual(await lanes(shop), { [x.id]: 1, [z.id]: 2, [n.id]: 1, [y.id]: 2 });
 });

@@ -78,6 +78,8 @@ export class AppointmentService {
       const initial = initialStatus({ actor: ctx.actor, source: ctx.source, now });
       if (!initial.ok) throw new ApiError(403, initial.error, 'This actor cannot create appointments');
       const prep = input.prepMinutes ?? DEFAULT_PREP_MINUTES;
+      // 자리를 차지하지 않는 요청 상태도 시간 형식은 검사한다(DB CHECK가 500으로 터지지 않게).
+      assertValidPeriod({ ...input, prepMinutes: prep });
       let lane = 1;
       let isForced = false;
       if (initial.needsConflictCheck) {
@@ -162,7 +164,7 @@ export class AppointmentService {
   private async decide(client: PoolClient, shopId: string, input: SessionInput, excludeId: string | null) {
     const prepMinutes = input.prepMinutes ?? DEFAULT_PREP_MINUTES;
     const request = { start: input.start, end: input.end, prepMinutes, force: input.force ?? false };
-    if (prepMinutes > MAX_PREP_MINUTES || Number.isNaN(input.start.getTime()) || Number.isNaN(input.end.getTime())) {
+    if (!isValidPeriod(request)) {
       return { ok: false as const, reason: 'INVALID_PERIOD' as const, conflictingIds: [] };
     }
     // 겹침이 이어진 묶음(자리 재배정 대상)을 다 보려고 앞뒤 하루를 읽는다. 세션은 영업일 안에 있으므로 충분하다.
@@ -189,6 +191,8 @@ export class AppointmentService {
     return decision;
   }
 
+  // 자리(lane)는 사용자에게 보이지 않는 내부 값이라, 재배정된 다른 예약의 version·이력은 올리지 않는다.
+  // (변경안의 버전 비교는 사용자가 본 값 — 시간·준비 시간·상태 — 이 바뀌었을 때만 의미가 있다.)
   private async reassign(client: PoolClient, shopId: string, lanes: Map<string, number>) {
     for (const [id, lane] of lanes) {
       await client.query(
@@ -231,6 +235,17 @@ interface Row {
 const COLUMNS = 'id, lower(period) AS s, upper(period) AS e, prep_minutes, status, is_forced, version';
 
 const state = (r: Row) => ({ status: r.status, start: r.s, end: r.e });
+
+function isValidPeriod(s: { start: Date; end: Date; prepMinutes: number }): boolean {
+  return !Number.isNaN(s.start.getTime()) && !Number.isNaN(s.end.getTime()) && s.start.getTime() < s.end.getTime()
+    && Number.isInteger(s.prepMinutes) && s.prepMinutes >= 0 && s.prepMinutes <= MAX_PREP_MINUTES;
+}
+
+function assertValidPeriod(s: { start: Date; end: Date; prepMinutes: number }): void {
+  if (!isValidPeriod(s)) {
+    throw new ApiError(400, 'INVALID_PERIOD', 'The appointment cannot be saved at this time', { conflictingIds: [] });
+  }
+}
 
 const snapshot = (r: Row) => ({ start: r.s.toISOString(), end: r.e.toISOString(), prepMinutes: r.prep_minutes, isForced: r.is_forced });
 
