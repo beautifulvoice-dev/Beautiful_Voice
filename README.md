@@ -49,7 +49,17 @@ docker compose down
 카카오 Developers 앱에서 카카오 로그인을 활성화하고, 웹과 같은 주소의 콜백을 등록합니다. 로컬 기본값은 `http://127.0.0.1:5173/api/auth/kakao/callback`입니다. 브라우저에서도 `localhost` 대신 등록한 주소와 같은 호스트를 사용합니다.
 
 1. `.env`에 카카오 앱 REST API 키(`KAKAO_CLIENT_ID`), 활성화한 클라이언트 시크릿(`KAKAO_CLIENT_SECRET`), 등록한 콜백 주소(`KAKAO_REDIRECT_URI`)를 설정합니다.
-2. 로컬 DB를 마이그레이션한 뒤, 웹 개발 서버를 끈 상태에서 `pnpm --filter @bv/server db:register-local-owner`를 실행합니다. 터미널에 나온 주소를 열어 본인 카카오 계정으로 로그인하면, 로컬 합성 매장 한 곳에 원장이 연결됩니다. 기존 원장 연결은 덮어쓰지 않습니다.
+2. 아래 명령으로 세션 서명 키를 생성해 `BV_SESSION_SECRET`에 설정합니다. 배포 환경에서는 HTTPS 콜백을 사용합니다.
+
+   ```sh
+   node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('hex'))"
+   ```
+
+3. 로컬 DB를 마이그레이션한 뒤, 웹 개발 서버를 끈 상태에서 `pnpm --filter @bv/server db:register-local-owner`를 실행합니다. 터미널에 나온 주소를 열어 본인 카카오 계정으로 로그인하면, 로컬 합성 매장 한 곳에 원장이 연결됩니다. 기존 원장 연결은 덮어쓰지 않습니다.
+4. 등록이 끝나면 `pnpm dev`를 실행하고 브라우저에서 `http://127.0.0.1:5173/api/auth/kakao/start`를 엽니다. 이후 `/api/auth/session`에서 소속 매장을 확인할 수 있습니다.
+
+웹 연동 경로와 응답은 [로그인 API 계약](packages/contracts/auth.openapi.yaml)을 참고합니다.
+
 ## 문서
 
 | 문서 | 내용 |
