@@ -3,21 +3,25 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "nest start --watch",
+    "dev": "node --env-file-if-exists=../../.env ./node_modules/@nestjs/cli/bin/nest.js start --watch",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/health.test.cjs"
+    "test": "node --test test/health.test.cjs",
+    "db:migrate": "node --env-file-if-exists=../../.env db/migrate.cjs",
+    "db:test": "node --env-file-if-exists=../../.env --test test/database.test.cjs"
   },
   "dependencies": {
     "@bv/contracts": "workspace:*",
     "@nestjs/common": "^11.1.0",
     "@nestjs/core": "^11.1.0",
     "@nestjs/platform-express": "^11.1.0",
+    "pg": "^8.23.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
-    "@types/node": "^24.0.0"
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1"
   }
 }
