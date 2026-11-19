@@ -42,7 +42,8 @@ function CustomerForm({ initial }: { initial: Customer | null }) {
   const [phone, setPhone] = useState(initial?.phone ? formatPhone(initial.phone) : '');
   const [memo, setMemo] = useState(initial?.memo ?? '');
   const [errors, setErrors] = useState<FieldError[]>([]);
-  const [sameName, setSameName] = useState<Candidate[] | null>(null);
+  // 동명이인 후보는 어떤 입력으로 조회했는지와 묶어 둔다 — 그 입력 그대로일 때만 "다른 고객이에요, 저장"이 통한다(#32 리뷰).
+  const [sameName, setSameName] = useState<{ candidates: Candidate[]; name: string; phone: string | null } | null>(null);
   const [saving, setSaving] = useState(false);
   const [failed, setFailed] = useState(false);
   const errorOf = (field: CustomerField) => errors.find((e) => e.field === field);
@@ -56,9 +57,11 @@ function CustomerForm({ initial }: { initial: Customer | null }) {
     setSaving(true);
     try {
       // 새 고객이거나 이름이 바뀔 때만 동명이인을 확인한다.
-      if (!confirmedSameName && checked.value.name !== initial?.name) {
-        const r = await api.checkSameName({ id: initial?.id, name: checked.value.name, phone: checked.value.phone });
-        if (r.needsReview) return setSameName(r.candidates);
+      const { name: checkedName, phone: checkedPhone } = checked.value;
+      const confirmed = confirmedSameName && sameName?.name === checkedName && sameName.phone === checkedPhone;
+      if (!confirmed && checkedName !== initial?.name) {
+        const r = await api.checkSameName({ id: initial?.id, name: checkedName, phone: checkedPhone });
+        if (r.needsReview) return setSameName({ candidates: r.candidates, name: checkedName, phone: checkedPhone });
       }
       const saved = initial ? await api.update(initial.id, { name, phone, memo }) : await api.create({ name, phone, memo });
       navigate(`/customers/${saved.id}`, { replace: !!initial });
@@ -73,24 +76,30 @@ function CustomerForm({ initial }: { initial: Customer | null }) {
   return (
     <form noValidate onSubmit={(e) => submit(e)} className="flex flex-col gap-4 px-4 pt-6 md:max-w-lg">
       <h1 className="text-xl font-semibold">{initial ? '고객 수정' : '고객 등록'}</h1>
-      <Field label="이름 (필수)" error={errorOf('name')}>
-        <input value={name} onChange={(e) => {
-            setName(e.target.value);
-            setSameName(null);
-          }} autoComplete="off" />
-      </Field>
-      <Field label="전화번호" error={errorOf('phone')}>
-        <input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" inputMode="tel" autoComplete="off" />
-      </Field>
-      <Field label="특이사항">
-        <textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={3} />
-      </Field>
+      {/* 확인·저장 중에는 입력을 잠근다 — 조회한 값과 화면 값이 어긋나지 않게. */}
+      <fieldset disabled={saving} className="flex flex-col gap-4">
+        <Field label="이름 (필수)" error={errorOf('name')}>
+          <input value={name} onChange={(e) => {
+              setName(e.target.value);
+              setSameName(null);
+            }} autoComplete="off" />
+        </Field>
+        <Field label="전화번호" error={errorOf('phone')}>
+          <input value={phone} onChange={(e) => {
+              setPhone(e.target.value);
+              setSameName(null);
+            }} type="tel" inputMode="tel" autoComplete="off" />
+        </Field>
+        <Field label="특이사항">
+          <textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={3} />
+        </Field>
+      </fieldset>
 
       {sameName && (
         <div role="alert" className="flex flex-col gap-2 rounded-md border border-amber-400 bg-amber-50 p-3 text-sm dark:bg-amber-950">
           <p className="font-semibold">같은 이름의 고객이 있어요</p>
           <ul className="list-disc pl-5">
-            {sameName.map((c) => (
+            {sameName.candidates.map((c) => (
               <li key={c.customerId}>
                 <Link to={`/customers/${c.customerId}`} className="underline">
                   {c.name} {c.phone ? formatPhone(c.phone) : '(전화번호 없음)'}
