@@ -14,6 +14,7 @@ const ERROR_TEXT: Record<CustomerErrorCode, string> = {
   NAME_REQUIRED: '이름을 입력해 주세요.',
   PHONE_INVALID_CHARACTERS: '전화번호에는 숫자와 - 만 쓸 수 있어요.',
   PHONE_INVALID_FORMAT: '전화번호 형식이 맞지 않아요. 예: 010-1234-5678',
+  BIRTHDATE_INVALID: '생년월일은 실제 날짜로 적어 주세요. 예: 1990-01-31',
 };
 
 const HINT_TEXT: Record<Candidate['hint'], string> = {
