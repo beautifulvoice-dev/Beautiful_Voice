@@ -43,6 +43,13 @@ describe("영업시간", () => {
     }
   });
 
+  it("요일 키는 1~7 한 글자만 — \"01\"·\" 1\"·\"1.0\"은 거부(같은 요일 키가 덮어쓰지 않게)", () => {
+    for (const key of ["01", " 1", "1.0", "1e0"]) {
+      const r = validateBusinessHours({ [key]: [{ open: "10:00", close: "19:00" }] });
+      assert.equal(!r.ok && r.error.code, "INVALID_WEEKDAY", key);
+    }
+  });
+
   it("맞닿는 구간(13:00까지, 13:00부터)은 겹침이 아니다", () => {
     assert.equal(validateBusinessHours({ 1: [{ open: "10:00", close: "13:00" }, { open: "13:00", close: "19:00" }] }).ok, true);
   });
@@ -99,6 +106,13 @@ describe("메뉴와 담당자", () => {
       ],
     });
     assert.equal(validateMenu({ name: "합성", defaultDurationMin: 30.5 }).ok, false);
+  });
+
+  it("이름이 문자열이 아니어도 예외 없이 NAME_REQUIRED", () => {
+    for (const name of [undefined, null, 1, {}]) {
+      assert.deepEqual(validateStaff({ name } as never), { ok: false, errors: [{ field: "name", code: "NAME_REQUIRED" }] });
+      assert.equal(validateMenu({ name } as never).ok, false);
+    }
   });
 
   it("담당자: 이름 필수(원장 자신도 담당자로 등록 가능)", () => {

@@ -37,8 +37,9 @@ export function validateBusinessHours(input: unknown): SettingsResult<BusinessHo
   if (typeof input !== "object" || Array.isArray(input)) return fail("INVALID_SHAPE");
   const value: BusinessHours = {};
   for (const [key, windows] of Object.entries(input as Record<string, unknown>)) {
-    const weekday = Number(key);
-    if (!isWeekday(weekday)) return fail("INVALID_WEEKDAY", key);
+    // "01"·" 1"·"1.0"처럼 같은 요일로 바뀌는 키가 서로 덮어쓰지 않게 키 모양을 엄격히 본다(#39 리뷰).
+    if (!/^[1-7]$/u.test(key)) return fail("INVALID_WEEKDAY", key);
+    const weekday = Number(key) as Weekday;
     if (!Array.isArray(windows)) return fail("INVALID_SHAPE", key);
     const clean: OpenWindow[] = [];
     for (const [i, w] of windows.entries()) {
@@ -123,7 +124,9 @@ function isDate(v: unknown): v is string {
   return new Date(Date.UTC(y!, m! - 1, d!)).toISOString().slice(0, 10) === v;
 }
 
-function cleanName(raw: string): string | null {
-  const name = (raw ?? "").normalize("NFC").trim().replace(/\s+/gu, " ");
+// API 경계에서 문자열이 아닌 값이 들어와도 예외 대신 "이름 없음"으로 처리한다(#39 리뷰).
+function cleanName(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const name = raw.normalize("NFC").trim().replace(/\s+/gu, " ");
   return name === "" ? null : name;
 }
