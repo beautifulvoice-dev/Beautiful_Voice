@@ -42,12 +42,42 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
   // shopId comes from authenticated membership, never directly from request input.
   async withShop<T>(shopId: string, run: (client: PoolClient) => Promise<T>): Promise<T> {
+    return this.inTransaction(async (client) => {
+      await client.query(`SELECT set_config('app.shop_id', $1::uuid::text, true)`, [shopId]);
+      return run(client);
+    });
+  }
+
+  // Use only the internal user ID obtained after verifying the caller's identity.
+  async findOwnerShop(authenticatedUserId: string): Promise<string | null> {
+    return this.inTransaction(async (client) => {
+      await client.query(`SELECT set_config('app.authenticated_user_id', $1::uuid::text, true)`, [authenticatedUserId]);
+      const { rows } = await client.query<{ shop_id: string }>(
+        `SELECT shop_id FROM crm.user_membership WHERE user_id = $1::uuid LIMIT 2`,
+        [authenticatedUserId],
+      );
+      return rows.length === 1 ? rows[0].shop_id : null;
+    });
+  }
+
+  // Use the ID returned by Kakao, never one supplied in a browser request.
+  async findKakaoOwner(kakaoId: string): Promise<{ userId: string; shopId: string } | null> {
+    return this.inTransaction(async (client) => {
+      await client.query(`SELECT set_config('app.authenticated_kakao_id', $1, true)`, [kakaoId]);
+      const { rows: [owner] } = await client.query<{ user_id: string; shop_id: string }>(
+        'SELECT user_id, shop_id FROM crm.user_membership WHERE kakao_user_id = $1',
+        [kakaoId],
+      );
+      return owner ? { userId: owner.user_id, shopId: owner.shop_id } : null;
+    });
+  }
+
+  private async inTransaction<T>(run: (client: PoolClient) => Promise<T>): Promise<T> {
     if (!this.pool) throw new Error('DATABASE_URL is required');
     const client = await this.pool.connect();
     let discardClient = false;
     try {
       await client.query('BEGIN');
-      await client.query(`SELECT set_config('app.shop_id', $1::uuid::text, true)`, [shopId]);
       const result = await run(client);
       await client.query('COMMIT');
       return result;
