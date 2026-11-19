@@ -44,6 +44,12 @@ docker compose down
 
 직접 테스트하는 방법(도메인 로직·DB 통합 테스트 포함)은 [docs/dev/testing.md](docs/dev/testing.md)를 본다.
 
+### 로컬 카카오 로그인
+
+카카오 Developers 앱에서 카카오 로그인을 활성화하고, 웹과 같은 주소의 콜백을 등록합니다. 로컬 기본값은 `http://127.0.0.1:5173/api/auth/kakao/callback`입니다. 브라우저에서도 `localhost` 대신 등록한 주소와 같은 호스트를 사용합니다.
+
+1. `.env`에 카카오 앱 REST API 키(`KAKAO_CLIENT_ID`), 활성화한 클라이언트 시크릿(`KAKAO_CLIENT_SECRET`), 등록한 콜백 주소(`KAKAO_REDIRECT_URI`)를 설정합니다.
+2. 로컬 DB를 마이그레이션한 뒤, 웹 개발 서버를 끈 상태에서 `pnpm --filter @bv/server db:register-local-owner`를 실행합니다. 터미널에 나온 주소를 열어 본인 카카오 계정으로 로그인하면, 로컬 합성 매장 한 곳에 원장이 연결됩니다. 기존 원장 연결은 덮어쓰지 않습니다.
 ## 문서
 
 | 문서 | 내용 |
