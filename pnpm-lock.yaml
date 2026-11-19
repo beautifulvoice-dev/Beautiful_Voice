@@ -26,6 +26,9 @@ importers:
       '@bv/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@bv/scheduling':
+        specifier: workspace:*
+        version: link:../../packages/scheduling
       '@nestjs/common':
         specifier: ^11.1.0
         version: 11.2.10(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -60,6 +63,9 @@ importers:
       '@bv/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@bv/customers':
+        specifier: workspace:*
+        version: link:../../packages/customers
       '@tailwindcss/vite':
         specifier: ^4.3.5
         version: 4.3.5(vite@7.3.8(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.51.2))
