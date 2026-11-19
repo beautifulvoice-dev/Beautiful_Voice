@@ -26,7 +26,7 @@ pnpm --filter @bv/server db:migrate
 pnpm dev
 ```
 
-브라우저에서 http://127.0.0.1:5173 을 열고 **API 연결 확인**을 누릅니다. http://127.0.0.1:3000/api/health 응답으로 API 기동을 따로 확인할 수 있습니다. 로컬 PostgreSQL 기본 주소는 127.0.0.1:5432입니다. DB 설정을 바꾸면 `.env`의 URL과 위 명령에도 같은 값을 적용합니다.
+브라우저에서 http://127.0.0.1:5173/settings 를 열고 **API 연결 확인**을 누릅니다. http://127.0.0.1:3000/api/health 응답으로 API 기동을 따로 확인할 수 있습니다. 로컬 PostgreSQL 기본 주소는 127.0.0.1:5432입니다. DB 설정을 바꾸면 `.env`의 URL과 위 명령에도 같은 값을 적용합니다.
 
 ```sh
 docker compose exec -T db psql -U bv_local -d beautifulvoice -c "SELECT 1;"
