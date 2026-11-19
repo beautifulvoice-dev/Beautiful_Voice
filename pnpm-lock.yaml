@@ -60,6 +60,9 @@ importers:
       '@bv/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@bv/customers':
+        specifier: workspace:*
+        version: link:../../packages/customers
       '@tailwindcss/vite':
         specifier: ^4.3.5
         version: 4.3.5(vite@7.3.8(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.51.2))
