@@ -28,3 +28,13 @@ export interface Page<T> {
   items: T[];
   nextCursor: string | null;
 }
+
+
+export interface OwnerSessionResponse {
+  shopId: string;
+}
+
+export interface OwnerShopResponse {
+  id: string;
+  name: string;
+}

@@ -20,7 +20,7 @@ test('the app role can read and change only its current shop', async () => {
       shopA, shopB, 'Synthetic A', 'Synthetic B',
     ]);
     await admin.query(
-      'INSERT INTO crm.user_membership (shop_id, user_id) VALUES ($1, $3), ($2, $4)',
+      "INSERT INTO crm.user_membership (shop_id, user_id, kakao_user_id) VALUES ($1, $3, '123'), ($2, $4, '456')",
       [shopA, shopB, memberA, memberB],
     );
 
@@ -29,6 +29,26 @@ test('the app role can read and change only its current shop', async () => {
     assert.equal((await unscoped.query('SELECT id FROM crm.user_membership')).rowCount, 0);
 
     await db.onModuleInit();
+    assert.deepEqual(await db.findKakaoOwner('123'), { userId: memberA, shopId: shopA });
+    assert.deepEqual(await db.findKakaoOwner('456'), { userId: memberB, shopId: shopB });
+    assert.equal(await db.findKakaoOwner('789'), null);
+    assert.equal(await db.findOwnerShop(memberA), shopA);
+    assert.equal(await db.findOwnerShop(memberB), shopB);
+    assert.equal(await db.findOwnerShop(randomUUID()), null);
+
+    await unscoped.query('BEGIN');
+    await unscoped.query("SELECT set_config('app.authenticated_user_id', $1, true)", [memberA]);
+    assert.deepEqual((await unscoped.query('SELECT shop_id FROM crm.user_membership')).rows, [
+      { shop_id: shopA },
+    ]);
+    assert.equal((await unscoped.query('SELECT id FROM crm.shop')).rowCount, 0);
+    await unscoped.query("SELECT set_config('app.shop_id', $1, true)", [shopB]);
+    assert.deepEqual((await unscoped.query('SELECT shop_id FROM crm.user_membership')).rows, [
+      { shop_id: shopB },
+    ]);
+    await unscoped.query('COMMIT');
+    assert.equal((await unscoped.query('SELECT id FROM crm.user_membership')).rowCount, 0);
+
     await db.withShop(shopA, async (client) => {
       assert.deepEqual((await client.query('SELECT id FROM crm.shop')).rows, [{ id: shopA }]);
       assert.deepEqual((await client.query('SELECT user_id FROM crm.user_membership')).rows, [
@@ -49,6 +69,9 @@ test('the app role can read and change only its current shop', async () => {
         { name: 'Synthetic B' },
       ]);
     });
+
+    await admin.query('UPDATE crm.user_membership SET user_id = $1 WHERE shop_id = $2', [memberA, shopB]);
+    assert.equal(await db.findOwnerShop(memberA), null);
   } finally {
     await db.onModuleDestroy();
     await unscoped.end();

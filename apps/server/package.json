@@ -6,12 +6,14 @@
     "dev": "node --env-file-if-exists=../../.env ./node_modules/@nestjs/cli/bin/nest.js start --watch",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/health.test.cjs test/conventions.test.cjs",
+    "test": "node --test test/health.test.cjs test/conventions.test.cjs test/kakao-login.test.cjs test/owner-auth.test.cjs",
     "db:migrate": "node --env-file-if-exists=../../.env db/migrate.cjs",
-    "db:test": "node --env-file-if-exists=../../.env --test test/database.test.cjs test/idempotency.test.cjs"
+    "db:register-local-owner": "pnpm run build && node --env-file-if-exists=../../.env db/register-local-owner.cjs",
+    "db:test": "node --env-file-if-exists=../../.env --test test/database.test.cjs test/idempotency.test.cjs test/appointment.test.cjs"
   },
   "dependencies": {
     "@bv/contracts": "workspace:*",
+    "@bv/scheduling": "workspace:*",
     "@nestjs/common": "^11.1.0",
     "@nestjs/core": "^11.1.0",
     "@nestjs/platform-express": "^11.1.0",
