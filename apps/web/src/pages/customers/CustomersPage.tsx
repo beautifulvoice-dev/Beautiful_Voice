@@ -1,7 +1,9 @@
-// 고객 목록·검색 (P2-02, 분해표 C-03). 검색어는 주소(?q=)에 남겨 뒤로 가기에도 유지한다.
+// 고객 목록·검색 (P2-02, 분해표 C-03).
+// 검색어(고객 이름·전화번호)는 주소에 넣지 않는다 — 복사·공유되는 URL에 개인정보가 남지 않게.
+// 대신 라우터 기록 상태(location.state)에 둬서 고객 카드에서 뒤로 오면 검색이 유지된다.
 import { Plus, Search } from 'lucide-react';
 import { useCallback } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { EmptyState, ErrorState } from '@/components/states/DataState';
 import { Button } from '@/components/ui/button';
 import { useCustomerApi } from '@/features/customers/api';
@@ -10,8 +12,9 @@ import { useLoad } from '@/lib/useLoad';
 
 export function CustomersPage() {
   const api = useCustomerApi();
-  const [params, setParams] = useSearchParams();
-  const q = params.get('q') ?? '';
+  const location = useLocation();
+  const navigate = useNavigate();
+  const q = (location.state as { q?: string } | null)?.q ?? '';
   const load = useCallback(() => api.list(q), [api, q]);
   const { state, reload } = useLoad(load);
 
@@ -38,7 +41,7 @@ export function CustomersPage() {
           placeholder="이름 또는 전화번호"
           className="flex-1 bg-transparent text-base outline-none"
           value={q}
-          onChange={(e) => setParams(e.target.value ? { q: e.target.value } : {}, { replace: true })}
+          onChange={(e) => navigate(location.pathname, { replace: true, state: e.target.value ? { q: e.target.value } : null })}
         />
       </label>
 
