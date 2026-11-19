@@ -1,6 +1,6 @@
 # 02. 아키텍처 초안
 
-> 상태: **제안(Proposed).** 11/15 이전 프로젝트 코드 분석(비공개, §7 요약) 결과를 반영했다. D-03·D-06에서 확정한다.
+> 상태: **구조 확정**(ADR-0001·0002·0003·0006·0007 Accepted), 세부는 갱신 중. 11/15 이전 프로젝트 코드 분석(비공개, §7 요약) 결과를 반영했다. 스택(§5)은 11/17 확정(ADR-0006), 호스팅은 11/18 AWS(ADR-0007). DB 접근은 순수 SQL + `pg`(ADR-0006). 데이터 모델(§3)은 PM 데이터 스키마(11/19)와 대조해 갱신한다. 제품 규칙 정본은 Linear「[P2] 2. 상세 기능 명세서」.
 > 구분: ✅ 개발팀 권고(되돌리기 쉬움/근거 충분) · 🟡 후보(기존 코드·PM 답변 후 결정) · ❓ PM 결정 필요
 
 ## 1. 설계 원칙 (PM 공통 원칙 → 기술 원칙)
@@ -64,7 +64,7 @@ flowchart LR
    → [장부 낭독] import_batch 저장 예정 목록  (P2-08)
 각 단계 실패 시 failed_at_stage + 재시도 가능, 원본은 불변
 ```
-- 기록 vs 명령 구분 방식은 ❓[Q3]. 구조상으로는 "구조화 단계의 의도 분류 결과"로 분기하므로 **어떤 정책이든 수용 가능**하게 설계한다.
+- 기록 vs 명령 구분 ✅ (11/17·11/18): Phase 2 마이크는 **쓰기(변경·명령)만**, 조회 요청은 실행하지 않고 승인창에 "화면에서 확인"으로 남긴다(AG-4). 구조상으로는 "구조화 단계의 의도 분류 결과"로 분기하므로 **어떤 정책이든 수용 가능**하게 설계한다.
 
 ## 3. 공통 데이터 모델 (초안) 🟡
 
@@ -97,7 +97,7 @@ erDiagram
 | 엔티티 | 핵심 필드 | 백로그 |
 |---|---|---|
 | `shop` | name, timezone, 영업 설정 | COM-01 |
-| `user_membership` | user_id, role(owner/staff?) | COM-01 ❓Q5 |
+| `user_membership` | user_id — 매장당 원장 1명, 직원 계정 없음(U-1). F-03(#25)에서 `shop_id` UNIQUE | COM-01 ✅ |
 | `device` | serial, auth_token_hash, last_seen | P1-01 |
 | `recording` | device_id, client_recording_id(**멱등키**), recorded_at(기기), received_at(서버), object_key, duration, status, failed_stage | P1-01·02 |
 | `transcript` | recording_id, version, provider, text, segments(json, 타임스탬프) | P1-03 |
@@ -106,9 +106,9 @@ erDiagram
 | `task` / `clarification` | record_entry_id, evidence_span, status(open/done/dismissed) | P1-05·07 |
 | `revision` | target_type, target_id, before, after, actor, reason | COM-02, P1-09 |
 | `customer` | name, phone?(정규화 저장, **필수 아님** — 원장 메모·장부에서 전화번호 없이 생성 가능), birth_partial?, memo, archived_at, erasure_requested_at(보관·파기 분리), (동의 항목?) — 이름만 필수, 동명이인은 확인 필요로 표시(PD-50) | P2-02 ✅ |
-| `service_item` | name, duration_min, buffer_min(준비·정리 합쳐 기본 30, PD-13), price?, active — 실제 메뉴 데이터는 명세서로 전달 | P2-03·04 |
+| `service_item` | name, duration_min, price, active — 이름·소요시간·가격(SET-1). 준비 시간은 메뉴가 아니라 세션마다 정한다(CAL-6, 기본 10분) | P2-03·04 |
 | `schedule_rule` | business_hours, closed_days(원장 입력), max_overlap=2 | P2-04 ✅ PD-11·12 |
-| `appointment` | customer_id, service_item_id, `period tstzrange`(**시술 시간만** — 준비·정리 30분은 겹침 판정에 넣지 않음, PD-13), `lane`(1·2, 동시 최대 2건 보장용 내부 번호), `is_forced`(원장 강제 저장 여부), service_snapshot(예약 시점 메뉴명·소요·가격), status, source(web/voice/phone/import), version | P2-03 |
+| `appointment` | customer_id, service_item_id, `period tstzrange`(세션 시간), `occupied tstzrange`(**세션 + 그 뒤 준비 시간** — 겹침 판정 기준, R-3), `prep_minutes`(기본 10, CAL-6), `lane`(1·2, 동시 최대 2건 보장용 내부 번호), `is_forced`(원장 강제 저장 여부), service_snapshot(예약 시점 메뉴명·소요·가격), status, source(web/voice/phone/import), version | P2-03 |
 | `appointment_event` | appointment_id, type, before, after, actor, source_ref | P2-03·11 |
 | `action_proposal` | kind, target_ref, target_version(제안 시점 레코드 버전), preview_hash(원장이 본 미리보기), before, after, status(pending/approved/rejected/expired/superseded/executed/failed), idempotency_key, expires_at, superseded_by, source_ref | P2-06, P3-06·07 |
 | `import_batch` / `import_row` | recording_id, row_payload, match_candidates, decision | P2-08·09 |
@@ -116,10 +116,10 @@ erDiagram
 | `chat_message` | role, text, referenced_records, hidden_at — 90일 보관, 숨기기는 삭제가 아님 | P2-07 (PD-42) |
 | `job` (큐) | type, payload, attempts, status | P1-02 |
 
-**충돌 보장 (P2-04)** — Linear「MLP 범위·제품 결정」PD-11~14·18 기준:
+**충돌 보장** — Linear「[P2] 2. 상세 기능 명세서」R-1~R-7(11/18, 옛 PD-11~18 대체) 기준:
 - 같은 시간 겹치는 예약은 **매장당 최대 2건**. 일반 저장은 겹치면 실패(`409 APPOINTMENT_CONFLICT`) → 화면에서 "시간 옮기기 / 강제 저장". 원장이 강제 저장해도 **2건을 넘을 수 없고, 영업시간 밖은 불가**.
-- 겹침 판정은 **시술 시간만**으로 한다. 준비·정리 시간(합쳐 기본 30분)은 포함하지 않는다(PD-13). 점유 시간 계산 세부는 상세 기능 명세서(BEA-83)로 온다.
-- 원장이 만든 예약(웹 입력, 음성·채팅 변경안 승인)은 **승인 = 확정**. `requested`는 전화 접수처럼 원장이 아닌 경로만 쓴다(PD-18).
+- 겹침 판정은 **점유 구간 = 세션 + 그 뒤 준비 시간**으로 한다(R-3). 준비 시간은 기본 10분이고 세션마다 바꿀 수 있으며, 그 시간에는 예약을 받지 않는다(CAL-6, AC-3). 11/18 명세가 옛 PD-13(준비·정리 30분, 판정 제외)을 대체했다. 구현: `packages/scheduling`(#19·#20).
+- 원장이 만든 예약(웹 입력, 음성·채팅 변경안 승인)은 **승인 = 확정**. `requested`는 전화 접수처럼 원장이 아닌 경로만 쓴다(R-7).
 
 설계안 — **자리(`lane`)는 DB가 "동시 최대 2건"을 보장하기 위한 내부 번호**다. 일반/강제 저장과 결합하지 않으며 사용자에게 보이지 않는다. 강제 저장 여부는 `is_forced` + 이력(`appointment_event`)으로 따로 남긴다.
 ```sql
@@ -192,7 +192,7 @@ ALTER TABLE appointment ADD CONSTRAINT no_overlap_per_lane
 **이전 코드 분석 시사점:** 이전 프로젝트 3개 모두 TypeScript(Bun)였으나 **코드는 새로 작성**하기로 제안하므로(§7) 언어 선택의 결정적 근거는 아니다. A안에 약간 유리. Bun 채택은 별도 판단.
 
 **스택 무관 고정 권고 ✅:** PostgreSQL(범위 타입·배타 제약·JSONB), S3 호환 오브젝트 스토리지, OpenAPI 계약, Docker 기반 로컬 환경, GitHub Actions CI.
-**호스팅 🟡:** 개인정보(고객 음성·연락처)를 다루므로 **국내 리전**(예: AWS 서울, NCP 등) 우선 검토. 해외 AI API로의 음성·텍스트 전송은 ❓Q9(국외 이전 고지·동의) 확인 후 결정.
+**호스팅 ✅ (11/18):** AWS EC2 + RDS PostgreSQL — [ADR-0007](../adr/0007-hosting-aws-ec2-rds.md). 개인정보(고객 음성·연락처)를 다루므로 **국내 리전 AWS 서울(ap-northeast-2)**, RDS PostgreSQL 18로 구성됐다(11/18, ADR-0007). 해외 AI API로의 음성·텍스트 전송은 ❓Q9(국외 이전 고지·동의) 확인 후 결정.
 
 ## 6. 환경 구성 (D-08 초안)
 
