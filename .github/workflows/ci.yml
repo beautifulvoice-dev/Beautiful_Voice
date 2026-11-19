@@ -21,11 +21,17 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm build
-      - run: pnpm test
-      - name: Check local PostgreSQL setup
+      - name: Start local PostgreSQL
         run: |
           docker compose up --detach --wait --wait-timeout 60 db
           docker compose exec -T db psql -v ON_ERROR_STOP=1 -U bv_local -d beautifulvoice -c 'SELECT 1;'
+      # DB 통합 테스트(packages/scheduling/test/db.test.ts)는 TEST_DATABASE_URL이 있을 때만 돈다. 러너의 psql 클라이언트를 쓴다.
+      - name: Test (including PostgreSQL integration)
+        env:
+          TEST_DATABASE_URL: postgresql://bv_local:bv_local_only@127.0.0.1:5432/beautifulvoice
+        run: |
+          psql --version
+          pnpm test
       - name: Stop local PostgreSQL
         if: always()
         run: docker compose down
