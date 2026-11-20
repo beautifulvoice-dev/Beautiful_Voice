@@ -1,0 +1,424 @@
+openapi: 3.1.0
+info:
+  title: Beautiful Voice CRM (M1 — 설정·고객·캘린더·예약)
+  version: '0.1.0'
+  description: |
+    M1 "손으로 쓰는 CRM" 계약. 명세 3 기능 2A-1(설정)·2A-2(고객)·2A-3(캘린더·예약).
+    규약(F-05): 오류 {code,message,details} · 쓰기는 Idempotency-Key · 시각은 ISO-8601+offset(UTC 저장)
+    · 목록은 cursor · 모든 리소스는 경로의 shopId 범위이고, 로그인한 원장이 그 매장 소속이 아니면 404.
+    동시 수정: 고칠 수 있는 행은 version을 돌려주고, 수정 요청에 받은 version을 실어 보낸다. 다르면 409 VERSION_CONFLICT.
+    설정은 사람만 바꾼다(결정 R0). 이 경로들은 원장 세션 전용이고 AI 실행기는 쓰지 않는다.
+    DB(#43, 스키마 crm): 예약은 appointment_m1. 메뉴·담당자·고객·예약의 version·updatedAt은 수정 때 DB 트리거가 올린다. 매장 설정 행은 매장을 만들 때 DB가 만든다.
+    고객 created_source는 서버가 채운다(웹 등록 = manual) — 계약에는 없다.
+paths:
+  # ── 설정 (BEA-166·167, 2A-1) ───────────────────────────
+  /api/shops/{shopId}/settings/business-hours:
+    parameters: [{$ref: '#/components/parameters/ShopId'}]
+    get:
+      summary: 영업시간 읽기 (null = 아직 넣지 않음 → 예약 저장 때 영업시간 검사 안 함)
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/BusinessHoursBody'}}}}
+        default: {$ref: '#/components/responses/Error'}
+    put:
+      summary: 영업시간 통째로 바꾸기. 이미 있는 예약은 그대로 둔다(파생 S2)
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/BusinessHoursBody'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/BusinessHoursBody'}}}}
+        '422': {$ref: '#/components/responses/Error'} # SETTINGS_INVALID, details {reason, at}
+        default: {$ref: '#/components/responses/Error'}
+  /api/shops/{shopId}/settings/shop-info:
+    parameters: [{$ref: '#/components/parameters/ShopId'}]
+    # shop_settings의 환불 정책·매장 링크·위치(BEA-166). 영업시간처럼 매장당 한 행이라 통째로 바꾸고 version은 없다(마지막 저장이 남음).
+    get:
+      summary: 매장 안내 정보 읽기 (넣지 않은 칸은 null)
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ShopInfo'}}}}
+        default: {$ref: '#/components/responses/Error'}
+    put:
+      summary: 매장 안내 정보 통째로 바꾸기 (null = 비우기)
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ShopInfo'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ShopInfo'}}}}
+        '422': {$ref: '#/components/responses/Error'} # VALIDATION_FAILED, details.fields [{field, code}]
+        default: {$ref: '#/components/responses/Error'}
+  /api/shops/{shopId}/closures:
+    parameters: [{$ref: '#/components/parameters/ShopId'}]
+    get:
+      summary: 휴무 목록(매주 요일 휴무·공휴일·휴가)
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {$ref: '#/components/schemas/Closure'}}}}}}}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      summary: 휴무 추가
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ClosureInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Closure'}}}}
+        '422': {$ref: '#/components/responses/Error'} # SETTINGS_INVALID
+        default: {$ref: '#/components/responses/Error'}
+  /api/shops/{shopId}/closures/{closureId}:
+    parameters: [{$ref: '#/components/parameters/ShopId'}, {in: path, name: closureId, required: true, schema: {type: string, format: uuid}}]
+    delete:
+      summary: 휴무 지우기
+      description: shop_closure에는 version이 없다 — 행을 고치지 않고 추가·삭제만 하므로 동시 수정 충돌이 없다(삭제가 겹치면 두 번째는 404)
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      responses:
+        '204': {description: Deleted}
+        default: {$ref: '#/components/responses/Error'}
+  /api/shops/{shopId}/menus:
+    parameters: [{$ref: '#/components/parameters/ShopId'}]
+    get:
+      summary: 메뉴 목록. 기본은 사용 중(active)만
+      parameters: [{$ref: '#/components/parameters/IncludeInactive'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {$ref: '#/components/schemas/Menu'}}}}}}}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      summary: 메뉴 추가
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/MenuInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Menu'}}}}
+        '422': {$ref: '#/components/responses/Error'} # VALIDATION_FAILED, details.fields
+        default: {$ref: '#/components/responses/Error'}
+  /api/shops/{shopId}/menus/{menuId}:
+    parameters: [{$ref: '#/components/parameters/ShopId'}, {in: path, name: menuId, required: true, schema: {type: string, format: uuid}}]
+    patch:
+      summary: 메뉴 고치기·쓰지 않음(active=false). 지우지 않는다 — 지난 예약이 메뉴를 가리킨다
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/MenuPatch'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Menu'}}}}
+        '409': {$ref: '#/components/responses/Error'} # VERSION_CONFLICT
+        '422': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/shops/{shopId}/staff:
+    parameters: [{$ref: '#/components/parameters/ShopId'}]
+    get:
+      summary: 담당자 목록(로그인하지 않는 예약 자원). 기본은 active만
+      parameters: [{$ref: '#/components/parameters/IncludeInactive'}]
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {$ref: '#/components/schemas/Staff'}}}}}}}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      summary: 담당자 추가
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [name], properties: {name: {type: string}}}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Staff'}}}}
+        '422': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/shops/{shopId}/staff/{staffId}:
+    parameters: [{$ref: '#/components/parameters/ShopId'}, {$ref: '#/components/parameters/StaffId'}]
+    patch:
+      summary: 담당자 이름 고치기·쓰지 않음. 기존 예약은 그대로 둔다
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [version], properties: {version: {type: integer}, name: {type: string}, active: {type: boolean}}}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Staff'}}}}
+        '409': {$ref: '#/components/responses/Error'}
+        '422': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+
+  # ── 고객 (BEA-172·173, 2A-2) ───────────────────────────
+  /api/shops/{shopId}/customers:
+    parameters: [{$ref: '#/components/parameters/ShopId'}]
+    get:
+      summary: 고객 목록·검색. q는 이름(띄어쓰기 무시) 또는 전화번호 숫자 3자리 이상. 이름순
+      parameters:
+        - {in: query, name: q, schema: {type: string}}
+        - {$ref: '#/components/parameters/IncludeInactive'}
+        - {in: query, name: cursor, schema: {type: string}}
+        - {in: query, name: limit, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, required: [items, nextCursor], properties: {items: {type: array, items: {$ref: '#/components/schemas/Customer'}}, nextCursor: {type: [string, 'null']}}}}}}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      summary: 고객 등록. 이름만 있어도 된다(편한 입력). 동명이인은 막지 않는다 — 먼저 same-name-check로 묻는다
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CustomerInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Customer'}}}}
+        '422': {$ref: '#/components/responses/Error'} # VALIDATION_FAILED, details.fields [{field, code}]
+        default: {$ref: '#/components/responses/Error'}
+  /api/shops/{shopId}/customers/same-name-check:
+    parameters: [{$ref: '#/components/parameters/ShopId'}]
+    post:
+      summary: 같은 이름 고객 후보(저장하지 않는 조회라 Idempotency-Key 없음). 병합은 하지 않는다
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [name], properties: {name: {type: string}, phone: {type: [string, 'null']}, excludeId: {type: string, format: uuid}}}}}}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [needsReview, candidates]
+                properties:
+                  needsReview: {type: boolean}
+                  candidates:
+                    type: array
+                    items:
+                      type: object
+                      required: [customerId, name, phone, hint]
+                      properties:
+                        customerId: {type: string, format: uuid}
+                        name: {type: string}
+                        phone: {type: [string, 'null']}
+                        hint: {enum: [same_phone, phone_missing, different_phone]}
+        default: {$ref: '#/components/responses/Error'}
+  /api/shops/{shopId}/customers/{customerId}:
+    parameters: [{$ref: '#/components/parameters/ShopId'}, {$ref: '#/components/parameters/CustomerId'}]
+    get:
+      summary: 고객 한 명(비활성 고객도 읽힌다 — 예약·지갑 기록은 남는다, 결정 R30)
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Customer'}}}}
+        default: {$ref: '#/components/responses/Error'}
+    patch:
+      summary: 고객 고치기. 보낸 필드만 바뀐다. null은 비우기
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CustomerPatch'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Customer'}}}}
+        '409': {$ref: '#/components/responses/Error'} # VERSION_CONFLICT
+        '422': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/shops/{shopId}/customers/{customerId}/active:
+    parameters: [{$ref: '#/components/parameters/ShopId'}, {$ref: '#/components/parameters/CustomerId'}]
+    put:
+      summary: 비활성화(삭제 대신)·재활성화. 예약은 자동 취소하지 않는다(결정 R30·S4)
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [version, active], properties: {version: {type: integer}, active: {type: boolean}}}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Customer'}}}}
+        '409': {$ref: '#/components/responses/Error'} # VERSION_CONFLICT · NO_CHANGE
+        default: {$ref: '#/components/responses/Error'}
+
+  # ── 캘린더·예약 (BEA-175·160·177·176·178·179, 2A-3) ─────
+  /api/shops/{shopId}/calendar:
+    parameters: [{$ref: '#/components/parameters/ShopId'}]
+    get:
+      summary: 캘린더 한 화면치(담당자·예약·활성 차단). from~to는 매장 날짜, 마지막 날 포함, 최대 42일
+      description: 점유 [시작−준비, 시작+관리)나 차단이 기간에 걸치면 포함한다. 취소·무효 예약도 오지만 화면은 그리지 않는다. 차단 테이블(BEA-179)이 생기기 전까지 blocks는 항상 빈 배열이다.
+      parameters:
+        - {in: query, name: from, required: true, schema: {type: string, format: date}}
+        - {in: query, name: to, required: true, schema: {type: string, format: date}}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [staff, appointments, blocks]
+                properties:
+                  staff: {type: array, items: {$ref: '#/components/schemas/Staff'}}
+                  appointments: {type: array, items: {$ref: '#/components/schemas/Appointment'}}
+                  blocks: {type: array, items: {$ref: '#/components/schemas/CalendarBlock'}}
+        '400': {$ref: '#/components/responses/Error'} # INVALID_RANGE
+        default: {$ref: '#/components/responses/Error'}
+  /api/shops/{shopId}/appointments:
+    parameters: [{$ref: '#/components/parameters/ShopId'}]
+    post:
+      summary: 예약 등록(상태 scheduled). 같은 담당자 점유 겹침·차단·영업시간·휴무를 검사한다
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AppointmentInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Appointment'}}}}
+        '409': {$ref: '#/components/responses/Error'} # STAFF_OVERLAP · BLOCKED (details.conflictingIds)
+        '422': {$ref: '#/components/responses/Error'} # VALIDATION_FAILED · OUTSIDE_BUSINESS_HOURS · CLOSED_DAY
+        default: {$ref: '#/components/responses/Error'}
+  /api/shops/{shopId}/appointments/{appointmentId}:
+    parameters: [{$ref: '#/components/parameters/ShopId'}, {$ref: '#/components/parameters/AppointmentId'}]
+    get:
+      summary: 예약 한 건
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Appointment'}}}}
+        default: {$ref: '#/components/responses/Error'}
+    patch:
+      summary: 예약 고치기·시간 이동. 시간·담당자가 바뀌면 등록과 같은 검사를 한다
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AppointmentPatch'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Appointment'}}}}
+        '409': {$ref: '#/components/responses/Error'} # VERSION_CONFLICT · STAFF_OVERLAP · BLOCKED
+        '422': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/shops/{shopId}/appointments/{appointmentId}/status:
+    parameters: [{$ref: '#/components/parameters/ShopId'}, {$ref: '#/components/parameters/AppointmentId'}]
+    put:
+      summary: 상태 바꾸기·정정(예약·완료·취소·노쇼 사이 자유, 결정 S5). 무효(voided)는 되돌리기 전용이라 여기서 못 고른다
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [version, status], properties: {version: {type: integer}, status: {enum: [scheduled, completed, cancelled, no_show]}}}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Appointment'}}}}
+        '409': {$ref: '#/components/responses/Error'} # VERSION_CONFLICT · NO_CHANGE · INVALID_TRANSITION · STAFF_OVERLAP(취소 되살릴 때)
+        default: {$ref: '#/components/responses/Error'}
+  # 차단 API는 calendar_block 테이블이 생기는 BEA-179에서 구현한다(#43 시연 범위 밖). 11/25 시연에는 없다.
+  /api/shops/{shopId}/calendar-blocks:
+    parameters: [{$ref: '#/components/parameters/ShopId'}]
+    post:
+      summary: 차단 등록. 기존 예약은 막지 않고 캘린더에서 충돌로 보인다(결정 R50)
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CalendarBlockInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/CalendarBlock'}}}}
+        '422': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/shops/{shopId}/calendar-blocks/{blockId}:
+    parameters: [{$ref: '#/components/parameters/ShopId'}, {in: path, name: blockId, required: true, schema: {type: string, format: uuid}}]
+    patch:
+      summary: 차단 고치기
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {allOf: [{$ref: '#/components/schemas/CalendarBlockPatchable'}, {type: object, required: [version], properties: {version: {type: integer}}}]}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/CalendarBlock'}}}}
+        '409': {$ref: '#/components/responses/Error'}
+        '422': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+    delete:
+      summary: 차단 제거(status=removed로 남긴다)
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}, {in: query, name: version, required: true, schema: {type: integer}}]
+      responses:
+        '204': {description: Removed}
+        '409': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+
+components:
+  securitySchemes:
+    ownerSession: {type: apiKey, in: cookie, name: bv_session}
+  parameters:
+    ShopId: {in: path, name: shopId, required: true, schema: {type: string, format: uuid}}
+    StaffId: {in: path, name: staffId, required: true, schema: {type: string, format: uuid}}
+    CustomerId: {in: path, name: customerId, required: true, schema: {type: string, format: uuid}}
+    AppointmentId: {in: path, name: appointmentId, required: true, schema: {type: string, format: uuid}}
+    IdempotencyKey: {in: header, name: Idempotency-Key, required: true, schema: {type: string, minLength: 1, maxLength: 255}}
+    IncludeInactive: {in: query, name: includeInactive, schema: {type: boolean, default: false}}
+  responses:
+    Error:
+      description: '{code, message, details}. message·details에 개인정보를 넣지 않는다'
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  schemas:
+    Error:
+      type: object
+      required: [code, message, details]
+      properties: {code: {type: string}, message: {type: string}, details: {type: object}}
+    Minutes: {type: integer, minimum: 0}
+    OpenWindow:
+      type: object
+      required: [open, close]
+      properties:
+        open: {type: string, pattern: '^([01]\d|2[0-3]):[0-5]\d$', description: '서울 시각 HH:MM'}
+        close: {type: string, pattern: '^(([01]\d|2[0-3]):[0-5]\d|24:00)$'}
+    BusinessHoursBody:
+      type: object
+      required: [businessHours]
+      properties:
+        businessHours:
+          description: 요일 '1'(월)~'7'(일)별 영업 구간. 키가 없는 요일은 영업하지 않음. null은 아직 넣지 않음
+          type: [object, 'null']
+          propertyNames: {pattern: '^[1-7]$'}
+          additionalProperties: {type: array, items: {$ref: '#/components/schemas/OpenWindow'}}
+    ShopInfo:
+      type: object
+      description: "ASSUMPTION: 링크는 http·https 주소만 받는다(고객에게 보여 줄 링크라서). 길이 제한은 명세에 없어 정하지 않았다."
+      required: [refundPolicy, naverPlaceUrl, instagramUrl, landingUrl, locationText]
+      properties:
+        refundPolicy: {type: [string, 'null'], description: '환불 정책 (shop_settings.refund_policy)'}
+        naverPlaceUrl: {$ref: '#/components/schemas/WebLink'}
+        instagramUrl: {$ref: '#/components/schemas/WebLink'}
+        landingUrl: {$ref: '#/components/schemas/WebLink'}
+        locationText: {type: [string, 'null'], description: '위치 안내 글 (shop_settings.location_text)'}
+    WebLink: {type: [string, 'null'], format: uri, pattern: '^https?://'}
+    ClosureInput:
+      oneOf:
+        - {type: object, required: [kind, weekday], properties: {kind: {const: weekly}, weekday: {type: integer, minimum: 1, maximum: 7}, note: {type: [string, 'null']}}}
+        - {type: object, required: [kind, startDate, endDate], properties: {kind: {enum: [holiday, vacation]}, startDate: {type: string, format: date}, endDate: {type: string, format: date}, note: {type: [string, 'null']}}}
+    Closure:
+      allOf: [{$ref: '#/components/schemas/ClosureInput'}, {type: object, required: [id], properties: {id: {type: string, format: uuid}}}]
+    MenuInput:
+      allOf: [{$ref: '#/components/schemas/MenuFields'}, {type: object, required: [name]}]
+    MenuFields:
+      type: object
+      properties:
+        name: {type: string}
+        defaultDurationMin: {type: [integer, 'null'], minimum: 1, description: '예약 입력을 미리 채우는 값(결정 S3)'}
+        defaultPrepMin: {type: [integer, 'null'], minimum: 0}
+    MenuPatch:
+      allOf: [{$ref: '#/components/schemas/MenuFields'}, {type: object, required: [version], properties: {version: {type: integer}, active: {type: boolean}}}]
+      description: name을 포함해 모든 필드는 선택(보낸 것만 바뀜). version만 필수
+    Menu:
+      allOf: [{$ref: '#/components/schemas/MenuFields'}, {$ref: '#/components/schemas/RowMeta'}, {type: object, required: [name, defaultDurationMin, defaultPrepMin, active], properties: {active: {type: boolean}}}]
+    Staff:
+      allOf: [{type: object, required: [name, active], properties: {name: {type: string}, active: {type: boolean}}}, {$ref: '#/components/schemas/RowMeta'}]
+    RowMeta:
+      type: object
+      required: [id, version, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        version: {type: integer, minimum: 1}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    CustomerInput:
+      allOf: [{$ref: '#/components/schemas/CustomerFields'}, {type: object, required: [name]}]
+    CustomerFields:
+      type: object
+      properties:
+        name: {type: string}
+        phone: {type: [string, 'null'], description: '숫자만 저장(010·070·지역번호). 표시는 화면이 하이픈'}
+        memo: {type: [string, 'null'], description: '특이사항(customer.notes)'}
+        birthdate: {type: [string, 'null'], format: date}
+        address: {type: [string, 'null'], description: '거주지(자유 글)'}
+    CustomerPatch:
+      allOf: [{$ref: '#/components/schemas/CustomerFields'}, {type: object, required: [version], properties: {version: {type: integer}}}]
+      description: version만 필수, 나머지는 보낸 것만 바뀐다
+    Customer:
+      allOf:
+        - {$ref: '#/components/schemas/CustomerFields'}
+        - {$ref: '#/components/schemas/RowMeta'}
+        - {type: object, required: [name, phone, memo, birthdate, address, active, deactivatedAt], properties: {active: {type: boolean}, deactivatedAt: {type: [string, 'null'], format: date-time}}}
+    AppointmentStatus: {enum: [scheduled, completed, cancelled, no_show, voided]}
+    AppointmentInput:
+      allOf: [{$ref: '#/components/schemas/AppointmentFields'}, {type: object, required: [customerId, staffId, startAt, durationMin]}]
+    AppointmentFields:
+      type: object
+      properties:
+        customerId: {type: string, format: uuid}
+        menuId: {type: [string, 'null'], format: uuid}
+        staffId: {type: string, format: uuid, description: '필수. 담당자가 1명이면 화면이 자동으로 채운다'}
+        startAt: {type: string, format: date-time, description: '관리 시작(ISO-8601+offset)'}
+        durationMin: {type: integer, minimum: 1}
+        prepMin: {type: integer, minimum: 0, default: 0, description: '관리 앞 준비 시간. 점유 [startAt−prep, startAt+duration)'}
+        memo: {type: [string, 'null']}
+    AppointmentPatch:
+      allOf: [{$ref: '#/components/schemas/AppointmentFields'}, {type: object, required: [version], properties: {version: {type: integer}}}]
+      description: version만 필수, 나머지는 보낸 것만 바뀐다. 상태는 /status로
+    Appointment:
+      allOf:
+        - {$ref: '#/components/schemas/AppointmentFields'}
+        - {$ref: '#/components/schemas/RowMeta'}
+        - type: object
+          required: [customerId, menuId, staffId, startAt, durationMin, prepMin, memo, status, customerName, menuName, blockedBy]
+          properties:
+            status: {$ref: '#/components/schemas/AppointmentStatus'}
+            customerName: {type: string, description: '카드 표시용(고객 이름)'}
+            menuName: {type: [string, 'null']}
+            blockedBy: {type: array, items: {type: string, format: uuid}, description: '이 예약과 겹치는 활성 차단 id(충돌 표시, AC-CRM-3)'}
+    CalendarBlockPatchable:
+      type: object
+      properties:
+        startAt: {type: string, format: date-time}
+        endAt: {type: string, format: date-time}
+        allStaff: {type: boolean, description: 'true면 매장 전체(이후 추가되는 담당자 포함)'}
+        staffIds: {type: array, items: {type: string, format: uuid}, description: 'allStaff=false일 때 1명 이상'}
+        memo: {type: [string, 'null']}
+    CalendarBlockInput:
+      allOf: [{$ref: '#/components/schemas/CalendarBlockPatchable'}, {type: object, required: [startAt, endAt, allStaff, staffIds]}]
+    CalendarBlock:
+      allOf: [{$ref: '#/components/schemas/CalendarBlockPatchable'}, {$ref: '#/components/schemas/RowMeta'}, {type: object, required: [startAt, endAt, allStaff, staffIds, memo]}]
+      description: 응답은 모든 칸이 온다(값이 없으면 null)
+security: [{ownerSession: []}]

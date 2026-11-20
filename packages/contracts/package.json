@@ -2,5 +2,11 @@
   "name": "@bv/contracts",
   "version": "0.0.0",
   "private": true,
-  "types": "./index.d.ts"
+  "types": "./index.d.ts",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "js-yaml": "^4.3.2"
+  }
 }
