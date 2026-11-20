@@ -35,7 +35,7 @@ before(async () => {
 
 after(async () => {
   await db.onModuleDestroy();
-  for (const table of ['appointment_event', 'appointment', 'idempotency_key']) {
+  for (const table of ['appointment_event', 'appointment', 'idempotency_key', 'shop_settings']) {
     await admin.query(`DELETE FROM crm.${table} WHERE shop_id = ANY($1)`, [shops]);
   }
   await admin.query('DELETE FROM crm.shop WHERE id = ANY($1)', [shops]);
