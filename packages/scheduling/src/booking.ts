@@ -170,10 +170,10 @@ export function blockedAppointmentIds(block: ActiveBlock, appointments: readonly
 
 function checkHours(session: Interval, hours: ShopHours): BookingReject | null {
   const local = toSeoul(session.start);
-  // 휴무는 관리가 걸치는 모든 날(서울)로 판정한다. 영업시간을 넣지 않은 매장에서 자정을 넘는 관리가
-  // 다음 날 휴무에 걸치는 경우도 막는다(#36 리뷰). 영업시간이 있으면 자정을 넘는 관리는 아래에서 어차피 거부된다.
+  // 휴무는 관리가 걸치는 **모든** 날(서울)로 판정한다. 영업시간을 넣지 않은 매장에서 여러 날에 걸친 관리가
+  // 사이에 낀 휴무일을 지나는 경우도 막는다(#36 리뷰 2회). 영업시간이 있으면 자정을 넘는 관리는 아래에서 어차피 거부된다.
   const lastDay = toSeoul(new Date(session.end.getTime() - 1));
-  if (hours.closures.some((c) => isClosed(c, local) || isClosed(c, lastDay))) return "CLOSED_DAY";
+  if (hours.closures.some((c) => closedWithin(c, local, lastDay))) return "CLOSED_DAY";
   if (hours.businessHours === null) return null;
 
   const windows = hours.businessHours[local.weekday] ?? [];
@@ -187,9 +187,21 @@ function checkHours(session: Interval, hours: ShopHours): BookingReject | null {
   return inside ? null : "OUTSIDE_BUSINESS_HOURS";
 }
 
-function isClosed(c: Closure, local: { date: string; weekday: number }): boolean {
-  if (c.kind === "weekly") return c.weekday === local.weekday;
-  return c.startDate <= local.date && local.date <= c.endDate;
+type SeoulDay = { date: string; weekday: number };
+
+/**
+ * 서울 날짜 first~last(양끝 포함) 중 하루라도 이 휴무에 걸리는지.
+ * 관리 시간에 상한이 없어(설계 노트 Q4) 날짜를 하나씩 돌지 않는다: 기간 휴무는 구간 겹침으로,
+ * 매주 휴무는 7일 이상이면 반드시 걸리고 그보다 짧으면 요일만 센다.
+ */
+function closedWithin(c: Closure, first: SeoulDay, last: SeoulDay): boolean {
+  if (c.kind !== "weekly") return c.startDate <= last.date && first.date <= c.endDate;
+  const days = Math.round((Date.parse(last.date) - Date.parse(first.date)) / 86_400_000) + 1;
+  if (days >= 7) return true;
+  for (let i = 0; i < days; i++) {
+    if (((first.weekday - 1 + i) % 7) + 1 === c.weekday) return true;
+  }
+  return false;
 }
 
 function reject(reason: BookingReject, conflictingIds: string[] = []): BookingCheck {

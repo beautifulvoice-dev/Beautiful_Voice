@@ -114,6 +114,21 @@ describe("영업시간·휴무 (AC-S2-1)", () => {
     assert.equal(reasonOf(checkBooking(req("A", "23:00"), wednesdayOff, [], [])), "ok");
   });
 
+  it("여러 날에 걸친 관리는 사이에 낀 휴무일도 검사(#36 리뷰 2회)", () => {
+    // 12/04(금) 23:00 시작 1530분 = 12/06(일) 00:30까지. 사이의 12/05(토)가 휴무면 거부.
+    const fridayLate = req("A", "23:00", 1530, 0, "2026-12-04");
+    const saturdayOff: ShopHours = { businessHours: null, closures: [{ kind: "weekly", weekday: 6 }] };
+    assert.equal(reasonOf(checkBooking(fridayLate, saturdayOff, [], [])), "CLOSED_DAY");
+    const saturdayVacation: ShopHours = { businessHours: null, closures: [{ kind: "vacation", startDate: "2026-12-05", endDate: "2026-12-05" }] };
+    assert.equal(reasonOf(checkBooking(fridayLate, saturdayVacation, [], [])), "CLOSED_DAY");
+    // 걸치는 날(금·토·일) 밖의 휴무는 통과
+    const mondayOff: ShopHours = { businessHours: null, closures: [{ kind: "weekly", weekday: 1 }] };
+    assert.equal(reasonOf(checkBooking(fridayLate, mondayOff, [], [])), "ok");
+    // 7일 이상 걸치면 매주 휴무 어느 요일이든 걸린다
+    const week = req("A", "10:00", 7 * 24 * 60, 0, "2026-12-01");
+    assert.equal(reasonOf(checkBooking(week, mondayOff, [], [])), "CLOSED_DAY");
+  });
+
   it("자정을 넘는 관리는 영업시간 밖", () => {
     const allDay: ShopHours = { businessHours: { 2: [{ open: "00:00", close: "24:00" }] }, closures: [] };
     assert.equal(reasonOf(checkBooking(req("A", "23:30"), allDay, [], [])), "OUTSIDE_BUSINESS_HOURS");
