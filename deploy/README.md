@@ -4,13 +4,14 @@ BEA-162. 모노레포 루트에서 웹과 API 이미지를 빌드한다. 웹 컨
 
 ## 1. DB와 환경 변수 준비
 
-SSM으로 개발 EC2에 접속한 뒤 아래 명령은 레포 루트에서 실행한다. 팀에서 배포하기로 한 Git 커밋을 체크아웃한다.
+SSM으로 개발 EC2에 접속한 뒤 레포 루트에서 Bash를 열고 순서대로 실행한다. 팀에서 배포하기로 한 Git 커밋을 체크아웃한다. Docker 명령은 `sudo`로 실행한다.
 
 Compose 프로젝트 이름은 `beautifulvoice-dev`다. 릴리스 경로가 바뀌어도 기존 스택을 갱신하도록 배포할 때 이 이름을 사용한다.
 
 ```bash
-docker version
-docker compose version
+sudo docker version
+sudo docker compose version
+compose=(sudo docker compose -f compose.dev-server.yaml)
 curl -fsS https://truststore.pki.rds.amazonaws.com/ap-northeast-2/ap-northeast-2-bundle.pem \
   -o deploy/rds-ca.pem
 chmod 644 deploy/rds-ca.pem
@@ -43,19 +44,18 @@ BV_SESSION_SECRET=
 ## 2. 빌드와 DB 마이그레이션
 
 ```bash
-docker compose -f compose.dev-server.yaml build
-read -rsp 'Migration DB URL: ' DATABASE_MIGRATION_URL
+"${compose[@]}" build
+read -rsp 'Migration DB URL: ' migration_url
 printf '\n'
-export DATABASE_MIGRATION_URL
-docker compose -f compose.dev-server.yaml run --rm --no-deps \
-  -e DATABASE_MIGRATION_URL api node db/migrate.cjs
-unset DATABASE_MIGRATION_URL
+printf '%s' "$migration_url" | "${compose[@]}" run --rm -T --no-deps api \
+  node -e 'process.env.DATABASE_MIGRATION_URL = require("node:fs").readFileSync(0, "utf8"); require("./db/migrate.cjs")'
+unset migration_url
 ```
 
-마이그레이션 URL도 RDS 엔드포인트와 `sslmode=verify-full&sslrootcert=/run/rds-ca.pem`을 사용한다. 마이그레이션 성공을 확인한 뒤 앱을 실행한다.
+마이그레이션 URL도 RDS 엔드포인트와 `sslmode=verify-full&sslrootcert=/run/rds-ca.pem`을 사용한다. URL은 일회성 컨테이너의 표준 입력으로 전달한다. 마이그레이션 성공을 확인한 뒤 앱을 실행한다.
 
 ```bash
-docker compose -f compose.dev-server.yaml up -d --wait
+"${compose[@]}" up -d --wait
 curl -fsS http://127.0.0.1:8080/api/health
 curl -fsS http://127.0.0.1:8080/login >/dev/null
 ```
@@ -67,23 +67,20 @@ curl -fsS http://127.0.0.1:8080/login >/dev/null
 같은 카카오 개발 앱의 로그인 확인에서 얻은 시연 원장의 서비스 사용자 ID를 사용해 합성 매장과 설정을 dev DB에 만든다. 동일 계정으로 재실행할 수 있으며 이미 연결된 다른 원장을 교체하지 않는다. ID와 마이그레이션 URL은 프롬프트로 입력한다.
 
 ```bash
-read -rsp 'Migration DB URL: ' DATABASE_MIGRATION_URL
+read -rsp 'Migration DB URL: ' migration_url
 printf '\n'
-read -rsp 'Verified Kakao user ID: ' BV_DEV_KAKAO_USER_ID
+read -rsp 'Verified Kakao user ID: ' kakao_user_id
 printf '\n'
-export DATABASE_MIGRATION_URL BV_DEV_KAKAO_USER_ID
-docker compose -f compose.dev-server.yaml run --rm --no-deps \
-  -e DATABASE_MIGRATION_URL -e BV_DEV_KAKAO_USER_ID api node db/seed-dev-owner.cjs
-unset DATABASE_MIGRATION_URL BV_DEV_KAKAO_USER_ID
+printf '%s\n%s' "$migration_url" "$kakao_user_id" | "${compose[@]}" run --rm -T --no-deps api \
+  node -e 'const [url, id] = require("node:fs").readFileSync(0, "utf8").split("\n"); process.env.DATABASE_MIGRATION_URL = url; process.env.BV_DEV_KAKAO_USER_ID = id; require("./db/seed-dev-owner.cjs")'
+unset migration_url kakao_user_id
 ```
 
 ```bash
-export BV_WEB_SITE_ADDRESS=dev.example.com
-export BV_WEB_BIND_ADDRESS=0.0.0.0
-export BV_WEB_HTTP_PORT=80
-export BV_WEB_HTTPS_PORT=443
-docker compose -f compose.dev-server.yaml up -d --wait
+sudo env BV_WEB_SITE_ADDRESS=dev.example.com BV_WEB_BIND_ADDRESS=0.0.0.0 \
+  BV_WEB_HTTP_PORT=80 BV_WEB_HTTPS_PORT=443 \
+  docker compose -f compose.dev-server.yaml up -d --wait
 curl -fsS https://dev.example.com/api/health
 ```
 
-브라우저에서 로그인 성공 후 시연 매장 조회와 다른 매장 조회 거부를 확인한다. 재배포에도 같은 공개 주소·포트 설정을 사용한다. 장애 시 `docker compose -f compose.dev-server.yaml ps`와 `docker compose -f compose.dev-server.yaml logs --tail=100 api web`으로 어느 서비스에서 실패했는지 확인한다.
+브라우저에서 로그인 성공 후 시연 매장 조회와 다른 매장 조회 거부를 확인한다. 재배포에도 같은 공개 주소·포트 설정을 사용한다. 장애 시 `"${compose[@]}" ps`와 `"${compose[@]}" logs --tail=100 api web`으로 어느 서비스에서 실패했는지 확인한다.
