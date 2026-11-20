@@ -7,7 +7,6 @@ import { LoginPage } from '@/pages/LoginPage';
 import { CustomerDetailPage } from '@/pages/customers/CustomerDetailPage';
 import { CustomerFormPage } from '@/pages/customers/CustomerFormPage';
 import { CustomersPage } from '@/pages/customers/CustomersPage';
-import { PlaceholderPage } from '@/pages/PlaceholderPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 
 export const routes: RouteObject[] = [
