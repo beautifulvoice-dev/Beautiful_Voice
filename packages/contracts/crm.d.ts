@@ -46,7 +46,9 @@ export type Closure = ClosureInput & { id: string };
 
 export interface MenuFields {
   name: string;
+  /** 1 ~ 2147483647(DB integer 최댓값, #39 MAX_MINUTES). 넘으면 422 VALIDATION_FAILED */
   defaultDurationMin: number | null;
+  /** 0 ~ 2147483647 */
   defaultPrepMin: number | null;
 }
 export type MenuInput = Pick<MenuFields, 'name'> & Partial<Omit<MenuFields, 'name'>>;
@@ -91,7 +93,8 @@ export interface SameNameCheckRequest {
 }
 export interface SameNameCheckResponse {
   needsReview: boolean;
-  candidates: { customerId: string; name: string; phone: string | null; hint: 'same_phone' | 'phone_missing' | 'different_phone' }[];
+  /** 비활성 고객도 후보에 넣고 active=false로 알린다 — 새로 등록하기 전에 되살리기를 권할 수 있게(S4). */
+  candidates: { customerId: string; name: string; phone: string | null; hint: 'same_phone' | 'phone_missing' | 'different_phone'; active: boolean }[];
 }
 
 // ── 캘린더·예약 ──

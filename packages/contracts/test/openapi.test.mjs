@@ -78,3 +78,16 @@ test('매장 안내 정보(shop_settings)는 5칸을 모두 주고받고, 링크
   const put = crm.paths['/api/shops/{shopId}/settings/shop-info'].put;
   assert.equal(put.requestBody.content['application/json'].schema.$ref, '#/components/schemas/ShopInfo');
 });
+
+test('동명이인 후보는 비활성 고객도 active로 구분해 보낸다', () => {
+  const res = crm.paths['/api/shops/{shopId}/customers/same-name-check'].post.responses['200'].content['application/json'].schema;
+  const candidate = res.properties.candidates.items;
+  assert.ok(candidate.required.includes('active'));
+  assert.equal(candidate.properties.active.type, 'boolean');
+});
+
+test('메뉴 분 값의 범위는 서버 검사(#39 MAX_MINUTES)와 같다 — 하한과 DB integer 상한', () => {
+  const { defaultDurationMin: d, defaultPrepMin: p } = crm.components.schemas.MenuFields.properties;
+  assert.deepEqual([d.minimum, d.maximum], [1, 2147483647]);
+  assert.deepEqual([p.minimum, p.maximum], [0, 2147483647]);
+});
