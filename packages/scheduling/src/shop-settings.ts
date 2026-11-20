@@ -90,14 +90,24 @@ export interface MenuValues {
   defaultPrepMin: number | null;
 }
 
+/**
+ * 분 값의 저장 상한 = PostgreSQL `integer` 최댓값. DB 컬럼(`default_duration_min`·`default_prep_min`)이
+ * `integer`라 이보다 크면 입력 오류가 아니라 서버 오류가 난다(#39 리뷰). 업무상 상한은 두지 않는다(설계 노트 Q4).
+ */
+export const MAX_MINUTES = 2_147_483_647;
+
+function minutesIn(value: number, min: number): boolean {
+  return Number.isInteger(value) && value >= min && value <= MAX_MINUTES;
+}
+
 export function validateMenu(input: { name: string; defaultDurationMin?: number | null; defaultPrepMin?: number | null }): ResourceResult<MenuValues> {
   const errors: { field: ResourceField; code: ResourceErrorCode }[] = [];
   const name = cleanName(input.name);
   if (name === null) errors.push({ field: "name", code: "NAME_REQUIRED" });
   const duration = input.defaultDurationMin ?? null;
-  if (duration !== null && !(Number.isInteger(duration) && duration >= 1)) errors.push({ field: "defaultDurationMin", code: "INVALID_MINUTES" });
+  if (duration !== null && !minutesIn(duration, 1)) errors.push({ field: "defaultDurationMin", code: "INVALID_MINUTES" });
   const prep = input.defaultPrepMin ?? null;
-  if (prep !== null && !(Number.isInteger(prep) && prep >= 0)) errors.push({ field: "defaultPrepMin", code: "INVALID_MINUTES" });
+  if (prep !== null && !minutesIn(prep, 0)) errors.push({ field: "defaultPrepMin", code: "INVALID_MINUTES" });
   if (errors.length > 0 || name === null) return { ok: false, errors };
   return { ok: true, value: { name, defaultDurationMin: duration, defaultPrepMin: prep } };
 }

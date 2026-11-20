@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { validateBusinessHours, validateClosure, validateMenu, validateStaff } from "../src/shop-settings.ts";
+import { MAX_MINUTES, validateBusinessHours, validateClosure, validateMenu, validateStaff } from "../src/shop-settings.ts";
 
 describe("영업시간", () => {
   it("요일(1=월 … 7=일)별 구간을 시작 순으로 정리해 돌려준다", () => {
@@ -106,6 +106,15 @@ describe("메뉴와 담당자", () => {
       ],
     });
     assert.equal(validateMenu({ name: "합성", defaultDurationMin: 30.5 }).ok, false);
+    // DB integer 상한 경계(#39 리뷰): 상한까지는 통과, 1 넘으면 입력 오류.
+    assert.equal(validateMenu({ name: "합성", defaultDurationMin: MAX_MINUTES, defaultPrepMin: MAX_MINUTES }).ok, true);
+    assert.deepEqual(validateMenu({ name: "합성", defaultDurationMin: MAX_MINUTES + 1, defaultPrepMin: MAX_MINUTES + 1 }), {
+      ok: false,
+      errors: [
+        { field: "defaultDurationMin", code: "INVALID_MINUTES" },
+        { field: "defaultPrepMin", code: "INVALID_MINUTES" },
+      ],
+    });
   });
 
   it("이름이 문자열이 아니어도 예외 없이 NAME_REQUIRED", () => {
