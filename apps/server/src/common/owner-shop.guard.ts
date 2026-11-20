@@ -1,0 +1,41 @@
+import { type CanActivate, type ExecutionContext, Injectable } from '@nestjs/common';
+import type { IncomingMessage } from 'node:http';
+import { DatabaseService } from '../database.service';
+import { authConfig, readCookie, SESSION_COOKIE, verifyCookie } from '../owner-session';
+import { ApiError } from './api-error';
+
+// 로그인한 원장의 매장을 확인한다. 쿠키 서명·만료를 보고, 지금도 그 매장 소속인지 DB에서 다시 확인한다.
+export async function requireOwnerShop(database: DatabaseService, request: IncomingMessage): Promise<string> {
+  const cookie = readCookie(request.headers.cookie, SESSION_COOKIE);
+  if (!cookie) throw unauthorized();
+  const config = authConfig();
+  if (!config) throw new ApiError(503, 'AUTH_UNAVAILABLE', '로그인을 사용할 수 없습니다.');
+  const session = verifyCookie(config.key, 'owner-session', cookie);
+  if (!session) throw unauthorized();
+  const [userId, shopId] = session.split(':');
+  if (!userId || !shopId || await database.findOwnerShop(userId) !== shopId) throw unauthorized();
+  return shopId;
+}
+
+export function shopNotFound(): ApiError<'SHOP_NOT_FOUND'> {
+  return new ApiError(404, 'SHOP_NOT_FOUND', '매장을 찾을 수 없습니다.');
+}
+
+function unauthorized(): ApiError<'UNAUTHENTICATED'> {
+  return new ApiError(401, 'UNAUTHENTICATED', '다시 로그인해 주세요.');
+}
+
+// `/api/shops/:shopId/…` 경로 전용. 경로의 shopId가 로그인한 원장의 매장이 아니면 404 —
+// 403이면 "그 매장이 있다"는 사실이 새므로 존재 여부까지 숨긴다(#42 계약).
+// 이 가드를 통과한 뒤에는 컨트롤러가 경로의 shopId를 그대로 써도 된다.
+@Injectable()
+export class OwnerShopGuard implements CanActivate {
+  constructor(private readonly database: DatabaseService) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest<IncomingMessage & { params?: Record<string, string> }>();
+    const shopId = await requireOwnerShop(this.database, request);
+    if (request.params?.shopId !== shopId) throw shopNotFound();
+    return true;
+  }
+}
