@@ -46,7 +46,9 @@ export type Closure = ClosureInput & { id: string };
 
 export interface MenuFields {
   name: string;
+  /** 1 ~ 2147483647(DB integer 최댓값, #39 MAX_MINUTES). 넘으면 422 VALIDATION_FAILED */
   defaultDurationMin: number | null;
+  /** 0 ~ 2147483647 */
   defaultPrepMin: number | null;
 }
 export type MenuInput = Pick<MenuFields, 'name'> & Partial<Omit<MenuFields, 'name'>>;

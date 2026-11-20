@@ -348,8 +348,8 @@ components:
       type: object
       properties:
         name: {type: string}
-        defaultDurationMin: {type: [integer, 'null'], minimum: 1, description: '예약 입력을 미리 채우는 값(결정 S3)'}
-        defaultPrepMin: {type: [integer, 'null'], minimum: 0}
+        defaultDurationMin: {type: [integer, 'null'], minimum: 1, maximum: 2147483647, description: '예약 입력을 미리 채우는 값(결정 S3). 상한은 DB integer 최댓값(#39 MAX_MINUTES)'}
+        defaultPrepMin: {type: [integer, 'null'], minimum: 0, maximum: 2147483647}
     MenuPatch:
       allOf: [{$ref: '#/components/schemas/MenuFields'}, {type: object, required: [version], properties: {version: {type: integer}, active: {type: boolean}}}]
       description: name을 포함해 모든 필드는 선택(보낸 것만 바뀜). version만 필수
