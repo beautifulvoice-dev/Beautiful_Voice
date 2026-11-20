@@ -16,6 +16,7 @@ import {
   weekDays,
   type CalendarAppointment,
 } from '@/features/calendar/model';
+import { validDate } from '@/pages/calendar/CalendarPage';
 import { routes } from '@/routes';
 
 // 2026-11-16(월) ~ 22(일) 주. 시드는 이 주 월요일 기준.
@@ -155,6 +156,22 @@ describe('캘린더 화면', () => {
     expect(await screen.findByRole('heading', { level: 2, name: '11월 30일 – 12월 6일' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: '이전 주' }));
     expect(await screen.findByRole('heading', { level: 2, name: '11월 23일 – 11월 29일' })).toBeInTheDocument();
+  });
+
+  it('주소의 날짜가 없는 날이면 오늘 기준으로 보여 준다', async () => {
+    expect(validDate('2026-11-18')).toBe(true);
+    expect(['2026-99-99', '2026-02-30', '2026-1-1', null].map(validDate)).toEqual([false, false, false, false]);
+    renderAt('/calendar?date=2026-99-99');
+    expect(await screen.findAllByRole('columnheader')).toHaveLength(7);
+  });
+
+  it('자정을 넘는 예약은 두 날 모두에 누를 수 있는 카드가 붙는다', async () => {
+    const late = appt({ id: 'late', customerName: '심야손님', startAt: '2026-11-18T14:30:00Z', prepMin: 0 }); // 서울 수 23:30~목 00:30
+    renderAt('/calendar?date=2026-11-18', createMemoryCalendarApi({ staff: [{ id: 's1', name: '원장' }], appointments: [late], blocks: [] }));
+    for (const day of ['11월 18일', '11월 19일']) {
+      const region = await screen.findByRole('region', { name: day });
+      expect(within(region).getByRole('button', { name: /심야손님/ })).toBeInTheDocument();
+    }
   });
 
   it('불러오기 실패는 경고와 다시 시도로 보인다', async () => {

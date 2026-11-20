@@ -26,6 +26,13 @@ import { WeekView } from './WeekView';
 type View = 'week' | 'month';
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** 주소의 날짜가 실제 있는 날인지(2026-02-30·2026-99-99는 아님). 아니면 오늘로 본다. */
+export function validDate(raw: string | null): raw is string {
+  if (!raw || !DATE_RE.test(raw)) return false;
+  const t = Date.parse(`${raw}T00:00:00Z`);
+  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === raw;
+}
+
 function title(view: View, date: string): string {
   const [y, m] = date.split('-').map(Number);
   if (view === 'month') return `${y}년 ${m}월`;
@@ -39,7 +46,7 @@ export function CalendarPage() {
   const [params, setParams] = useSearchParams();
   const view: View = params.get('view') === 'month' ? 'month' : 'week';
   const raw = params.get('date');
-  const date = raw && DATE_RE.test(raw) ? raw : shopDate(Date.now());
+  const date = validDate(raw) ? raw : shopDate(Date.now());
   const days = view === 'week' ? weekDays(date) : monthGrid(date);
   const from = days[0]!;
   const to = days[days.length - 1]!;
