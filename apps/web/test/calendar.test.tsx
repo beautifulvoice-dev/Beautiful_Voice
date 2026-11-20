@@ -124,13 +124,32 @@ describe('캘린더 화면', () => {
     expect(dialog).toHaveTextContent('2026-11-16 13:40 준비 · 14:00–15:00');
   });
 
-  it('같은 시각이라도 담당자가 다르면 나란히 보인다', async () => {
-    renderAt('/calendar?date=2026-11-18');
-    const monday = await screen.findByRole('region', { name: '11월 16일' });
-    const a = within(monday).getByRole('button', { name: /이서윤/ });
-    const b = within(monday).getByRole('button', { name: /박지민/ });
+  it('담당자가 2명이면 같은 시각 2건이 나란히 보인다(가짜 담당자는 이 테스트에서만)', async () => {
+    const twoStaff = createMemoryCalendarApi({
+      staff: [
+        { id: 's1', name: '원장' },
+        { id: 's2', name: '보조' },
+      ],
+      appointments: [
+        appt({ id: 'p1', customerName: '손님가', staffId: 's1' }),
+        appt({ id: 'p2', customerName: '손님나', staffId: 's2' }),
+      ],
+      blocks: [],
+    });
+    renderAt('/calendar?date=2026-11-18', twoStaff);
+    const wed = await screen.findByRole('region', { name: '11월 18일' });
+    const a = within(wed).getByRole('button', { name: /손님가/ });
+    const b = within(wed).getByRole('button', { name: /손님나/ });
+    expect(b).toHaveTextContent('보조');
     expect(a.style.top).toBe(b.style.top);
     expect(a.style.left).not.toBe(b.style.left);
+  });
+
+  it('담당자가 1명이면 예약 카드가 칸 전체 너비다', async () => {
+    renderAt('/calendar?date=2026-11-18');
+    const monday = await screen.findByRole('region', { name: '11월 16일' });
+    const card = within(monday).getByRole('button', { name: /이서윤/ });
+    expect(card.style.width).toBe('100%');
   });
 
   it('취소된 예약은 캘린더에 없다', async () => {
@@ -148,7 +167,7 @@ describe('캘린더 화면', () => {
     expect(router.state.location.search).toBe('?view=month&date=2026-11-18');
     const day = await screen.findByRole('region', { name: '11월 20일' });
     expect(within(day).getByRole('button', { name: /15:00 한예린/ })).toBeInTheDocument();
-    expect(within(day).getByText('차단 · 실장 외출')).toBeInTheDocument();
+    expect(within(day).getByText('차단 · 원장 외출')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: '다음 달' }));
     expect(await screen.findByRole('heading', { level: 2, name: '2026년 12월' })).toBeInTheDocument();
