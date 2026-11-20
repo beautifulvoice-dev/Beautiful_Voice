@@ -2,11 +2,11 @@ import { Navigate, type RouteObject } from 'react-router';
 import { AppShell } from '@/components/layout/AppShell';
 import { EmptyState } from '@/components/states/DataState';
 import { RequireSession } from '@/features/auth/RequireSession';
+import { CalendarPage } from '@/pages/calendar/CalendarPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { CustomerDetailPage } from '@/pages/customers/CustomerDetailPage';
 import { CustomerFormPage } from '@/pages/customers/CustomerFormPage';
 import { CustomersPage } from '@/pages/customers/CustomersPage';
-import { PlaceholderPage } from '@/pages/PlaceholderPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 
 export const routes: RouteObject[] = [
@@ -21,7 +21,7 @@ export const routes: RouteObject[] = [
     children: [
       // ASSUMPTION: 첫 화면은 메뉴 첫 칸인 캘린더 — 와이어프레임(11/21)으로 확인.
       { index: true, element: <Navigate to="/calendar" replace /> },
-      { path: 'calendar', element: <PlaceholderPage title="캘린더" /> },
+      { path: 'calendar', element: <CalendarPage /> },
       { path: 'customers', element: <CustomersPage /> },
       { path: 'customers/new', element: <CustomerFormPage /> },
       { path: 'customers/:id', element: <CustomerDetailPage /> },
