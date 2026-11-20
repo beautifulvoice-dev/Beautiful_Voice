@@ -3,7 +3,7 @@
 // 영업시간 형식은 예약 저장 검사(booking.ts, BEA-177)가 그대로 읽는다.
 // 설정은 사람만 바꾼다 — AI 실행기에는 설정 쓰기 권한이 없다(결정 R0, DB 권한은 BEA-156).
 
-import type { BusinessHours, Closure, OpenWindow } from "./booking.ts";
+import { MAX_MINUTES, minutesIn, type BusinessHours, type Closure, type OpenWindow } from "./booking.ts";
 
 type Weekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
@@ -90,15 +90,8 @@ export interface MenuValues {
   defaultPrepMin: number | null;
 }
 
-/**
- * 분 값의 저장 상한 = PostgreSQL `integer` 최댓값. DB 컬럼(`default_duration_min`·`default_prep_min`)이
- * `integer`라 이보다 크면 입력 오류가 아니라 서버 오류가 난다(#39 리뷰). 업무상 상한은 두지 않는다(설계 노트 Q4).
- */
-export const MAX_MINUTES = 2_147_483_647;
-
-function minutesIn(value: number, min: number): boolean {
-  return Number.isInteger(value) && value >= min && value <= MAX_MINUTES;
-}
+/** 분 값 상한은 예약 검사와 같은 것을 쓴다(DB `integer` 최댓값, booking.ts). */
+export { MAX_MINUTES };
 
 export function validateMenu(input: { name: string; defaultDurationMin?: number | null; defaultPrepMin?: number | null }): ResourceResult<MenuValues> {
   const errors: { field: ResourceField; code: ResourceErrorCode }[] = [];
