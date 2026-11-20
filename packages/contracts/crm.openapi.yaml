@@ -8,7 +8,7 @@ info:
     · 목록은 cursor · 모든 리소스는 경로의 shopId 범위이고, 로그인한 원장이 그 매장 소속이 아니면 404.
     동시 수정: 고칠 수 있는 행은 version을 돌려주고, 수정 요청에 받은 version을 실어 보낸다. 다르면 409 VERSION_CONFLICT.
     설정은 사람만 바꾼다(결정 R0). 이 경로들은 원장 세션 전용이고 AI 실행기는 쓰지 않는다.
-    DB(#43, 스키마 crm): 예약은 appointment_m1. version·updatedAt은 DB 트리거가 올린다(예약은 #43, 메뉴·담당자·고객은 #43 리뷰에서 제안).
+    DB(#43, 스키마 crm): 예약은 appointment_m1. 메뉴·담당자·고객·예약의 version·updatedAt은 수정 때 DB 트리거가 올린다. 매장 설정 행은 매장을 만들 때 DB가 만든다.
     고객 created_source는 서버가 채운다(웹 등록 = manual) — 계약에는 없다.
 paths:
   # ── 설정 (BEA-166·167, 2A-1) ───────────────────────────
