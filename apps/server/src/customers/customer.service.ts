@@ -1,6 +1,6 @@
 import type { Customer, Page, SameNameCheckResponse } from '@bv/contracts';
 import {
-  applyPatch, type CustomerPatch as PatchValues, type CustomerValues, nameKey, validateCustomerPatch, validateNewCustomer,
+  applyPatch, type CustomerPatch as PatchValues, type CustomerValues, nameKey, normalizePhone, validateCustomerPatch, validateNewCustomer,
 } from '@bv/customers';
 import { checkSameName } from '@bv/customers/duplicates';
 import { Injectable } from '@nestjs/common';
@@ -15,6 +15,7 @@ import { decodeCursor, parseLimit, toPage } from '../common/pagination';
 export class CustomerService {
   /**
    * 이름(띄어쓰기·대소문자 무시) 또는 전화번호 숫자 3자리 이상, 부분 일치. 이름순 + keyset 커서(설계 D1·D2).
+   * 전화는 전체 번호면 등록과 같은 normalizePhone으로 맞춘다("+82 10-…"로 등록·검색해도 찾음).
    * 인덱스 없이 매장 고객을 훑는다 — 1인 매장 규모(수백~수천 명)에서 충분. 커지면 name_key + pg_trgm(스키마 변경).
    */
   async list(
@@ -26,7 +27,9 @@ export class CustomerService {
     if (cursor && (typeof cursor.v !== 'string' || !UUID.test(cursor.id))) throw new ApiError(400, 'INVALID_CURSOR', 'cursor is invalid');
     const q = typeof query.q === 'string' ? query.q.trim() : '';
     const key = q === '' ? null : `%${escapeLike(nameKey(q))}%`;
-    const digits = q.replace(/\D/g, '');
+    // 전체 번호면 등록 때와 같은 정규화(+82 10-… → 010…)로 찾고, 아니면 숫자만 뽑아 부분 일치(#47 리뷰).
+    const full = q === '' ? null : normalizePhone(q);
+    const digits = full?.ok ? full.phone : q.normalize('NFKC').replace(/\D/g, '');
     const phone = digits.length >= 3 ? `%${digits}%` : null;
     const { rows } = await client.query<Customer>(
       `SELECT ${COLUMNS} FROM crm.customer
