@@ -168,3 +168,17 @@ test('같은 키로 재전송하면 한 번만 저장되고 처음 응답을 돌
   assert.equal((await call('POST', `${A}/closures`, { body: { kind: 'weekly', weekday: 9 }, key: retryKey })).status, 422);
   assert.equal((await call('POST', `${A}/closures`, { body: { kind: 'weekly', weekday: 1 }, key: retryKey })).status, 201);
 });
+
+test('같은 키라도 쿼리(예: 삭제의 version)가 다르면 다른 요청 — 이전 응답을 재생하지 않고 422', async () => {
+  const closure = (await call('POST', `${A}/closures`, { body: { kind: 'weekly', weekday: 3 } })).body;
+  const key = randomUUID();
+  // 휴무 삭제는 쿼리를 쓰지 않지만, 차단 삭제(BEA-179)의 ?version=처럼 쿼리가 요청의 일부인 경우를 같은 경로로 확인한다.
+  const first = await call('DELETE', `${A}/closures/${closure.id}?version=1&x=a`, { key });
+  assert.equal(first.status, 204);
+  const reordered = await call('DELETE', `${A}/closures/${closure.id}?x=a&version=1`, { key });
+  assert.equal(reordered.status, 204, '쿼리 순서만 다르면 같은 요청');
+  assert.equal(reordered.replayed, 'true');
+  const changed = await call('DELETE', `${A}/closures/${closure.id}?version=2&x=a`, { key });
+  assert.equal(changed.status, 422);
+  assert.equal(changed.body.code, 'IDEMPOTENCY_KEY_REUSED');
+});
