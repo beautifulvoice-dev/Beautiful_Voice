@@ -26,6 +26,9 @@ importers:
       '@bv/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@bv/customers':
+        specifier: workspace:*
+        version: link:../../packages/customers
       '@bv/scheduling':
         specifier: workspace:*
         version: link:../../packages/scheduling
