@@ -4,7 +4,7 @@ info:
   version: '0.1.0'
   description: |
     M1 "손으로 쓰는 CRM" 계약. 명세 3 기능 2A-1(설정)·2A-2(고객)·2A-3(캘린더·예약).
-    규약(F-05): 오류 {code,message,details} · 쓰기는 Idempotency-Key · 시각은 ISO-8601+offset(UTC 저장)
+    규약(F-05): 오류 {code,message,details} · 쓰기는 Idempotency-Key(같은 요청 = 메서드·경로·쿼리·본문) · 시각은 ISO-8601+offset(UTC 저장)
     · 목록은 cursor · 모든 리소스는 경로의 shopId 범위이고, 로그인한 원장이 그 매장 소속이 아니면 404.
     동시 수정: 고칠 수 있는 행은 version을 돌려주고, 수정 요청에 받은 version을 실어 보낸다. 다르면 409 VERSION_CONFLICT.
     설정은 사람만 바꾼다(결정 R0). 이 경로들은 원장 세션 전용이고 AI 실행기는 쓰지 않는다.
@@ -283,6 +283,7 @@ paths:
         default: {$ref: '#/components/responses/Error'}
     delete:
       summary: 차단 제거(status=removed로 남긴다)
+      description: "version은 쿼리로 보낸다(DELETE는 본문을 쓰지 않음). 멱등 비교는 메서드·경로·쿼리·본문 전체라, 같은 Idempotency-Key로 version만 바꿔 보내면 이전 응답을 재생하지 않고 422 IDEMPOTENCY_KEY_REUSED."
       parameters: [{$ref: '#/components/parameters/IdempotencyKey'}, {in: query, name: version, required: true, schema: {type: integer}}]
       responses:
         '204': {description: Removed}
