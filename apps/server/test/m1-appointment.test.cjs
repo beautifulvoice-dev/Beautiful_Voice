@@ -27,7 +27,7 @@ after(async () => {
   await db.onModuleDestroy();
   try {
     if (!process.env.DATABASE_MIGRATION_URL) return;
-    for (const table of ['appointment_m1', 'staff', 'menu', 'customer']) {
+    for (const table of ['appointment_m1', 'staff', 'menu', 'customer', 'shop_settings']) {
       await admin.query(`DELETE FROM crm.${table} WHERE shop_id IN ($1, $2)`, [shopA, shopB]);
     }
     await admin.query('DELETE FROM crm.shop WHERE id IN ($1, $2)', [shopA, shopB]);
