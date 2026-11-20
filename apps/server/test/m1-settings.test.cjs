@@ -92,7 +92,10 @@ test('영업시간: 처음엔 null(미입력), 저장하면 다시 읽어도 그
   assert.deepEqual(bad.body.details, { reason: 'OPEN_NOT_BEFORE_CLOSE', at: '2[0]' });
   assert.deepEqual((await call('GET', `${A}/settings/business-hours`)).body, { businessHours: sorted }, '실패한 저장은 아무것도 바꾸지 않는다');
 
+  const { rows: [before] } = await admin.query('SELECT updated_at FROM crm.shop_settings WHERE shop_id = $1', [shopA]);
   assert.deepEqual((await call('PUT', `${A}/settings/business-hours`, { body: { businessHours: null } })).body, { businessHours: null });
+  const { rows: [after] } = await admin.query('SELECT updated_at FROM crm.shop_settings WHERE shop_id = $1', [shopA]);
+  assert.ok(after.updated_at > before.updated_at, '영업시간 저장도 updated_at을 갱신한다(shop_settings에는 트리거 없음)');
   // 다른 매장 설정은 그대로
   assert.deepEqual((await call('GET', `/api/shops/${shopB}/settings/business-hours`, { cookie: ownerB })).body, { businessHours: null });
 });

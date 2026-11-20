@@ -24,7 +24,7 @@ export class SettingsService {
     if (!checked.ok) throw settingsInvalid(checked.error.code, checked.error.at);
     // 이미 있는 예약은 건드리지 않는다(파생 S2) — 새 영업시간은 다음 예약 저장부터 적용된다.
     const { rows: [row] } = await client.query<{ business_hours: BusinessHours | null }>(
-      'UPDATE crm.shop_settings SET business_hours = $2 WHERE shop_id = $1 RETURNING business_hours',
+      'UPDATE crm.shop_settings SET business_hours = $2, updated_at = now() WHERE shop_id = $1 RETURNING business_hours',
       [shopId, checked.value === null ? null : JSON.stringify(checked.value)]);
     if (!row) throw shopNotFound();
     return { businessHours: row.business_hours };
