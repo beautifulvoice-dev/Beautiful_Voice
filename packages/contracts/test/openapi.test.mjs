@@ -78,3 +78,10 @@ test('매장 안내 정보(shop_settings)는 5칸을 모두 주고받고, 링크
   const put = crm.paths['/api/shops/{shopId}/settings/shop-info'].put;
   assert.equal(put.requestBody.content['application/json'].schema.$ref, '#/components/schemas/ShopInfo');
 });
+
+test('동명이인 후보는 비활성 고객도 active로 구분해 보낸다', () => {
+  const res = crm.paths['/api/shops/{shopId}/customers/same-name-check'].post.responses['200'].content['application/json'].schema;
+  const candidate = res.properties.candidates.items;
+  assert.ok(candidate.required.includes('active'));
+  assert.equal(candidate.properties.active.type, 'boolean');
+});

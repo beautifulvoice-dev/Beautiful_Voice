@@ -91,7 +91,8 @@ export interface SameNameCheckRequest {
 }
 export interface SameNameCheckResponse {
   needsReview: boolean;
-  candidates: { customerId: string; name: string; phone: string | null; hint: 'same_phone' | 'phone_missing' | 'different_phone' }[];
+  /** 비활성 고객도 후보에 넣고 active=false로 알린다 — 새로 등록하기 전에 되살리기를 권할 수 있게(S4). */
+  candidates: { customerId: string; name: string; phone: string | null; hint: 'same_phone' | 'phone_missing' | 'different_phone'; active: boolean }[];
 }
 
 // ── 캘린더·예약 ──

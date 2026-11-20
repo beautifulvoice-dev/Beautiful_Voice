@@ -162,12 +162,13 @@ paths:
                     type: array
                     items:
                       type: object
-                      required: [customerId, name, phone, hint]
+                      required: [customerId, name, phone, hint, active]
                       properties:
                         customerId: {type: string, format: uuid}
                         name: {type: string}
                         phone: {type: [string, 'null']}
                         hint: {enum: [same_phone, phone_missing, different_phone]}
+                        active: {type: boolean, description: '비활성 고객도 후보에 넣는다 — 새로 등록하기 전에 되살리기를 권할 수 있게(S4)'}
         default: {$ref: '#/components/responses/Error'}
   /api/shops/{shopId}/customers/{customerId}:
     parameters: [{$ref: '#/components/parameters/ShopId'}, {$ref: '#/components/parameters/CustomerId'}]
