@@ -4,6 +4,8 @@ import { APP_FILTER } from '@nestjs/core';
 import { ApiExceptionFilter } from './common/api-exception.filter';
 import { DatabaseService } from './database.service';
 import { OwnerAuthController } from './owner-auth.controller';
+import { CatalogController } from './settings/catalog.controller';
+import { CatalogService } from './settings/catalog.service';
 import { SettingsController } from './settings/settings.controller';
 import { SettingsService } from './settings/settings.service';
 
@@ -16,7 +18,7 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, OwnerAuthController, SettingsController],
-  providers: [DatabaseService, SettingsService, { provide: APP_FILTER, useClass: ApiExceptionFilter }],
+  controllers: [HealthController, OwnerAuthController, SettingsController, CatalogController],
+  providers: [DatabaseService, SettingsService, CatalogService, { provide: APP_FILTER, useClass: ApiExceptionFilter }],
 })
 export class AppModule {}
