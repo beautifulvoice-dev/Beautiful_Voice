@@ -6,6 +6,8 @@ BEA-162. 모노레포 루트에서 웹과 API 이미지를 빌드한다. 웹 컨
 
 SSM으로 개발 EC2에 접속한 뒤 아래 명령은 레포 루트에서 실행한다. 팀에서 배포하기로 한 Git 커밋을 체크아웃한다.
 
+Compose 프로젝트 이름은 `beautifulvoice-dev`다. 릴리스 경로가 바뀌어도 기존 스택을 갱신하도록 배포할 때 이 이름을 사용한다.
+
 ```bash
 docker version
 docker compose version
