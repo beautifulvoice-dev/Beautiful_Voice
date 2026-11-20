@@ -36,7 +36,11 @@ test('M1 reference data is private to its shop and staff are not login members',
       assert.equal((await client.query('SELECT id FROM crm.menu')).rowCount, 0);
       assert.equal((await client.query('SELECT id FROM crm.customer')).rowCount, 0);
       assert.equal((await client.query('SELECT id FROM crm.shop_closure')).rowCount, 0);
+      assert.equal((await client.query('DELETE FROM crm.shop_closure WHERE shop_id = $1', [shopA])).rowCount, 0);
       assert.equal((await client.query('SELECT location_text FROM crm.shop_settings')).rows[0].location_text, null);
+    });
+    await db.withShop(shopA, async (client) => {
+      assert.equal((await client.query('DELETE FROM crm.shop_closure')).rowCount, 1);
     });
     await assert.rejects(db.withShop(shopB, (client) => client.query(
       "INSERT INTO crm.staff (shop_id, name) VALUES ($1, 'Cross-shop attempt')", [shopA],
