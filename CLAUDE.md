@@ -4,14 +4,15 @@
 Phase 1: 음성 기록 → 전사·구조화 → 웹앱 정리함 / Phase 2: 같은 웹앱의 CRM을 음성·채팅으로 조작 / Phase 3: AI 전화 수신.
 
 ## 반드시 읽을 문서
-- 제품 요구사항(원천, **수정 금지**): `docs/product/source/product-backlog-v1.0.md`
+- **Phase 2 명세 정본(11/19 최종판, 최우선):** Linear 프로젝트 「Phase 2 : AI CRM」의 「[P2] 명세 0. README」~「[P2] 명세 3. 기능 모듈과 마일스톤」(본문은 첨부 md). 옛 「[P2] 2. 상세 기능 명세서」·「[P2] 4. 데이터」와 백로그 v1.0과 다르면 이 명세를 따른다. 본문을 저장소에 옮기지 않는다.
+- 제품 요구사항(원천, **수정 금지**): `docs/product/source/product-backlog-v1.0.md` — 초기 백로그. Phase 2는 위 명세가 대체한다
   - 공개 저장소라 git에 포함되지 않는 로컬 전용 폴더다. 파일이 없으면 사용자에게 Slack 기획 자료 채널에서 받아 넣어 달라고 요청한다. 절대 커밋하지 않는다.
 - 아키텍처: `docs/kickoff/02-architecture.md` · 개발 규칙: `docs/kickoff/04-dev-rules.md`
 - 기술 결정: `docs/adr/` (새 결정은 `write-adr` 스킬로 작성)
 - 회의 입장·첫 주 계획: `docs/kickoff/07-dev-position.md`
 
 ## 현재 단계
-1차 스프린트(2026-11-18 ~ 11-25 자정): **Phase 2 모듈 2A CRM 기반**(P2-01·02·03·04·10 + COM-01~03) 완성. Phase 1은 PM이 별도 저장소에서 만들며, 여기서는 플로우·정책만 참고한다.
+1차 스프린트(2026-11-18 ~ 11-25 자정): **Phase 2 마일스톤 M1 손으로 쓰는 CRM**(2F 기반·2P-1 운영 등록·2A-1 설정·2A-2 고객·2A-3 캘린더·예약, Linear BEA-155~179). 기준은 Linear「[P2] 명세 0~3」(11/19 최종판), 작업 분해는 `docs/kickoff/09-sprint1-2a-breakdown.md`. Phase 1은 PM이 별도 저장소에서 만들며, 여기서는 플로우·정책만 참고한다.
 **기술 스택 확정: ADR-0006**(Accepted, 11/17) — TS 모노레포(pnpm+Turborepo) / React+Vite PWA / NestJS API·워커 / PostgreSQL. 로컬 실행은 README.md를 따른다. 빌드·검사는 pnpm build, pnpm lint, pnpm typecheck, pnpm test를 사용한다(직접 테스트 안내: `docs/dev/testing.md`). PR은 CI `verify` 통과가 머지 필수 조건이다. 호스팅은 AWS EC2 + RDS(ADR-0007).
 역할: 리더·서버 기반 주드 / CRM·웹앱 옵마 / 음성·AI 해나 (`docs/kickoff/05-rnr.md`).
 이전 프로젝트 코드는 **설계만 참고하고 새로 작성**한다(ADR-0005, Accepted). `.private/`의 이전 코드를 복사해 넣지 않는다.
@@ -19,7 +20,7 @@ Phase 1: 음성 기록 → 전사·구조화 → 웹앱 정리함 / Phase 2: 같
 ## 절대 규칙
 1. PM 문서(`docs/product/source/`)는 수정하지 않는다. 제품 질문은 `docs/kickoff/06-pm-questions.md` 형식으로 제안한다.
 2. 문서에 없는 제품 요구사항을 만들지 않는다. 가정이 필요하면 코드 주석·PR에 `ASSUMPTION:`으로 표시한다.
-3. AI(LLM)가 예약·고객 데이터를 **직접 변경하지 않는다.** `ActionProposal` → 원장 승인 → 도메인 서비스 실행 경로만 사용.
+3. AI(LLM)가 예약·고객 데이터를 **직접 변경하지 않는다.** AI 출처 변경은 업무(`crm_task`)로 만들고 손 입력과 같은 도메인 쓰기 함수로만 반영한다. 기본은 원장 승인 후 반영이다. **예외: 원장이 설정에서 `auto`로 바꾼 영역은 승인 없이 반영하고 검수 대기·되돌리기로 관리한다**(ADR-0002 2026-11-19 개정, M5 전까지는 auto 선택 불가). AI는 설정·영역 모드를 바꾸지 못한다.
 4. 웹·음성·전화의 모든 쓰기는 같은 도메인 서비스를 호출한다. 예약 충돌은 DB 제약으로 최종 보장한다.
 5. 모든 데이터는 `shop_id`로 격리한다. 쿼리에 shop 조건이 빠진 코드는 버그다.
 6. 쓰기 API는 `Idempotency-Key`를 지원한다. 원본(녹음·전사)은 불변, 정정은 `revision`으로 남긴다.

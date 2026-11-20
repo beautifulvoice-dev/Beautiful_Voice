@@ -76,6 +76,7 @@ test('the app role can read and change only its current shop', async () => {
     await db.onModuleDestroy();
     await unscoped.end();
     await admin.query('DELETE FROM crm.user_membership WHERE shop_id IN ($1, $2)', [shopA, shopB]);
+    await admin.query('DELETE FROM crm.shop_settings WHERE shop_id IN ($1, $2)', [shopA, shopB]);
     await admin.query('DELETE FROM crm.shop WHERE id IN ($1, $2)', [shopA, shopB]);
     await admin.end();
   }

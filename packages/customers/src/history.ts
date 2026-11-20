@@ -1,3 +1,4 @@
+// ⚠️ 11/19 명세에서 변경 이력은 DB 행 트리거가 crm_change에 남긴다(명세 2 §2.4). 이 파일은 BEA-176에서 정리한다(분해표 §2-1).
 // 고객 수정 이력 이벤트 (P2-02, 분해표 C-02). 외부 의존성 없는 순수 함수.
 // 예약 상태 이력(C-04 StatusEvent)과 같은 형태: 무엇이·누가·어디서·언제.
 // AI는 고객 데이터를 직접 바꾸지 않는다(절대 규칙 3). 마이크·채팅 변경안을 원장이 승인하면 actor는 owner, source는 voice/chat이다.
@@ -46,12 +47,12 @@ export interface CustomerEvent {
   reason?: string;
 }
 
-const FIELDS: readonly CustomerField[] = ["name", "phone", "memo"];
+const FIELDS: readonly CustomerField[] = ["name", "phone", "memo", "birthdate", "address"];
 
 /** 생성 이력. values는 validateNewCustomer를 통과한 값이어야 한다. */
 export function customerCreated(values: CustomerValues, ctx: HistoryContext): { ok: true; event: CustomerEvent } | HistoryError {
   if (!ALLOWED_ACTORS.has(ctx.actor)) return { ok: false, error: "ACTOR_NOT_ALLOWED" };
-  const changes = FIELDS.filter((f) => values[f] !== null).map((f) => ({ field: f, from: null, to: values[f] }));
+  const changes = FIELDS.filter((f) => values[f] != null).map((f) => ({ field: f, from: null, to: values[f] ?? null }));
   return { ok: true, event: event("created", changes, ctx) };
 }
 
@@ -65,7 +66,8 @@ export function customerUpdated(
   ctx: HistoryContext,
 ): { ok: true; event: CustomerEvent | null } | HistoryError {
   if (!ALLOWED_ACTORS.has(ctx.actor)) return { ok: false, error: "ACTOR_NOT_ALLOWED" };
-  const changes = FIELDS.filter((f) => before[f] !== after[f]).map((f) => ({ field: f, from: before[f], to: after[f] }));
+  const changes = FIELDS.filter((f) => (before[f] ?? null) !== (after[f] ?? null))
+    .map((f) => ({ field: f, from: before[f] ?? null, to: after[f] ?? null }));
   return { ok: true, event: changes.length === 0 ? null : event("updated", changes, ctx) };
 }
 

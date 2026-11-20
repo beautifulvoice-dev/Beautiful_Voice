@@ -81,18 +81,18 @@ describe("validateNewCustomer — PD-50 이름만 필수", () => {
   it("이름만으로 만들 수 있다", () => {
     assert.deepEqual(validateNewCustomer({ name: " 김하늘 " }), {
       ok: true,
-      value: { name: "김하늘", phone: null, memo: null },
+      value: { name: "김하늘", phone: null, memo: null, birthdate: null, address: null },
     });
   });
   it("전화번호·메모가 빈 문자열·null이면 없음", () => {
     for (const empty of ["", "   ", null]) {
       const r = validateNewCustomer({ name: "김하늘", phone: empty, memo: empty });
-      assert.deepEqual(r, { ok: true, value: { name: "김하늘", phone: null, memo: null } });
+      assert.deepEqual(r, { ok: true, value: { name: "김하늘", phone: null, memo: null, birthdate: null, address: null } });
     }
   });
   it("전화번호·메모를 정규화한다", () => {
     const r = validateNewCustomer({ name: "김하늘", phone: "010-0000-1111", memo: "  민감성 피부\n재방문 희망  " });
-    assert.deepEqual(r, { ok: true, value: { name: "김하늘", phone: "01000001111", memo: "민감성 피부\n재방문 희망" } });
+    assert.deepEqual(r, { ok: true, value: { name: "김하늘", phone: "01000001111", memo: "민감성 피부\n재방문 희망", birthdate: null, address: null } });
   });
   it("이름이 없으면 NAME_REQUIRED", () => {
     assert.deepEqual(validateNewCustomer({ name: "  " }), { ok: false, errors: [{ field: "name", code: "NAME_REQUIRED" }] });
@@ -115,19 +115,20 @@ describe("validateCustomerPatch·applyPatch — 수정", () => {
     const r = validateCustomerPatch({ memo: " 두 번째 방문 " });
     assert.deepEqual(r, { ok: true, value: { memo: "두 번째 방문" } });
     assert.ok(r.ok);
-    assert.deepEqual(applyPatch(current, r.value), { ...current, memo: "두 번째 방문" });
+    assert.deepEqual(applyPatch(current, r.value), { ...current, memo: "두 번째 방문", birthdate: null, address: null });
   });
   it("전화번호·메모는 null 또는 빈 값으로 지울 수 있다", () => {
     for (const empty of [null, ""]) {
       const r = validateCustomerPatch({ phone: empty, memo: empty });
       assert.ok(r.ok);
-      assert.deepEqual(applyPatch(current, r.value), { name: "김하늘", phone: null, memo: null });
+      assert.deepEqual(applyPatch(current, r.value), { name: "김하늘", phone: null, memo: null, birthdate: null, address: null });
     }
   });
   it("빈 수정 요청은 아무것도 바꾸지 않는다", () => {
     const r = validateCustomerPatch({});
     assert.ok(r.ok);
-    assert.deepEqual(applyPatch(current, r.value), current);
+    // 11/19: 생년월일·거주지가 없던 예전 값은 null로 채워진다.
+    assert.deepEqual(applyPatch(current, r.value), { ...current, birthdate: null, address: null });
   });
   it("이름을 빈 값으로 바꿀 수 없다", () => {
     assert.deepEqual(validateCustomerPatch({ name: " " }), { ok: false, errors: [{ field: "name", code: "NAME_REQUIRED" }] });
