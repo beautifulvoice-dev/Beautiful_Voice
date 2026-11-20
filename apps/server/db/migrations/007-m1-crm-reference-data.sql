@@ -1,7 +1,7 @@
 CREATE TABLE crm.shop_settings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   shop_id uuid NOT NULL UNIQUE REFERENCES crm.shop (id),
-  business_hours jsonb,
+  business_hours jsonb CHECK (business_hours IS NULL OR jsonb_typeof(business_hours) = 'object'),
   refund_policy text,
   naver_place_url text,
   instagram_url text,
