@@ -1,18 +1,18 @@
-// 고객 입력 검증·정규화 (P2-02, 분해표 C-02). 외부 의존성 없는 순수 함수.
-// 규칙 출처: Linear「MLP 범위·제품 결정」PD-50, BEA-12.
-// - 고객은 이름만 필수. 전화번호는 권장이지만 없어도 만들 수 있다(PD-50).
-// - 웹·마이크·채팅 모두 같은 검증을 쓴다. 어디서 왔는지는 이력의 source로만 구분한다(history.ts).
-// 필드는 11/19 PM 데이터 스키마 전까지 최소로 둔다.
-// ASSUMPTION: 이번 단계 필드는 이름·전화번호·메모 3개다. 나이·거주지·생년월일 등은 11/19 스키마 확정 후 추가한다.
+// 고객 입력 검증·정규화 — BEA-172 (명세 1 §2.3, 명세 2 §2.4 customer). 처음 구현은 C-02(#26). 외부 의존성 없는 순수 함수.
+// - 고객은 이름만 필수. 전화·생년월일·거주지·특이사항은 선택 [명세 F-CRM 7]. 이름·전화가 같은 고객도 여러 명 둘 수 있다 [결정 R22].
+// - 웹·음성 업무 모두 같은 검증을 쓴다(절대 규칙 4).
+// - 필드 이름은 웹(apps/web)이 이미 쓰고 있어 유지한다: memo = 특이사항(명세 2의 notes 열). birthdate·address는 11/19에 추가했고
+//   예전 값과 호환되게 선택 필드로 둔다.
 
 export type PhoneKind = "mobile" | "landline";
 
-export type CustomerField = "name" | "phone" | "memo";
+export type CustomerField = "name" | "phone" | "memo" | "birthdate" | "address";
 
 export type CustomerErrorCode =
   | "NAME_REQUIRED" // 이름이 없거나 공백뿐
   | "PHONE_INVALID_CHARACTERS" // 숫자·구분 기호 외 문자가 섞임
-  | "PHONE_INVALID_FORMAT"; // 숫자는 맞지만 국내 휴대폰·유선 형식이 아님
+  | "PHONE_INVALID_FORMAT" // 숫자는 맞지만 국내 휴대폰·유선 형식이 아님
+  | "BIRTHDATE_INVALID"; // YYYY-MM-DD 형식의 실제 날짜가 아님
 
 export interface FieldError {
   field: CustomerField;
@@ -24,6 +24,9 @@ export interface CustomerInput {
   name: string;
   phone?: string | null;
   memo?: string | null;
+  /** "YYYY-MM-DD" */
+  birthdate?: string | null;
+  address?: string | null;
 }
 
 /** 저장할 정규화된 값. 전화번호는 숫자만(예: "01000000000"). */
@@ -31,6 +34,9 @@ export interface CustomerValues {
   name: string;
   phone: string | null;
   memo: string | null;
+  /** "YYYY-MM-DD". 예전 값과 호환되게 선택 필드다(없으면 null로 본다). */
+  birthdate?: string | null;
+  address?: string | null;
 }
 
 /** 수정 요청. undefined = 바꾸지 않음, null = 지움. 이름은 지울 수 없다. */
@@ -38,6 +44,8 @@ export interface CustomerPatch {
   name?: string;
   phone?: string | null;
   memo?: string | null;
+  birthdate?: string | null;
+  address?: string | null;
 }
 
 export type ValidationResult<T> = { ok: true; value: T } | { ok: false; errors: FieldError[] };
@@ -95,8 +103,12 @@ export function validateNewCustomer(input: CustomerInput): ValidationResult<Cust
   const name = normalizeName(input.name);
   if (name === null) errors.push({ field: "name", code: "NAME_REQUIRED" });
   const phone = optionalPhone(input.phone, errors);
+  const birthdate = optionalBirthdate(input.birthdate, errors);
   if (errors.length > 0 || name === null) return { ok: false, errors };
-  return { ok: true, value: { name, phone, memo: optionalText(input.memo) } };
+  return {
+    ok: true,
+    value: { name, phone, memo: optionalText(input.memo), birthdate, address: optionalText(input.address) },
+  };
 }
 
 /** 수정 요청 검증. 들어온 필드만 정규화해 돌려준다. 바뀐 게 있는지는 history.customerUpdated가 판단한다. */
@@ -110,6 +122,8 @@ export function validateCustomerPatch(patch: CustomerPatch): ValidationResult<Cu
   }
   if (patch.phone !== undefined) value.phone = optionalPhone(patch.phone, errors);
   if (patch.memo !== undefined) value.memo = optionalText(patch.memo);
+  if (patch.birthdate !== undefined) value.birthdate = optionalBirthdate(patch.birthdate, errors);
+  if (patch.address !== undefined) value.address = optionalText(patch.address);
   return errors.length > 0 ? { ok: false, errors } : { ok: true, value };
 }
 
@@ -119,6 +133,8 @@ export function applyPatch(current: CustomerValues, patch: CustomerPatch): Custo
     name: patch.name ?? current.name,
     phone: patch.phone === undefined ? current.phone : patch.phone,
     memo: patch.memo === undefined ? current.memo : patch.memo,
+    birthdate: patch.birthdate === undefined ? (current.birthdate ?? null) : patch.birthdate,
+    address: patch.address === undefined ? (current.address ?? null) : patch.address,
   };
 }
 
@@ -137,4 +153,17 @@ function optionalText(raw: string | null | undefined): string | null {
   if (raw == null) return null;
   const text = raw.normalize("NFC").trim();
   return text === "" ? null : text;
+}
+
+/** 생년월일: 앞뒤 공백 제거 후 "YYYY-MM-DD"이고 달력에 있는 날짜여야 한다. 빈 값이면 null. */
+function optionalBirthdate(raw: string | null | undefined, errors: FieldError[]): string | null {
+  if (raw == null || raw.trim() === "") return null;
+  const text = raw.trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(text);
+  const date = m ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))) : null;
+  if (!date || date.toISOString().slice(0, 10) !== text) {
+    errors.push({ field: "birthdate", code: "BIRTHDATE_INVALID" });
+    return null;
+  }
+  return text;
 }
