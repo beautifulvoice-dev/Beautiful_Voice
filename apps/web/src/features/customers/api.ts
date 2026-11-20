@@ -11,7 +11,7 @@ import {
 } from '@bv/customers';
 import { checkSameName, type SameNameCheck, type Subject } from '@bv/customers/duplicates';
 import { createContext, useContext } from 'react';
-import type { Customer, CustomerDetail, Visit, WalletEntry } from './model';
+import type { Customer, CustomerDetail, Visit } from './model';
 import { seedCustomers } from './mockData';
 
 export class CustomerValidationError extends Error {
@@ -33,7 +33,6 @@ export interface CustomerApi {
 
 export interface MemorySeed {
   customers: Customer[];
-  wallet: Record<string, WalletEntry[]>;
   visits: Record<string, Visit[]>;
 }
 
@@ -59,7 +58,7 @@ export function createMemoryCustomerApi(seed: MemorySeed = seedCustomers()): Cus
     async get(id) {
       const c = find(id);
       if (!c) return null;
-      return { ...c, wallet: [...(seed.wallet[id] ?? [])], visits: [...(seed.visits[id] ?? [])] };
+      return { ...c, visits: [...(seed.visits[id] ?? [])] };
     },
     async checkSameName(subject) {
       return checkSameName(subject, customers);

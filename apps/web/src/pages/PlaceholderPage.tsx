@@ -1,4 +1,4 @@
-// 각 담당 작업(C-08 캘린더·C-14 매출)이 들어오기 전까지 자리를 지키는 화면.
+// 각 담당 작업(캘린더 BEA-175 등)이 들어오기 전까지 자리를 지키는 화면.
 import { EmptyState } from '@/components/states/DataState';
 
 export function PlaceholderPage({ title }: { title: string }) {
