@@ -27,6 +27,18 @@ export interface BusinessHoursBody {
   businessHours: BusinessHours | null;
 }
 
+/**
+ * 매장 안내 정보(shop_settings, BEA-166). GET 응답·PUT 본문이 같은 모양이고 모든 칸이 온다(없으면 null).
+ * 매장당 한 행이라 version 없이 통째로 바꾼다. 링크는 http·https만(ASSUMPTION).
+ */
+export interface ShopInfo {
+  refundPolicy: string | null;
+  naverPlaceUrl: string | null;
+  instagramUrl: string | null;
+  landingUrl: string | null;
+  locationText: string | null;
+}
+
 export type ClosureInput =
   | { kind: 'weekly'; weekday: 1 | 2 | 3 | 4 | 5 | 6 | 7; note?: string | null }
   | { kind: 'holiday' | 'vacation'; startDate: string; endDate: string; note?: string | null };

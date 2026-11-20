@@ -66,3 +66,15 @@ test('응답 스키마는 모든 칸을 보낸다(값이 없으면 null) — crm
     assert.deepEqual(props.filter((k) => !required.includes(k)), [], res);
   }
 });
+
+test('매장 안내 정보(shop_settings)는 5칸을 모두 주고받고, 링크는 http·https만 받는다', () => {
+  const info = crm.components.schemas.ShopInfo;
+  const fields = ['refundPolicy', 'naverPlaceUrl', 'instagramUrl', 'landingUrl', 'locationText'];
+  assert.deepEqual([...info.required].sort(), [...fields].sort());
+  assert.deepEqual(Object.keys(info.properties).sort(), [...fields].sort());
+  const link = new RegExp(crm.components.schemas.WebLink.pattern);
+  assert.ok(link.test('https://example.com/shop'));
+  assert.ok(!link.test('javascript:alert(1)'));
+  const put = crm.paths['/api/shops/{shopId}/settings/shop-info'].put;
+  assert.equal(put.requestBody.content['application/json'].schema.$ref, '#/components/schemas/ShopInfo');
+});

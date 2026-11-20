@@ -25,6 +25,22 @@ paths:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/BusinessHoursBody'}}}}
         '422': {$ref: '#/components/responses/Error'} # SETTINGS_INVALID, details {reason, at}
         default: {$ref: '#/components/responses/Error'}
+  /api/shops/{shopId}/settings/shop-info:
+    parameters: [{$ref: '#/components/parameters/ShopId'}]
+    # shop_settings의 환불 정책·매장 링크·위치(BEA-166). 영업시간처럼 매장당 한 행이라 통째로 바꾸고 version은 없다(마지막 저장이 남음).
+    get:
+      summary: 매장 안내 정보 읽기 (넣지 않은 칸은 null)
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ShopInfo'}}}}
+        default: {$ref: '#/components/responses/Error'}
+    put:
+      summary: 매장 안내 정보 통째로 바꾸기 (null = 비우기)
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ShopInfo'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ShopInfo'}}}}
+        '422': {$ref: '#/components/responses/Error'} # VALIDATION_FAILED, details.fields [{field, code}]
+        default: {$ref: '#/components/responses/Error'}
   /api/shops/{shopId}/closures:
     parameters: [{$ref: '#/components/parameters/ShopId'}]
     get:
@@ -304,6 +320,17 @@ components:
           type: [object, 'null']
           propertyNames: {pattern: '^[1-7]$'}
           additionalProperties: {type: array, items: {$ref: '#/components/schemas/OpenWindow'}}
+    ShopInfo:
+      type: object
+      description: "ASSUMPTION: 링크는 http·https 주소만 받는다(고객에게 보여 줄 링크라서). 길이 제한은 명세에 없어 정하지 않았다."
+      required: [refundPolicy, naverPlaceUrl, instagramUrl, landingUrl, locationText]
+      properties:
+        refundPolicy: {type: [string, 'null'], description: '환불 정책 (shop_settings.refund_policy)'}
+        naverPlaceUrl: {$ref: '#/components/schemas/WebLink'}
+        instagramUrl: {$ref: '#/components/schemas/WebLink'}
+        landingUrl: {$ref: '#/components/schemas/WebLink'}
+        locationText: {type: [string, 'null'], description: '위치 안내 글 (shop_settings.location_text)'}
+    WebLink: {type: [string, 'null'], format: uri, pattern: '^https?://'}
     ClosureInput:
       oneOf:
         - {type: object, required: [kind, weekday], properties: {kind: {const: weekly}, weekday: {type: integer, minimum: 1, maximum: 7}, note: {type: [string, 'null']}}}
