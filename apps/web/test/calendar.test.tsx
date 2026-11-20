@@ -122,6 +122,7 @@ describe('캘린더 화면', () => {
     const dialog = await screen.findByRole('dialog', { name: '이서윤' });
     expect(dialog).toHaveTextContent('임산부 — 복부 관리 제외');
     expect(dialog).toHaveTextContent('2026-11-16 13:40 준비 · 14:00–15:00');
+    expect(dialog).toHaveTextContent('예정'); // scheduled 화면 표기
   });
 
   it('담당자가 2명이면 같은 시각 2건이 나란히 보인다(가짜 담당자는 이 테스트에서만)', async () => {

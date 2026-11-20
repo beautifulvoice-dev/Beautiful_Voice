@@ -7,7 +7,7 @@
 export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show' | 'voided';
 
 export const STATUS_TEXT: Record<AppointmentStatus, string> = {
-  scheduled: '예약',
+  scheduled: '예정', // 화면 표기 통일(주드 11/20): 상태는 '예정', 기능 문구(예약 등록·상세)는 '예약'
   completed: '완료',
   cancelled: '취소',
   no_show: '노쇼',
