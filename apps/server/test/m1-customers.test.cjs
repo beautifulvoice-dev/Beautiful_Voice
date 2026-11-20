@@ -171,3 +171,14 @@ test('다른 매장 원장은 404, 같은 키 재전송은 한 번만 등록', a
   assert.equal(again.body.id, first.body.id);
   assert.equal((await call('GET', `${C}?q=${encodeURIComponent('재전송')}`)).body.items.length, 1);
 });
+
+test('전화 검색은 등록 때와 같은 정규화를 쓴다 — +82·하이픈·전각 숫자로 찾아도 나온다, 부분 번호도 그대로', async () => {
+  const c = (await call('POST', C, { body: { name: '국제번호 합성', phone: '+82 10-0000-4321' } })).body;
+  assert.equal(c.phone, '01000004321');
+  const found = async (q) => (await call('GET', `${C}?q=${encodeURIComponent(q)}&limit=100`)).body.items.map((x) => x.id);
+  assert.deepEqual(await found('+82 10-0000-4321'), [c.id], '등록한 그대로 검색');
+  assert.deepEqual(await found('+82 (0)10 0000 4321'), [c.id]);
+  assert.deepEqual(await found('010-0000-4321'), [c.id]);
+  assert.deepEqual(await found('０１０００００４３２１'), [c.id], '전각 숫자');
+  assert.deepEqual(await found('4321'), [c.id], '부분 번호');
+});
