@@ -44,6 +44,7 @@ paths:
     parameters: [{$ref: '#/components/parameters/ShopId'}, {in: path, name: closureId, required: true, schema: {type: string, format: uuid}}]
     delete:
       summary: 휴무 지우기
+      description: shop_closure에는 version이 없다 — 행을 고치지 않고 추가·삭제만 하므로 동시 수정 충돌이 없다(삭제가 겹치면 두 번째는 404)
       parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
       responses:
         '204': {description: Deleted}
@@ -321,7 +322,7 @@ components:
       allOf: [{$ref: '#/components/schemas/MenuFields'}, {type: object, required: [version], properties: {version: {type: integer}, active: {type: boolean}}}]
       description: name을 포함해 모든 필드는 선택(보낸 것만 바뀜). version만 필수
     Menu:
-      allOf: [{$ref: '#/components/schemas/MenuInput'}, {$ref: '#/components/schemas/RowMeta'}, {type: object, required: [active], properties: {active: {type: boolean}}}]
+      allOf: [{$ref: '#/components/schemas/MenuFields'}, {$ref: '#/components/schemas/RowMeta'}, {type: object, required: [name, defaultDurationMin, defaultPrepMin, active], properties: {active: {type: boolean}}}]
     Staff:
       allOf: [{type: object, required: [name, active], properties: {name: {type: string}, active: {type: boolean}}}, {$ref: '#/components/schemas/RowMeta'}]
     RowMeta:
@@ -347,9 +348,9 @@ components:
       description: version만 필수, 나머지는 보낸 것만 바뀐다
     Customer:
       allOf:
-        - {$ref: '#/components/schemas/CustomerInput'}
+        - {$ref: '#/components/schemas/CustomerFields'}
         - {$ref: '#/components/schemas/RowMeta'}
-        - {type: object, required: [active, deactivatedAt], properties: {active: {type: boolean}, deactivatedAt: {type: [string, 'null'], format: date-time}}}
+        - {type: object, required: [name, phone, memo, birthdate, address, active, deactivatedAt], properties: {active: {type: boolean}, deactivatedAt: {type: [string, 'null'], format: date-time}}}
     AppointmentStatus: {enum: [scheduled, completed, cancelled, no_show, voided]}
     AppointmentInput:
       allOf: [{$ref: '#/components/schemas/AppointmentFields'}, {type: object, required: [customerId, staffId, startAt, durationMin]}]
@@ -368,10 +369,10 @@ components:
       description: version만 필수, 나머지는 보낸 것만 바뀐다. 상태는 /status로
     Appointment:
       allOf:
-        - {$ref: '#/components/schemas/AppointmentInput'}
+        - {$ref: '#/components/schemas/AppointmentFields'}
         - {$ref: '#/components/schemas/RowMeta'}
         - type: object
-          required: [status, customerName, menuName, blockedBy]
+          required: [customerId, menuId, staffId, startAt, durationMin, prepMin, memo, status, customerName, menuName, blockedBy]
           properties:
             status: {$ref: '#/components/schemas/AppointmentStatus'}
             customerName: {type: string, description: '카드 표시용(고객 이름)'}
@@ -388,5 +389,6 @@ components:
     CalendarBlockInput:
       allOf: [{$ref: '#/components/schemas/CalendarBlockPatchable'}, {type: object, required: [startAt, endAt, allStaff, staffIds]}]
     CalendarBlock:
-      allOf: [{$ref: '#/components/schemas/CalendarBlockInput'}, {$ref: '#/components/schemas/RowMeta'}]
+      allOf: [{$ref: '#/components/schemas/CalendarBlockPatchable'}, {$ref: '#/components/schemas/RowMeta'}, {type: object, required: [startAt, endAt, allStaff, staffIds, memo]}]
+      description: 응답은 모든 칸이 온다(값이 없으면 null)
 security: [{ownerSession: []}]

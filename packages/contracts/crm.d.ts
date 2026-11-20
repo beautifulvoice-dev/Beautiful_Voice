@@ -1,5 +1,5 @@
 // M1 CRM 계약 타입 — crm.openapi.yaml과 같은 모양. 웹(apps/web)과 서버(apps/server)가 같이 쓴다.
-// yaml을 바꾸면 여기도 같이 바꾼다(test/openapi.test.mjs가 스키마 이름·필수 필드를 대조한다).
+// yaml을 바꾸면 여기도 같이 바꾼다. 응답 타입은 모든 칸이 온다(값이 없으면 null) — yaml 응답 스키마의 required와 같다.
 
 /** 고칠 수 있는 행의 공통 칸. version은 동시 수정 거부(409 VERSION_CONFLICT)에 쓴다. */
 export interface RowMeta {
@@ -118,9 +118,9 @@ export interface CalendarBlockFields {
   allStaff: boolean;
   /** allStaff=false일 때 1명 이상 */
   staffIds: string[];
-  memo?: string | null;
+  memo: string | null;
 }
-export type CalendarBlockInput = CalendarBlockFields;
+export type CalendarBlockInput = Omit<CalendarBlockFields, 'memo'> & { memo?: string | null };
 export type CalendarBlockPatch = PatchOf<CalendarBlockFields>;
 export interface CalendarBlock extends CalendarBlockFields, RowMeta {}
 

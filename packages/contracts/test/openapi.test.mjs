@@ -57,3 +57,12 @@ test('예약 상태 값은 명세 5종, 상태 바꾸기는 voided를 고를 수
   const body = crm.paths['/api/shops/{shopId}/appointments/{appointmentId}/status'].put.requestBody.content['application/json'].schema;
   assert.ok(!body.properties.status.enum.includes('voided'));
 });
+
+test('응답 스키마는 모든 칸을 보낸다(값이 없으면 null) — crm.d.ts 응답 타입과 같은 뜻', () => {
+  const pairs = [['Menu', 'MenuFields'], ['Customer', 'CustomerFields'], ['Appointment', 'AppointmentFields'], ['CalendarBlock', 'CalendarBlockPatchable']];
+  for (const [res, fields] of pairs) {
+    const required = crm.components.schemas[res].allOf.flatMap((p) => p.required ?? []);
+    const props = Object.keys(crm.components.schemas[fields].properties);
+    assert.deepEqual(props.filter((k) => !required.includes(k)), [], res);
+  }
+});
