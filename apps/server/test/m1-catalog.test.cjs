@@ -13,6 +13,7 @@ const { ApiExceptionFilter } = require('../dist/common/api-exception.filter.js')
 const { CatalogController } = require('../dist/settings/catalog.controller.js');
 const { CatalogService } = require('../dist/settings/catalog.service.js');
 const { signCookie } = require('../dist/owner-session.js');
+const { MAX_MINUTES } = require('@bv/scheduling/booking');
 
 const SECRET = 'ce'.repeat(32);
 const env = {
@@ -148,13 +149,14 @@ test('같은 키로 재전송하면 메뉴는 한 번만 생긴다', async () =>
   assert.equal(same.length, 1);
 });
 
-test('DB integer 범위를 넘는 분 값은 등록·수정 모두 500이 아니라 422(#39 validateMenu 상한)', async () => {
-  const tooBig = 2147483648;
+test('DB integer 범위를 넘는 분 값은 등록·수정 모두 500이 아니라 422(@bv/scheduling MAX_MINUTES)', async () => {
+  assert.equal(MAX_MINUTES, 2147483647, 'DB integer 최댓값');
+  const tooBig = MAX_MINUTES + 1;
   const created = await call('POST', `${A}/menus`, { body: { name: '합성 범위 메뉴', defaultDurationMin: tooBig } });
   assert.equal(created.status, 422);
   assert.deepEqual(created.body.details.fields, [{ field: 'defaultDurationMin', code: 'INVALID_MINUTES' }]);
-  const menu = (await call('POST', `${A}/menus`, { body: { name: '합성 범위 메뉴', defaultDurationMin: 2147483647, defaultPrepMin: 0 } })).body;
-  assert.equal(menu.defaultDurationMin, 2147483647, '최댓값은 저장된다');
+  const menu = (await call('POST', `${A}/menus`, { body: { name: '합성 범위 메뉴', defaultDurationMin: MAX_MINUTES, defaultPrepMin: 0 } })).body;
+  assert.equal(menu.defaultDurationMin, MAX_MINUTES, '최댓값은 저장된다');
   const edited = await call('PATCH', `${A}/menus/${menu.id}`, { body: { version: 1, defaultPrepMin: tooBig } });
   assert.equal(edited.status, 422);
   assert.deepEqual(edited.body.details.fields, [{ field: 'defaultPrepMin', code: 'INVALID_MINUTES' }]);
