@@ -1,12 +1,12 @@
 // C-03 수용 기준: 모바일 화면에서 등록 → 검색 → 수정. 데이터는 합성(절대 규칙 8).
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
 import { describe, expect, it } from 'vitest';
 import { SessionLoaderProvider } from '@/features/auth/session';
 import { createMemoryCustomerApi, CustomerApiProvider, type CustomerApi } from '@/features/customers/api';
-import { visitStatusText, walletBalance, type WalletEntry } from '@/features/customers/model';
+import { visitHistory, type Visit } from '@/features/customers/model';
 import { routes } from '@/routes';
 
 function renderAt(path: string, api: CustomerApi = createMemoryCustomerApi()) {
@@ -56,8 +56,8 @@ describe('고객 목록·검색', () => {
     await screen.findByRole('heading', { level: 1, name: '이서윤' });
     await router.navigate(-1);
     expect(await screen.findByRole('searchbox', { name: '고객 검색' })).toHaveValue('서윤');
-    await screen.findByRole('list', { name: '고객 목록' });
-    expect(names()).toEqual(['이서윤010-0000-0003']);
+    // 목록은 비동기로 다시 불러오므로 걸러진 결과가 올 때까지 기다린다.
+    await waitFor(() => expect(names()).toEqual(['이서윤010-0000-0003']));
   });
 
   it('불러오기에 실패하면 다시 시도할 수 있다', async () => {
@@ -137,12 +137,13 @@ describe('동명이인 확인과 입력이 어긋나지 않는다 (#32 리뷰)',
   });
 });
 
-describe('고객 카드: 지갑·방문 기록', () => {
-  it('지갑 잔액과 방문 상태를 한 화면에 보여 준다', async () => {
+describe('고객 상세: 정보·예약·방문 이력 (명세 3 2A-2.4)', () => {
+  it('이력은 원장이 표시한 상태 그대로 보이고, 지갑·발송 이력은 자리만 있다', async () => {
     renderAt('/customers/c1');
-    expect(await screen.findByLabelText('지갑 잔액')).toHaveTextContent('잔액 240,000원');
-    const visits = within(screen.getByRole('list', { name: '방문 기록' })).getAllByRole('listitem');
-    expect(visits.map((v) => v.lastChild?.textContent)).toEqual(['방문 예정', '완료', '노쇼', '완료']);
+    const visits = within(await screen.findByRole('list', { name: '예약·방문 이력' })).getAllByRole('listitem');
+    expect(visits.map((v) => v.lastChild?.textContent)).toEqual(['예정', '완료', '취소', '노쇼', '완료']);
+    expect(screen.getByRole('region', { name: '지갑' })).toHaveTextContent('다음 단계에서 열려요');
+    expect(screen.getByRole('region', { name: '발송 이력' })).toHaveTextContent('다음 단계에서 열려요');
   });
 
   it('없는 고객은 안내를 보여 준다', async () => {
@@ -150,11 +151,16 @@ describe('고객 카드: 지갑·방문 기록', () => {
     expect(await screen.findByText('없는 고객이에요')).toBeInTheDocument();
   });
 
-  it('잔액은 기록의 합, 지난 확정 세션은 완료', () => {
-    const e = (label: WalletEntry['label'], amount: number): WalletEntry => ({ id: label, at: '', label, amount, memo: null, createdBy: 'owner' });
-    expect(walletBalance([e('payment', 100_000), e('deduct', -30_000), e('refund', -20_000), e('other', 5_000)])).toBe(55_000);
-    const now = new Date('2026-11-19T00:00:00Z');
-    expect(visitStatusText({ id: 'a', startsAt: '2026-11-18T02:00:00Z', menu: '', status: 'confirmed' }, now)).toBe('완료');
-    expect(visitStatusText({ id: 'b', startsAt: '2026-11-20T02:00:00Z', menu: '', status: 'confirmed' }, now)).toBe('방문 예정');
+  it('지난 예약도 저절로 완료되지 않고, 되돌린 예약(무효)은 이력에 없다', () => {
+    const v = (id: string, startsAt: string, status: Visit['status']): Visit => ({ id, startsAt, menu: '', status });
+    const history = visitHistory([
+      v('past', '2026-11-18T02:00:00Z', 'scheduled'),
+      v('undone', '2026-11-19T02:00:00Z', 'voided'),
+      v('next', '2026-11-20T02:00:00Z', 'scheduled'),
+    ]);
+    expect(history.map((h) => [h.id, h.status])).toEqual([
+      ['next', 'scheduled'],
+      ['past', 'scheduled'],
+    ]);
   });
 });

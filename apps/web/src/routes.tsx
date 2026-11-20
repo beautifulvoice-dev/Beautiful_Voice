@@ -26,7 +26,6 @@ export const routes: RouteObject[] = [
       { path: 'customers/new', element: <CustomerFormPage /> },
       { path: 'customers/:id', element: <CustomerDetailPage /> },
       { path: 'customers/:id/edit', element: <CustomerFormPage /> },
-      { path: 'revenue', element: <PlaceholderPage title="매출" /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: '*', element: <EmptyState title="없는 화면이에요" /> },
     ],
