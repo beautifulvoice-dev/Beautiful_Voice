@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 
 import {
   type ActiveBlock,
+  MAX_MINUTES,
   type ExistingBooking,
   type ShopHours,
   blockedAppointmentIds,
@@ -112,6 +113,16 @@ describe("영업시간·휴무 (AC-S2-1)", () => {
     const wednesdayOff: ShopHours = { businessHours: null, closures: [{ kind: "weekly", weekday: 3 }] };
     assert.equal(reasonOf(checkBooking(req("A", "23:30"), wednesdayOff, [], [])), "CLOSED_DAY");
     assert.equal(reasonOf(checkBooking(req("A", "23:00"), wednesdayOff, [], [])), "ok");
+  });
+
+  it("관리·준비 시간은 DB integer 범위까지만 받는다(#36 리뷰 3회)", () => {
+    // 상한까지는 계산이 유효 범위 안이라 판정이 끝난다.
+    assert.equal(reasonOf(checkBooking(req("A", "10:00", MAX_MINUTES, MAX_MINUTES), OPEN, [], [])), "ok");
+    // 상한을 넘으면 날짜 계산 전에 INVALID_PERIOD (1e12분은 예전엔 toSeoul에서 RangeError).
+    assert.equal(reasonOf(checkBooking(req("A", "10:00", MAX_MINUTES + 1), OPEN, [], [])), "INVALID_PERIOD");
+    assert.equal(reasonOf(checkBooking(req("A", "10:00", 60, MAX_MINUTES + 1), OPEN, [], [])), "INVALID_PERIOD");
+    assert.equal(reasonOf(checkBooking(req("A", "10:00", 1e12), OPEN, [], [])), "INVALID_PERIOD");
+    assert.equal(reasonOf(checkBooking(req("A", "10:00", 60, 1e12), OPEN, [], [])), "INVALID_PERIOD");
   });
 
   it("여러 날에 걸친 관리는 사이에 낀 휴무일도 검사(#36 리뷰 2회)", () => {

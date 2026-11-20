@@ -111,6 +111,18 @@ export function sessionOf(r: Pick<BookingRequest, "start" | "durationMin">): Int
 }
 
 /**
+ * 분 값의 저장 상한 = PostgreSQL `integer` 최댓값. 예약의 `duration_min`·`prep_min`과 메뉴 기본 시간 컬럼이
+ * `integer`라 이보다 크면 저장 시 서버 오류가 나고, 날짜 계산이 유효 범위를 넘을 수도 있다(#36·#39 리뷰).
+ * 업무상 상한은 두지 않는다(설계 노트 Q4).
+ */
+export const MAX_MINUTES = 2_147_483_647;
+
+/** min 이상 MAX_MINUTES 이하의 정수인지. */
+export function minutesIn(value: number, min: number): boolean {
+  return Number.isInteger(value) && value >= min && value <= MAX_MINUTES;
+}
+
+/**
  * 예약을 이 시간·담당자로 저장(생성·이동)할 수 있는지 판정한다.
  * 호출 규약 — 예약 쓰기 함수(BEA-176)가 지킨다:
  * - `existing`·`blocks`에는 **같은 매장**의 행만 넘긴다(절대 규칙 5). 상태는 걸러서 넘기지 않아도 된다(여기서 거른다).
@@ -127,8 +139,8 @@ export function checkBooking(
   if (!request.staffId) return reject("STAFF_REQUIRED");
   if (
     Number.isNaN(request.start.getTime()) ||
-    !Number.isInteger(request.durationMin) || request.durationMin <= 0 ||
-    !Number.isInteger(request.prepMin) || request.prepMin < 0
+    !minutesIn(request.durationMin, 1) ||
+    !minutesIn(request.prepMin, 0)
   ) {
     return reject("INVALID_PERIOD");
   }
