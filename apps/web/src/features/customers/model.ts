@@ -29,7 +29,7 @@ export const VISIT_STATUS_TEXT: Record<Exclude<VisitStatus, 'voided'>, string> =
 
 /**
  * 고객 상세에 보일 예약·방문 이력. 최근 것부터.
- * ASSUMPTION: 무효(voided)는 AI 예약을 되돌린 것이라 실제 방문이 아니므로 이력에서 뺀다.
+ * 무효(voided)는 방문 이력과 점유에서 빠진다(명세 1 §3.3 되돌리기).
  */
 export function visitHistory(visits: readonly Visit[]): (Visit & { status: Exclude<VisitStatus, 'voided'> })[] {
   return visits
