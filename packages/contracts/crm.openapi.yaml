@@ -8,6 +8,8 @@ info:
     · 목록은 cursor · 모든 리소스는 경로의 shopId 범위이고, 로그인한 원장이 그 매장 소속이 아니면 404.
     동시 수정: 고칠 수 있는 행은 version을 돌려주고, 수정 요청에 받은 version을 실어 보낸다. 다르면 409 VERSION_CONFLICT.
     설정은 사람만 바꾼다(결정 R0). 이 경로들은 원장 세션 전용이고 AI 실행기는 쓰지 않는다.
+    DB(#43, 스키마 crm): 예약은 appointment_m1. version·updatedAt은 DB 트리거가 올린다(예약은 #43, 메뉴·담당자·고객은 #43 리뷰에서 제안).
+    고객 created_source는 서버가 채운다(웹 등록 = manual) — 계약에는 없다.
 paths:
   # ── 설정 (BEA-166·167, 2A-1) ───────────────────────────
   /api/shops/{shopId}/settings/business-hours:
@@ -199,7 +201,7 @@ paths:
     parameters: [{$ref: '#/components/parameters/ShopId'}]
     get:
       summary: 캘린더 한 화면치(담당자·예약·활성 차단). from~to는 매장 날짜, 마지막 날 포함, 최대 42일
-      description: 점유 [시작−준비, 시작+관리)나 차단이 기간에 걸치면 포함한다. 취소·무효 예약도 오지만 화면은 그리지 않는다.
+      description: 점유 [시작−준비, 시작+관리)나 차단이 기간에 걸치면 포함한다. 취소·무효 예약도 오지만 화면은 그리지 않는다. 차단 테이블(BEA-179)이 생기기 전까지 blocks는 항상 빈 배열이다.
       parameters:
         - {in: query, name: from, required: true, schema: {type: string, format: date}}
         - {in: query, name: to, required: true, schema: {type: string, format: date}}
@@ -254,6 +256,7 @@ paths:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Appointment'}}}}
         '409': {$ref: '#/components/responses/Error'} # VERSION_CONFLICT · NO_CHANGE · INVALID_TRANSITION · STAFF_OVERLAP(취소 되살릴 때)
         default: {$ref: '#/components/responses/Error'}
+  # 차단 API는 calendar_block 테이블이 생기는 BEA-179에서 구현한다(#43 시연 범위 밖). 11/25 시연에는 없다.
   /api/shops/{shopId}/calendar-blocks:
     parameters: [{$ref: '#/components/parameters/ShopId'}]
     post:

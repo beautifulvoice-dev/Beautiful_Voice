@@ -1,7 +1,7 @@
 // M1 CRM 계약 타입 — crm.openapi.yaml과 같은 모양. 웹(apps/web)과 서버(apps/server)가 같이 쓴다.
 // yaml을 바꾸면 여기도 같이 바꾼다. 응답 타입은 모든 칸이 온다(값이 없으면 null) — yaml 응답 스키마의 required와 같다.
 
-/** 고칠 수 있는 행의 공통 칸. version은 동시 수정 거부(409 VERSION_CONFLICT)에 쓴다. */
+/** 고칠 수 있는 행의 공통 칸. version은 동시 수정 거부(409 VERSION_CONFLICT)에 쓴다. 올리는 건 DB 트리거(#43). */
 export interface RowMeta {
   id: string;
   version: number;
@@ -74,6 +74,7 @@ export interface CustomerFields {
 }
 export type CustomerInput = Pick<CustomerFields, 'name'> & Partial<Omit<CustomerFields, 'name'>>;
 export type CustomerPatch = PatchOf<CustomerFields>;
+/** created_source(manual·voice_task·onboarding)는 서버가 채우고 응답에 넣지 않는다. 웹 등록은 manual. */
 export interface Customer extends CustomerFields, RowMeta {
   active: boolean;
   deactivatedAt: string | null;
@@ -140,6 +141,7 @@ export interface CalendarBlock extends CalendarBlockFields, RowMeta {}
 export interface CalendarResponse {
   staff: Staff[];
   appointments: Appointment[];
+  /** 차단 테이블(BEA-179) 전까지는 항상 빈 배열 */
   blocks: CalendarBlock[];
 }
 
