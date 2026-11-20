@@ -147,3 +147,15 @@ test('같은 키로 재전송하면 메뉴는 한 번만 생긴다', async () =>
   const same = (await call('GET', `${A}/menus`)).body.items.filter((m) => m.name === body.name);
   assert.equal(same.length, 1);
 });
+
+test('DB integer 범위를 넘는 분 값은 등록·수정 모두 500이 아니라 422(#39 validateMenu 상한)', async () => {
+  const tooBig = 2147483648;
+  const created = await call('POST', `${A}/menus`, { body: { name: '합성 범위 메뉴', defaultDurationMin: tooBig } });
+  assert.equal(created.status, 422);
+  assert.deepEqual(created.body.details.fields, [{ field: 'defaultDurationMin', code: 'INVALID_MINUTES' }]);
+  const menu = (await call('POST', `${A}/menus`, { body: { name: '합성 범위 메뉴', defaultDurationMin: 2147483647, defaultPrepMin: 0 } })).body;
+  assert.equal(menu.defaultDurationMin, 2147483647, '최댓값은 저장된다');
+  const edited = await call('PATCH', `${A}/menus/${menu.id}`, { body: { version: 1, defaultPrepMin: tooBig } });
+  assert.equal(edited.status, 422);
+  assert.deepEqual(edited.body.details.fields, [{ field: 'defaultPrepMin', code: 'INVALID_MINUTES' }]);
+});
