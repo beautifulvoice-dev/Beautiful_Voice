@@ -1,0 +1,15 @@
+**
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!apps/
+!apps/**
+!packages/
+!packages/**
+!deploy/
+!deploy/Caddyfile
+**/node_modules
+**/dist
+**/.env*
+**/.git
+**/.private
