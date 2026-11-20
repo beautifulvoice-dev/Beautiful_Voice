@@ -178,6 +178,18 @@ describe('캘린더 화면', () => {
     expect(await screen.findByRole('heading', { level: 2, name: '11월 23일 – 11월 29일' })).toBeInTheDocument();
   });
 
+  it('월간 보기에서도 준비 시간이 있는 예약을 구분한다(관리 시작 + 준비 표시)', async () => {
+    renderAt('/calendar?view=month&date=2026-11-18');
+    const monday = await screen.findByRole('region', { name: '11월 16일' });
+    const withPrep = within(monday).getByRole('button', { name: /14:00 이서윤/ });
+    const prep = withPrep.querySelector('[data-kind="prep"]');
+    expect(prep).toHaveTextContent('준비 20분');
+    expect(prep).toHaveAttribute('title', '준비 13:40부터 20분');
+    const tuesday = screen.getByRole('region', { name: '11월 17일' });
+    const noPrep = within(tuesday).getByRole('button', { name: /11:30 최유나/ });
+    expect(noPrep.querySelector('[data-kind="prep"]')).toBeNull();
+  });
+
   it('주소의 날짜가 없는 날이면 오늘 기준으로 보여 준다', async () => {
     expect(validDate('2026-11-18')).toBe(true);
     expect(['2026-99-99', '2026-02-30', '2026-1-1', null].map(validDate)).toEqual([false, false, false, false]);

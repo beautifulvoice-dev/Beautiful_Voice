@@ -1,4 +1,5 @@
-// 월간 보기: 날짜 칸마다 그날 예약(시작 시각·고객)과 차단을 한 줄씩. 관리·준비 길이는 주간 보기에서 본다.
+// 월간 보기: 날짜 칸마다 그날 예약(관리 시작 시각·고객)과 차단을 한 줄씩. 준비 시간이 있으면 준비 모양 표시를 붙인다
+// (BEA-175: 주·월 모두 관리·준비·차단 구분 — #41 리뷰). 길이까지 그린 모양은 주간 보기에서 본다.
 import {
   isShown,
   segmentsForDay,
@@ -62,7 +63,17 @@ export function MonthView({ days, month, data, today, onOpen }: Props) {
                       onClick={() => onOpen(a)}
                       className="w-full truncate rounded-sm px-1 text-left hover:bg-accent"
                     >
-                      <span aria-hidden className={cn('mr-1 inline-block size-2 rounded-full', KIND_CLASS.care)} />
+                      {/* 좁은 칸에서도 잘리지 않게 준비 표시는 글자 앞의 작은 빗금 칸으로. 글자는 화면 읽기·툴팁용. */}
+                      {a.prepMin > 0 && (
+                        <span
+                          data-kind="prep"
+                          title={`준비 ${shopTime(Date.parse(a.startAt) - a.prepMin * 60_000)}부터 ${a.prepMin}분`}
+                          className={cn('mr-0.5 inline-block h-2 w-2.5 rounded-l-sm align-middle', KIND_CLASS.prep)}
+                        >
+                          <span className="sr-only">준비 {a.prepMin}분</span>
+                        </span>
+                      )}
+                      <span aria-hidden className={cn('mr-1 inline-block size-2 rounded-full align-middle', KIND_CLASS.care)} />
                       {shopTime(a.startAt)} {a.customerName}
                       {a.status !== 'scheduled' && ` (${STATUS_TEXT[a.status]})`}
                     </button>
