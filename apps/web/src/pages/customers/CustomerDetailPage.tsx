@@ -1,20 +1,12 @@
-// 고객 카드: 개인 정보·지갑·방문 기록을 한 화면에서 본다(CUS-4). 노트북에서는 두 칸으로 펼친다.
+// 고객 상세: 정보와 예약·방문 이력을 본다. 지갑·발송 이력은 M1에서 자리만 둔다(명세 3 2A-2.4).
+// 노트북에서는 두 칸으로 펼친다.
 import { ChevronLeft, Pencil } from 'lucide-react';
 import { useCallback, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router';
 import { EmptyState, ErrorState } from '@/components/states/DataState';
 import { Button } from '@/components/ui/button';
 import { useCustomerApi } from '@/features/customers/api';
-import {
-  formatDate,
-  formatDateTime,
-  formatPhone,
-  formatWon,
-  visitStatusText,
-  walletBalance,
-  WALLET_LABEL_TEXT,
-  type CustomerDetail,
-} from '@/features/customers/model';
+import { formatDateTime, formatPhone, visitHistory, VISIT_STATUS_TEXT, type CustomerDetail } from '@/features/customers/model';
 import { useLoad } from '@/lib/useLoad';
 
 export function CustomerDetailPage() {
@@ -38,9 +30,7 @@ export function CustomerDetailPage() {
 }
 
 function CustomerCard({ customer: c }: { customer: CustomerDetail }) {
-  const now = new Date();
-  const visits = [...c.visits].sort((a, b) => b.startsAt.localeCompare(a.startsAt));
-  const wallet = [...c.wallet].sort((a, b) => b.at.localeCompare(a.at));
+  const visits = visitHistory(c.visits);
 
   return (
     <>
@@ -63,52 +53,39 @@ function CustomerCard({ customer: c }: { customer: CustomerDetail }) {
           </dl>
         </Section>
 
-        <Section title="지갑" aside={<span aria-label="지갑 잔액">잔액 {formatWon(walletBalance(c.wallet))}</span>}>
-          {wallet.length === 0 ? (
-            <p className="text-sm text-muted-foreground">지갑 기록이 없어요</p>
+        <Section title="지갑">
+          <p className="text-sm text-muted-foreground">지갑은 다음 단계에서 열려요</p>
+        </Section>
+
+        <Section title="예약·방문 이력" className="md:col-span-2">
+          {visits.length === 0 ? (
+            <p className="text-sm text-muted-foreground">예약·방문 이력이 없어요</p>
           ) : (
-            <ul aria-label="지갑 기록" className="divide-y text-sm">
-              {wallet.map((e) => (
-                <li key={e.id} className="flex justify-between gap-2 py-2">
+            <ul aria-label="예약·방문 이력" className="divide-y text-sm">
+              {visits.map((v) => (
+                <li key={v.id} className="flex justify-between gap-2 py-2">
                   <span>
-                    {formatDate(e.at)} · {WALLET_LABEL_TEXT[e.label]}
-                    {e.memo && <span className="text-muted-foreground"> · {e.memo}</span>}
+                    {formatDateTime(v.startsAt)} · {v.menu}
                   </span>
-                  <span className="shrink-0 tabular-nums">{formatWon(e.amount, true)}</span>
+                  <span className="shrink-0 font-medium">{VISIT_STATUS_TEXT[v.status]}</span>
                 </li>
               ))}
             </ul>
           )}
         </Section>
 
-        <Section title="방문 기록" className="md:col-span-2">
-          {visits.length === 0 ? (
-            <p className="text-sm text-muted-foreground">방문 기록이 없어요</p>
-          ) : (
-            <ul aria-label="방문 기록" className="divide-y text-sm">
-              {visits.map((v) => (
-                <li key={v.id} className="flex justify-between gap-2 py-2">
-                  <span>
-                    {formatDateTime(v.startsAt)} · {v.menu}
-                  </span>
-                  <span className="shrink-0 font-medium">{visitStatusText(v, now)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+        <Section title="발송 이력" className="md:col-span-2">
+          <p className="text-sm text-muted-foreground">문자 발송 이력은 다음 단계에서 열려요</p>
         </Section>
       </div>
     </>
   );
 }
 
-function Section({ title, aside, className, children }: { title: string; aside?: ReactNode; className?: string; children: ReactNode }) {
+function Section({ title, className, children }: { title: string; className?: string; children: ReactNode }) {
   return (
     <section aria-label={title} className={`rounded-md border p-4 ${className ?? ''}`}>
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="font-semibold">{title}</h2>
-        {aside && <span className="text-sm font-medium">{aside}</span>}
-      </div>
+      <h2 className="mb-3 font-semibold">{title}</h2>
       {children}
     </section>
   );

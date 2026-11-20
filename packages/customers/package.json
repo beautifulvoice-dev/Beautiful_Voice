@@ -2,7 +2,7 @@
   "name": "@bv/customers",
   "version": "0.0.0",
   "private": true,
-  "description": "고객 입력 검증·정규화, 동명이인 판정, 수정 이력(P2-02, C-02) — 순수 도메인 로직",
+  "description": "고객 입력 검증·정규화, 동명이인 판정, 비활성화(BEA-172·173) — 순수 도메인 로직. history는 DB 트리거(crm_change)로 대체 예정",
   "type": "module",
   "engines": {
     "node": ">=24"
@@ -10,7 +10,8 @@
   "exports": {
     ".": "./src/customer.ts",
     "./duplicates": "./src/duplicates.ts",
-    "./history": "./src/history.ts"
+    "./history": "./src/history.ts",
+    "./activation": "./src/activation.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

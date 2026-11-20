@@ -26,6 +26,7 @@ before(async () => {
 after(async () => {
   await db.onModuleDestroy();
   await admin.query('DELETE FROM crm.idempotency_key WHERE shop_id IN ($1, $2)', [shopA, shopB]);
+  await admin.query('DELETE FROM crm.shop_settings WHERE shop_id IN ($1, $2)', [shopA, shopB]);
   await admin.query('DELETE FROM crm.shop WHERE id IN ($1, $2)', [shopA, shopB]);
   await admin.end();
 });
