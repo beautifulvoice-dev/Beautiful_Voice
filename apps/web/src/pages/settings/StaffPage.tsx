@@ -50,10 +50,18 @@ export function StaffPage() {
       <Link to="/settings" className="text-sm text-ink-soft md:hidden">
         ‹ 설정
       </Link>
-      <h1 className="text-xl font-semibold text-ink">담당자</h1>
+      {/* 디자인(W5·W13) 머리: 큰 제목 + 오른쪽 "+ 추가" */}
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold text-ink">담당자</h1>
+        {staff && (
+          <ActionButton variant="brandSolid" size="small" onClick={() => openSheet({ kind: 'new' })} aria-label="담당자 추가">
+            + 추가
+          </ActionButton>
+        )}
+      </div>
       {state.status === 'loading' && <p className="py-8 text-center text-sm text-ink-soft">불러오는 중…</p>}
       {state.status === 'error' && <ErrorState onRetry={reload} />}
-      {staff && <StaffList staff={staff} reload={reload} onAdd={() => openSheet({ kind: 'new' })} onEdit={(id) => openSheet({ kind: 'edit', id })} />}
+      {staff && <StaffList staff={staff} reload={reload} onEdit={(id) => openSheet({ kind: 'edit', id })} />}
       <StaffSheet
         key={`${target ? `${target.id}:${target.version}` : 'new'}:${session}`}
         open={sheetOpen}
@@ -68,7 +76,7 @@ export function StaffPage() {
   );
 }
 
-function StaffList({ staff, reload, onAdd, onEdit }: { staff: Staff[]; reload: () => void; onAdd: () => void; onEdit: (id: string) => void }) {
+function StaffList({ staff, reload, onEdit }: { staff: Staff[]; reload: () => void; onEdit: (id: string) => void }) {
   const api = useSettingsApi();
   const show = useSaveAction(reload);
   const [showing, setShowing] = useState('');
@@ -84,9 +92,6 @@ function StaffList({ staff, reload, onAdd, onEdit }: { staff: Staff[]; reload: (
 
   return (
     <div className="flex flex-col gap-5">
-      <ActionButton variant="neutralWeak" onClick={onAdd}>
-        담당자 추가
-      </ActionButton>
       {show.problem && 'message' in show.problem && (
         <p role="alert" className="text-sm text-critical-text">
           {showing}: {show.problem.message}

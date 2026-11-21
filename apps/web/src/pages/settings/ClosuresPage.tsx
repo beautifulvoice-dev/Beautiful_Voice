@@ -3,7 +3,7 @@
 // 추가는 폰에서 아래 시트, 노트북에서 가운데 창(SEED ResponsiveDialog, 해나 11/21 결정).
 // 지우기는 한 번 더 묻지 않는다 — 기록은 서버에 남고(removed), 같은 휴무를 다시 넣으면 된다(디자인 정책: 되돌릴 수 없는 일만 묻는다).
 import type { Closure } from '@bv/contracts';
-import { ActionButton, ResponsiveDialog, SegmentedControl, SegmentedControlItemHiddenInput } from '@seed-design/react';
+import { ActionButton, Badge, ResponsiveDialog, SegmentedControl, SegmentedControlItemHiddenInput } from '@seed-design/react';
 import { useCallback, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { EmptyState, ErrorState } from '@/components/states/DataState';
@@ -33,14 +33,22 @@ export function ClosuresPage() {
       <Link to="/settings" className="text-sm text-ink-soft md:hidden">
         ‹ 설정
       </Link>
-      <h1 className="text-xl font-semibold text-ink">휴무·휴가</h1>
+      {/* 디자인(W5·W13) 머리: 큰 제목 + 오른쪽 "+ 추가" */}
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold text-ink">휴무·휴가</h1>
+        {closures && (
+          <ActionButton variant="brandSolid" size="small" onClick={() => setAdding(true)} aria-label="휴무 추가">
+            + 추가
+          </ActionButton>
+        )}
+      </div>
       {state.status === 'loading' && <p className="py-8 text-center text-sm text-ink-soft">불러오는 중…</p>}
       {state.status === 'error' && <ErrorState onRetry={reload} />}
       {closures && (
         <ClosureList
           closures={shown}
           reload={reload}
-          onAdd={() => setAdding(true)}
+         
           onRemoved={(id) => setLocal({ ...mine, removed: [...mine.removed, id] })}
         />
       )}
@@ -57,12 +65,10 @@ export function ClosuresPage() {
 function ClosureList({
   closures,
   reload,
-  onAdd,
   onRemoved,
 }: {
   closures: Closure[];
   reload: () => void;
-  onAdd: () => void;
   onRemoved: (id: string) => void;
 }) {
   const api = useSettingsApi();
@@ -88,9 +94,6 @@ function ClosureList({
 
   return (
     <div className="flex flex-col gap-5">
-      <ActionButton variant="neutralWeak" onClick={onAdd}>
-        휴무 추가
-      </ActionButton>
       {remove.problem && 'message' in remove.problem && (
         <p role="alert" className="text-sm text-critical-text">
           {remove.problem.message}
@@ -129,7 +132,12 @@ function ClosureRow({ closure, disabled, onRemove }: { closure: Closure; disable
     <li className="flex min-h-12 items-center justify-between gap-3 py-2">
       <span className="flex flex-col">
         <span className="text-base text-ink">{text}</span>
-        {closure.kind !== 'weekly' && <span className="text-sm text-ink-soft">{KIND_TEXT[closure.kind]}</span>}
+        {/* 디자인(W13 "공휴일·휴가 배지"): SEED Badge, 톤은 지나가는 날 표시라 neutral(설계서 §9.3) */}
+        {closure.kind !== 'weekly' && (
+          <Badge.Root tone="neutral" variant="weak" size="large" className="w-fit">
+            <Badge.Label className="text-sm">{KIND_TEXT[closure.kind]}</Badge.Label>
+          </Badge.Root>
+        )}
       </span>
       <ActionButton variant="ghost" size="small" disabled={disabled} onClick={onRemove} aria-label={`${text} 지우기`}>
         지우기

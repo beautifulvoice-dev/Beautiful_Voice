@@ -6,7 +6,7 @@ import { RouterProvider } from 'react-router/dom';
 import { describe, expect, it } from 'vitest';
 import { SessionLoaderProvider } from '@/features/auth/session';
 import { createMemorySettingsApi, SettingsApiProvider, type SettingsApi } from '@/features/settings/api';
-import { menuTimeText, parseMinutes } from '@/features/settings/menus';
+import { menuTimeText } from '@/features/settings/menus';
 import { MENU_CONFLICT_TEXT } from '@/pages/settings/MenusPage';
 import { routes } from '@/routes';
 
@@ -25,8 +25,12 @@ function renderAt(path: string, api: SettingsApi = createMemorySettingsApi()) {
 const menuList = () => screen.findByRole('list', { name: '메뉴 목록' });
 const rows = async () => within(await menuList()).getAllByRole('listitem').map((li) => li.textContent);
 const sheet = () => screen.findByRole('dialog');
-const chip = (dialog: HTMLElement, group: string, label: string) =>
-  within(within(dialog).getByRole('group', { name: `${group} 빠른 선택` })).getByRole('button', { name: label });
+/** 시간 고르기(SEED QuantityPicker): "정하기" → 처음 값, 버튼 한 번 = 5분. */
+const btn = (dialog: HTMLElement, name: string) => within(dialog).getByRole('button', { name });
+const minutes = (dialog: HTMLElement, label: string) => within(within(dialog).getByRole('group', { name: label })).getByLabelText(`${label} 분`);
+async function press(dialog: HTMLElement, name: string, times = 1) {
+  for (let i = 0; i < times; i++) await userEvent.click(btn(dialog, name));
+}
 
 async function save(dialog: HTMLElement) {
   await userEvent.click(within(dialog).getByRole('button', { name: '저장' }));
@@ -41,12 +45,7 @@ describe('메뉴 문구·값', () => {
     expect(menuTimeText({ defaultDurationMin: null, defaultPrepMin: null })).toBe('시간 안 정함');
   });
 
-  it('칸 글자 → 분: 비우면 null, 숫자가 아니면 NaN(공용 검사가 거부)', () => {
-    expect(parseMinutes(' 90 ')).toBe(90);
-    expect(parseMinutes('')).toBeNull();
-    expect(parseMinutes('1시간')).toBeNaN();
-    expect(parseMinutes('-5')).toBeNaN();
-  });
+
 });
 
 describe('메뉴 화면', () => {
@@ -56,14 +55,16 @@ describe('메뉴 화면', () => {
     expect(screen.getByText('숨긴 메뉴 1개')).toBeInTheDocument();
   });
 
-  it('칩으로 시간을 채워 메뉴를 추가한다', async () => {
+  it('시간을 정하고 ＋/－로 맞춰 메뉴를 추가한다(디자인 부품 QuantityPicker)', async () => {
     const api = createMemorySettingsApi();
     renderAt('/settings/menus', api);
     await userEvent.click(await screen.findByRole('button', { name: '메뉴 추가' }));
     const d = await sheet();
     await userEvent.type(within(d).getByLabelText('이름'), '얼굴 관리');
-    await userEvent.click(chip(d, '관리 시간 (분)', '60분'));
-    await userEvent.click(chip(d, '준비 시간 (분)', '20분'));
+    await press(d, '관리 시간 정하기'); // 60분
+    await press(d, '준비 시간 정하기'); // 10분
+    await press(d, '준비 시간 5분 늘리기', 2); // 20분
+    expect(minutes(d, '준비 시간')).toHaveTextContent('20');
     await save(d);
     await closed();
     expect(await rows()).toContain('얼굴 관리관리 60분 · 준비 20분›');
@@ -85,25 +86,37 @@ describe('메뉴 화면', () => {
     renderAt('/settings/menus', api);
     await userEvent.click(await screen.findByRole('button', { name: /수분 관리/ }));
     const d = await sheet();
-    const duration = within(d).getByLabelText('관리 시간 (분)');
-    expect(duration).toHaveValue('60');
-    await userEvent.clear(duration);
-    await userEvent.type(duration, '75');
+    expect(minutes(d, '관리 시간')).toHaveTextContent('60');
+    await press(d, '관리 시간 5분 늘리기', 3); // 75분
     await save(d);
     await closed();
     expect((await api.listMenus()).find((m) => m.name === '수분 관리')).toMatchObject({ defaultDurationMin: 75, version: 2 });
   });
 
-  it('이름이 비었거나 관리 시간이 0분이면 칸 아래 이유를 보이고 저장하지 않는다', async () => {
+  it('이름이 비면 이유를 보이고 저장하지 않는다. 관리 시간은 5분 밑으로 내려가지 않는다', async () => {
     const api = createMemorySettingsApi();
     renderAt('/settings/menus', api);
     await userEvent.click(await screen.findByRole('button', { name: '메뉴 추가' }));
     const d = await sheet();
-    await userEvent.type(within(d).getByLabelText('관리 시간 (분)'), '0');
+    await press(d, '관리 시간 정하기');
+    await press(d, '관리 시간 5분 줄이기', 11); // 60 → 5에서 멈춤
+    expect(minutes(d, '관리 시간')).toHaveTextContent('5');
+    expect(btn(d, '관리 시간 5분 줄이기')).toBeDisabled();
     await save(d);
     expect(await within(d).findByText('이름을 입력해 주세요.')).toBeInTheDocument();
-    expect(within(d).getByText('관리 시간은 1분 이상 숫자로 입력해 주세요.')).toBeInTheDocument();
     expect(await api.listMenus({ includeInactive: true })).toHaveLength(3);
+  });
+
+  it('정한 시간을 비우면 "시간 안 정함"으로 저장된다', async () => {
+    const api = createMemorySettingsApi();
+    renderAt('/settings/menus', api);
+    await userEvent.click(await screen.findByRole('button', { name: /등 관리/ }));
+    const d = await sheet();
+    await press(d, '준비 시간 비우기');
+    expect(within(within(d).getByRole('group', { name: '준비 시간' })).getByText('정하지 않음')).toBeInTheDocument();
+    await save(d);
+    await closed();
+    expect((await api.listMenus()).find((m) => m.name === '등 관리')).toMatchObject({ defaultDurationMin: 90, defaultPrepMin: null });
   });
 
   it('숨기면 숨긴 메뉴로 가고, 다시 보이기로 되돌린다', async () => {
@@ -125,13 +138,13 @@ describe('메뉴 화면', () => {
     await userEvent.click(await screen.findByRole('button', { name: '메뉴 추가' }));
     let d = await sheet();
     await userEvent.type(within(d).getByLabelText('이름'), '얼굴 관리');
-    await userEvent.click(chip(d, '관리 시간 (분)', '60분'));
+    await press(d, '관리 시간 정하기');
     await save(d);
     await closed();
     await userEvent.click(await screen.findByRole('button', { name: '메뉴 추가' }));
     d = await sheet();
     expect(within(d).getByLabelText('이름')).toHaveValue('');
-    expect(within(d).getByLabelText('관리 시간 (분)')).toHaveValue('');
+    expect(within(within(d).getByRole('group', { name: '관리 시간' })).getByText('정하지 않음')).toBeInTheDocument();
   });
 
   it('저장하지 않고 닫았다 다시 열면 저장된 값으로 돌아간다', async () => {
@@ -189,7 +202,7 @@ describe('메뉴 화면', () => {
     const [first] = await api.listMenus();
     await api.updateMenu(first!.id, { version: first!.version, name: '수분 진정 관리' });
 
-    await userEvent.type(within(d).getByLabelText('관리 시간 (분)'), '5');
+    await press(d, '관리 시간 5분 늘리기');
     await save(d);
     expect(await screen.findByText(MENU_CONFLICT_TEXT)).toBeInTheDocument();
     expect(within(await sheet()).getByLabelText('이름')).toHaveValue('수분 진정 관리');

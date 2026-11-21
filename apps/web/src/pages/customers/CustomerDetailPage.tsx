@@ -178,8 +178,9 @@ function VisitText({ startsAt, menu }: { startsAt: string; menu: string }) {
 
 function StatusBadge({ status }: { status: ShownStatus }) {
   return (
-    <Badge.Root tone={STATUS_TONE[status]} variant="weak" size="medium" className="shrink-0">
-      <Badge.Label>{VISIT_STATUS_TEXT[status]}</Badge.Label>
+    // 설계서 §9.3: Badge size large, 글자 14px.
+    <Badge.Root tone={STATUS_TONE[status]} variant="weak" size="large" className="shrink-0">
+      <Badge.Label className="text-sm">{VISIT_STATUS_TEXT[status]}</Badge.Label>
     </Badge.Root>
   );
 }

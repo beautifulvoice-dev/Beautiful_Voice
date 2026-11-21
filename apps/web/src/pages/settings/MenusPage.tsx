@@ -3,12 +3,12 @@
 // 추가·고치기는 폰에서 아래 시트, 노트북에서 가운데 창(SEED ResponsiveDialog, 해나 11/21 결정).
 import type { Menu } from '@bv/contracts';
 import type { ResourceField } from '@bv/scheduling/shop-settings';
-import { ActionButton, Chip, ResponsiveDialog } from '@seed-design/react';
-import { useCallback, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { ActionButton, QuantityPicker, ResponsiveDialog } from '@seed-design/react';
+import { useCallback, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { EmptyState, ErrorState } from '@/components/states/DataState';
 import { useSettingsApi, VersionConflictError } from '@/features/settings/api';
-import { DURATION_CHIPS, menuTimeText, minutesText, parseMinutes, PREP_CHIPS } from '@/features/settings/menus';
+import { DURATION_RANGE, menuTimeText, PREP_RANGE, type MinutesRange } from '@/features/settings/menus';
 import { PREP_HELP_TEXT } from '@/features/settings/messages';
 import { useSaveAction } from '@/features/settings/useSaveAction';
 import { useLoad } from '@/lib/useLoad';
@@ -48,10 +48,18 @@ export function MenusPage() {
       <Link to="/settings" className="text-sm text-ink-soft md:hidden">
         ‹ 설정
       </Link>
-      <h1 className="text-xl font-semibold text-ink">메뉴</h1>
+      {/* 디자인(W5·W13) 머리: 큰 제목 + 오른쪽 "+ 추가" */}
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold text-ink">메뉴</h1>
+        {menus && (
+          <ActionButton variant="brandSolid" size="small" onClick={() => openSheet({ kind: 'new' })} aria-label="메뉴 추가">
+            + 추가
+          </ActionButton>
+        )}
+      </div>
       {state.status === 'loading' && <p className="py-8 text-center text-sm text-ink-soft">불러오는 중…</p>}
       {state.status === 'error' && <ErrorState onRetry={reload} />}
-      {menus && <MenuList menus={menus} reload={reload} onAdd={() => openSheet({ kind: 'new' })} onEdit={(id) => openSheet({ kind: 'edit', id })} />}
+      {menus && <MenuList menus={menus} reload={reload} onEdit={(id) => openSheet({ kind: 'edit', id })} />}
       <MenuSheet
         // 고치는 메뉴가 바뀌거나 다시 불러와 version이 바뀌면 입력을 새 값으로 다시 채운다(#60 리뷰 🟡1).
         key={`${target ? `${target.id}:${target.version}` : 'new'}:${session}`}
@@ -69,7 +77,7 @@ export function MenusPage() {
 const sameEditing = (a: Editing | null, b: Editing) =>
   a !== null && a.kind === b.kind && (a.kind === 'new' || (b.kind === 'edit' && a.id === b.id));
 
-function MenuList({ menus, reload, onAdd, onEdit }: { menus: Menu[]; reload: () => void; onAdd: () => void; onEdit: (id: string) => void }) {
+function MenuList({ menus, reload, onEdit }: { menus: Menu[]; reload: () => void; onEdit: (id: string) => void }) {
   const api = useSettingsApi();
   const show = useSaveAction(reload);
   const [showing, setShowing] = useState('');
@@ -85,9 +93,6 @@ function MenuList({ menus, reload, onAdd, onEdit }: { menus: Menu[]; reload: () 
 
   return (
     <div className="flex flex-col gap-5">
-      <ActionButton variant="neutralWeak" onClick={onAdd}>
-        메뉴 추가
-      </ActionButton>
       {show.problem && 'message' in show.problem && (
         <p role="alert" className="text-sm text-critical-text">
           {showing}: {show.problem.message}
@@ -157,16 +162,18 @@ function MenuSheet({
   const api = useSettingsApi();
   const save = useSaveAction(reload);
   const [name, setName] = useState(target?.name ?? '');
-  const [duration, setDuration] = useState(minutesText(target?.defaultDurationMin ?? null));
-  const [prep, setPrep] = useState(minutesText(target?.defaultPrepMin ?? null));
+  const [duration, setDuration] = useState<number | null>(target?.defaultDurationMin ?? null);
+  const [prep, setPrep] = useState<number | null>(target?.defaultPrepMin ?? null);
   const fieldError = (f: ResourceField) => (save.problem?.kind === 'fields' ? save.problem.fields[f] : undefined);
   // 충돌 안내는 위(MENU_CONFLICT_TEXT)에서 따로 보인다.
   const message = save.problem && 'message' in save.problem && save.problem.kind !== 'conflict' ? save.problem.message : undefined;
 
-  const edit = (set: (v: string) => void) => (v: string) => {
-    set(v);
-    save.clear();
-  };
+  const edit =
+    <T,>(set: (v: T) => void) =>
+    (v: T) => {
+      set(v);
+      save.clear();
+    };
 
   async function finish(write: (key: string) => Promise<Menu>) {
     const done = await save.run(async (key) => {
@@ -185,7 +192,7 @@ function MenuSheet({
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    const fields = { name, defaultDurationMin: parseMinutes(duration), defaultPrepMin: parseMinutes(prep) };
+    const fields = { name, defaultDurationMin: duration, defaultPrepMin: prep };
     void finish((idempotencyKey) =>
       target ? api.updateMenu(target.id, { ...fields, version: target.version }, { idempotencyKey }) : api.addMenu(fields, { idempotencyKey }),
     );
@@ -225,16 +232,9 @@ function MenuSheet({
                 <FieldBox label="이름" error={fieldError('name')}>
                   <input value={name} onChange={(e) => edit(setName)(e.target.value)} placeholder="예: 수분 관리" autoComplete="off" className={INPUT} />
                 </FieldBox>
-                <MinutesField label="관리 시간 (분)" value={duration} chips={DURATION_CHIPS} error={fieldError('defaultDurationMin')} onChange={edit(setDuration)} />
-                <MinutesField
-                  label="준비 시간 (분)"
-                  value={prep}
-                  chips={PREP_CHIPS}
-                  help={PREP_HELP_TEXT}
-                  error={fieldError('defaultPrepMin')}
-                  onChange={edit(setPrep)}
-                />
-                <p className="text-sm text-ink-soft">비워 두면 예약할 때 직접 정해요.</p>
+                <MinutesField label="관리 시간" value={duration} range={DURATION_RANGE} error={fieldError('defaultDurationMin')} onChange={edit(setDuration)} />
+                <MinutesField label="준비 시간" value={prep} range={PREP_RANGE} help={PREP_HELP_TEXT} error={fieldError('defaultPrepMin')} onChange={edit(setPrep)} />
+                <p className="text-sm text-ink-soft">정하지 않으면 예약할 때 직접 정해요.</p>
                 {message && (
                   <p role="alert" className="text-sm text-critical-text">
                     {message}
@@ -261,36 +261,69 @@ function MenuSheet({
   );
 }
 
+/**
+ * 관리·준비 시간(분). 디자인 부품표(§9.2): SEED QuantityPicker. 비울 수 있어서(명세 S3) "정하지 않음 · 정하기"와 "비우기"를 둔다.
+ * ASSUMPTION: 간격·범위(MinutesRange)는 명세에 없어 화면이 정한다 — 범위 밖 값이 저장돼 있으면 그대로 보이고 버튼만 막힌다.
+ */
 function MinutesField({
   label,
   value,
-  chips,
+  range,
   help,
   error,
   onChange,
 }: {
   label: string;
-  value: string;
-  chips: readonly number[];
+  value: number | null;
+  range: MinutesRange;
   help?: string;
   error?: string;
-  onChange: (v: string) => void;
+  onChange: (v: number | null) => void;
 }) {
+  const id = useId();
   return (
-    <div className="flex flex-col gap-2">
-      <FieldBox label={label} help={help} error={error}>
-        <input value={value} onChange={(e) => onChange(e.target.value)} inputMode="numeric" autoComplete="off" className={INPUT} />
-      </FieldBox>
-      <div role="group" aria-label={`${label} 빠른 선택`} className="flex flex-wrap gap-2">
-        {chips.map((n) => (
-          <Chip.Button key={n} type="button" variant="outlineStrong" size="small" onClick={() => onChange(String(n))}>
-            <Chip.Label>{n}분</Chip.Label>
-          </Chip.Button>
-        ))}
-      </div>
+    <div role="group" aria-labelledby={id} className="flex flex-col gap-1 text-sm">
+      <span id={id} className="font-medium text-ink">
+        {label}
+      </span>
+      {value === null ? (
+        <div className="flex min-h-11 items-center gap-2">
+          <span className="text-base text-ink-soft">정하지 않음</span>
+          <ActionButton type="button" variant="neutralWeak" size="small" onClick={() => onChange(range.start)} aria-label={`${label} 정하기`}>
+            정하기
+          </ActionButton>
+        </div>
+      ) : (
+        <div className="flex min-h-11 items-center gap-2">
+          <QuantityPicker.Root value={value} min={Math.min(range.min, value)} max={Math.max(range.max, value)} step={range.step} onValueChange={onChange}>
+            <QuantityPicker.DecrementButton aria-label={`${label} ${range.step}분 줄이기`} icon={<MinusIcon />} />
+            <QuantityPicker.ValueDisplay aria-label={`${label} 분`} />
+            <QuantityPicker.IncrementButton aria-label={`${label} ${range.step}분 늘리기`} icon={<PlusIcon />} />
+            <QuantityPicker.HiddenInput />
+          </QuantityPicker.Root>
+          <span className="text-base text-ink">분</span>
+          <ActionButton type="button" variant="ghost" size="small" onClick={() => onChange(null)} aria-label={`${label} 비우기`}>
+            비우기
+          </ActionButton>
+        </div>
+      )}
+      {error && <span className="text-critical-text">{error}</span>}
+      {help && <span className="text-ink-soft">{help}</span>}
     </div>
   );
 }
+
+/** QuantityPicker 버튼 그림. 외부 아이콘 패키지 없이 선 두 개(설계서 §9.1 "쓰는 표시 +, −"). */
+const MinusIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" {...props}>
+    <path d="M5 12h14" />
+  </svg>
+);
+const PlusIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" {...props}>
+    <path d="M5 12h14M12 5v14" />
+  </svg>
+);
 
 const INPUT = 'min-h-10 w-full rounded-md border border-control-line bg-surface px-3 text-base text-ink';
 
