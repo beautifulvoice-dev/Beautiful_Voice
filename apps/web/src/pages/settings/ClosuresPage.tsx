@@ -125,7 +125,9 @@ function AddClosureSheet({
   const save = useSaveAction(reload);
   // ASSUMPTION: 이미 매주 휴무인 요일은 다시 고르지 않게 목록에서 뺀다(같은 휴무 두 줄 방지, 명세에 없음).
   const freeWeekdays = WEEKDAYS.filter((d) => !takenWeekdays.includes(d));
-  const [draft, setDraft] = useState<ClosureDraft>(() => emptyDraft(freeWeekdays[0] ?? 1));
+  const [kept, setDraft] = useState<ClosureDraft>(() => emptyDraft(freeWeekdays[0] ?? 1));
+  // 고른 요일이 그사이 매주 휴무로 들어갔으면(방금 추가 등) 남은 첫 요일로 — 화면에 안 보이는 요일이 저장되지 않게.
+  const draft = freeWeekdays.includes(kept.weekday) ? kept : { ...kept, weekday: freeWeekdays[0] ?? kept.weekday };
 
   function change(patch: Partial<ClosureDraft>) {
     setDraft((d) => ({ ...d, ...patch }));

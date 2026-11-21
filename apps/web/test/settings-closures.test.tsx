@@ -113,6 +113,18 @@ describe('휴무·휴가 화면', () => {
     expect(texts(await section('매주 쉬는 요일'))).toEqual(['매주 월요일지우기', '매주 수요일지우기']);
   });
 
+  it('매주 휴무를 연달아 추가해도 같은 요일이 두 번 저장되지 않는다', async () => {
+    const api = createMemorySettingsApi();
+    renderAt('/settings/closures', api);
+    for (let i = 0; i < 2; i++) {
+      const sheet = await openSheet();
+      await userEvent.click(within(sheet).getByRole('radio', { name: '매주' }));
+      await userEvent.click(within(sheet).getByRole('button', { name: '추가' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    }
+    expect((await api.listClosures()).flatMap((c) => (c.kind === 'weekly' ? [c.weekday] : []))).toEqual([1, 2, 3]);
+  });
+
   it('시작일이 끝나는 날보다 늦으면 이유를 보이고 저장하지 않는다', async () => {
     const api = createMemorySettingsApi();
     renderAt('/settings/closures', api);
