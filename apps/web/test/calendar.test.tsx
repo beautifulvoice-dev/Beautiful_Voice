@@ -346,7 +346,7 @@ describe('캘린더 화면', () => {
   it('불러오기 실패는 경고와 다시 시도로 보인다', async () => {
     let fail = true;
     const ok = API();
-    renderAt('/calendar?date=2026-11-18', { range: (f, t) => (fail ? Promise.reject(new Error('x')) : ok.range(f, t)) });
+    renderAt('/calendar?date=2026-11-18', { ...ok, range: (f, t) => (fail ? Promise.reject(new Error('x')) : ok.range(f, t)) });
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     fail = false;
     await userEvent.click(screen.getByRole('button', { name: '다시 시도' }));
