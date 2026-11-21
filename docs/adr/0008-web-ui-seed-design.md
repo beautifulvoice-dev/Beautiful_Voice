@@ -25,6 +25,16 @@ shadcn으로 계속 가면 디자인의 부품(ActionButton·Badge·Chip·Segmen
 - **shadcn·radix·lucide는 화면을 옮길 때마다 뺀다.** 그동안은 shadcn 색 변수를 SEED 역할 토큰으로 이어 아직 안 옮긴 화면도 같은 브랜드로 보이게 한다. 마지막 화면을 옮기는 PR에서 `components/ui/button.tsx`·`radix-ui`·`class-variance-authority`·`lucide-react`를 지운다.
 - 새 화면(예약 넣기·설정 등)은 처음부터 SEED로 만든다.
 
+## 옮기기 체크리스트
+shadcn이 남은 화면을 SEED로 옮길 때마다 체크한다. 모두 끝나면 마지막 PR에서 아래 "정리"를 한다.
+- [x] 웹셸(`AppShell`) — 이 ADR의 기반 PR
+- [ ] 캘린더 W1·W2(`pages/calendar/*`) — 예약 칸 하늘색을 `--cal-*` 토큰으로
+- [ ] 로그인 W0(`LoginPage`) — 카카오 버튼 규칙
+- [ ] 설정 W13(`SettingsPage`)
+- [ ] 고객 W5·W6(`pages/customers/*`)
+- [ ] 공통 상태 화면(`components/states/DataState`)
+- [ ] 정리: `components/ui/button.tsx`, `radix-ui`·`class-variance-authority`·`lucide-react`·`tw-animate-css`·`shadcn/tailwind.css` 삭제, `index.css`의 shadcn 색 변수 블록 삭제
+
 ## 결과
 - 좋아지는 점: 디자인 부품·톤을 그대로 써서 화면별 디자인 검수가 쉬워진다. 브랜드 색을 한 파일에서 바꿀 수 있다. 기존 화면을 멈추지 않고 하나씩 옮길 수 있다.
 - 감수하는 점: 옮기는 동안 shadcn과 SEED가 같이 있다. 앱에 SEED 기본 CSS와 글꼴(동적 서브셋)이 늘어난다.
