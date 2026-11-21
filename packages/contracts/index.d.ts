@@ -38,3 +38,5 @@ export interface OwnerShopResponse {
   id: string;
   name: string;
 }
+
+export * from './crm';

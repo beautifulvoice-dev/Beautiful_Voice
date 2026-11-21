@@ -2,14 +2,17 @@
   "name": "@bv/scheduling",
   "version": "0.0.0",
   "private": true,
-  "description": "예약 충돌 판정(P2-04, C-05)·상태 전이(P2-03, C-04) — 순수 도메인 로직",
+  "description": "예약 저장 검사(BEA-177)·예약 상태(BEA-178) — 순수 도메인 로직. conflict·status는 11/18 규칙(대체 예정)",
   "type": "module",
   "engines": {
     "node": ">=24"
   },
   "exports": {
     ".": "./src/conflict.ts",
-    "./status": "./src/status.ts"
+    "./status": "./src/status.ts",
+    "./booking": "./src/booking.ts",
+    "./appointment-status": "./src/appointment-status.ts",
+    "./shop-settings": "./src/shop-settings.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
