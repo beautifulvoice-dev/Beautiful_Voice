@@ -8,10 +8,10 @@ import { CustomerDetailPage } from '@/pages/customers/CustomerDetailPage';
 import { CustomerFormPage } from '@/pages/customers/CustomerFormPage';
 import { CustomersPage } from '@/pages/customers/CustomersPage';
 import { ClosuresPage } from '@/pages/settings/ClosuresPage';
-import { HoursPage } from '@/pages/settings/HoursPage';
 import { MenusPage } from '@/pages/settings/MenusPage';
 import { StaffPage } from '@/pages/settings/StaffPage';
 import { SettingsLayout, SettingsPage } from '@/pages/settings/SettingsPage';
+import { ShopInfoPage } from '@/pages/settings/ShopInfoPage';
 
 export const routes: RouteObject[] = [
   { path: 'login', element: <LoginPage /> },
@@ -36,7 +36,9 @@ export const routes: RouteObject[] = [
         element: <SettingsLayout />,
         children: [
           { index: true, element: <SettingsPage /> },
-          { path: 'hours', element: <HoursPage /> },
+          { path: 'shop', element: <ShopInfoPage /> },
+          // 예전 주소(영업시간 화면)는 매장 정보로 — 영업시간이 매장 정보 안으로 들어갔다(W13 디자인).
+          { path: 'hours', element: <Navigate to="/settings/shop" replace /> },
           { path: 'closures', element: <ClosuresPage /> },
           { path: 'menus', element: <MenusPage /> },
           { path: 'staff', element: <StaffPage /> },

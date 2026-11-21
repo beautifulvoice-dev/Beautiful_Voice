@@ -95,7 +95,7 @@ describe('휴무·휴가 화면', () => {
     renderAt('/settings/closures');
     expect(texts(await section('다가오는 휴무'))).toEqual(['12월 24일 ~ 12월 26일 · 연말 휴가휴가지우기']);
     expect(screen.queryByText(/매주 월요일/)).toBeNull();
-    expect(screen.getByRole('link', { name: WEEKLY_MOVED_TEXT })).toHaveAttribute('href', '/settings/hours');
+    expect(screen.getByRole('link', { name: WEEKLY_MOVED_TEXT })).toHaveAttribute('href', '/settings/shop');
     const sheet = await openSheet();
     expect(within(sheet).queryByRole('radio', { name: '매주' })).toBeNull();
   });

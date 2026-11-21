@@ -14,7 +14,7 @@ import { closureText } from '@/features/settings/messages';
 import { useSaveAction } from '@/features/settings/useSaveAction';
 import { useLoad } from '@/lib/useLoad';
 
-export const WEEKLY_MOVED_TEXT = '매주 쉬는 요일은 영업시간에서 정기 휴무로 정해요.';
+export const WEEKLY_MOVED_TEXT = '매주 쉬는 요일은 매장 정보의 영업시간에서 정기 휴무로 정해요.';
 
 export function ClosuresPage() {
   const api = useSettingsApi();
@@ -105,7 +105,7 @@ function ClosureList({
           <ul className="flex flex-col divide-y divide-line">{past.map(row)}</ul>
         </details>
       )}
-      <Link to="/settings/hours" className="text-sm text-ink-soft underline">
+      <Link to="/settings/shop" className="text-sm text-ink-soft underline">
         {WEEKLY_MOVED_TEXT}
       </Link>
     </div>

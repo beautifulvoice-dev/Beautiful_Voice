@@ -1,11 +1,10 @@
 // 저장이 실패했을 때 화면이 보여 줄 것. 오류 종류(클래스)를 원장이 읽을 문장과 칸 표시로 바꾼다.
-import type { ResourceField } from '@bv/scheduling/shop-settings';
-import { FieldsInvalidError, SettingsInvalidError, SettingsNotFoundError, VersionConflictError } from './api';
+import { FieldsInvalidError, type FormField, SettingsInvalidError, SettingsNotFoundError, VersionConflictError } from './api';
 import { CONFLICT_TEXT, fieldErrorText, SETTINGS_ERROR_TEXT } from './messages';
 
 export type SaveProblem =
   /** 메뉴·담당자 칸 오류 — 칸 아래에 문구를 단다. */
-  | { kind: 'fields'; fields: Partial<Record<ResourceField, string>> }
+  | { kind: 'fields'; fields: Partial<Record<FormField, string>> }
   /** 영업시간·휴무 오류 — at은 문제 위치(예 "2[0]"), 해당 줄을 표시하는 데 쓴다. */
   | { kind: 'settings'; message: string; at?: string }
   /** 다른 곳에서 먼저 고침 — 다시 불러와야 한다. */
@@ -20,7 +19,7 @@ export const FAILED_TEXT = '저장하지 못했어요. 인터넷 연결을 확�
 
 export function toSaveProblem(err: unknown): SaveProblem {
   if (err instanceof FieldsInvalidError) {
-    const fields: Partial<Record<ResourceField, string>> = {};
+    const fields: Partial<Record<FormField, string>> = {};
     // 한 칸에 오류가 여럿이면 첫 번째만 보여 준다.
     for (const e of err.errors) fields[e.field] ??= fieldErrorText(e.field, e.code);
     return { kind: 'fields', fields };

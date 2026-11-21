@@ -13,7 +13,7 @@ import { useLoad } from '@/lib/useLoad';
 
 /** 설정 하위 화면. 폰 목록과 웹 왼쪽 메뉴가 같은 순서를 쓴다(디자인 순서). */
 export const SETTINGS_SECTIONS = [
-  { title: '영업시간', to: '/settings/hours' },
+  { title: '매장 정보', to: '/settings/shop' },
   { title: '휴무·휴가', to: '/settings/closures' },
   { title: '메뉴', to: '/settings/menus' },
   { title: '담당자', to: '/settings/staff' },
@@ -64,9 +64,9 @@ function SettingsList() {
   const { state } = useLoad(load);
   // 요약을 못 불러와도 목록은 보인다 — 들어가서 다시 불러올 수 있다.
   const [hours, closures, menus, staff] = state.status === 'ok' ? state.data : [];
-  // 요약은 디자인 목록 줄 아래 회색 글자(w13.png): "10:00–20:00 · 수요일 정기 휴무", "다음 휴가 12/24–12/26", "4개", "박원장, 이실장".
+  // 요약은 디자인 목록 줄 아래 회색 글자(w13.png): "영업시간 10:00–20:00 · 수요일 정기 휴무", "다음 휴가 12/24–12/26", "4개", "박원장, 이실장".
   const details: Record<(typeof SETTINGS_SECTIONS)[number]['to'], string | undefined> = {
-    '/settings/hours': state.status === 'ok' ? hoursSummary(hours ?? null, weeklyDaysOf(closures ?? [])) : undefined,
+    '/settings/shop': state.status === 'ok' ? `영업시간 ${hoursSummary(hours ?? null, weeklyDaysOf(closures ?? []))}` : undefined,
     '/settings/closures': closures ? closuresSummary(closures, shopToday()) : undefined,
     '/settings/menus': menus ? (menus.length ? `${menus.length}개` : '없음') : undefined,
     '/settings/staff': staff ? staff.map((s) => s.name).join(', ') || '없음' : undefined,

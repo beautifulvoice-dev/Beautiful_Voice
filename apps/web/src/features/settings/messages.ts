@@ -1,6 +1,7 @@
 // 설정 화면 문구. 오류 코드·저장 값 이름(weekly 등)을 원장에게 그대로 보이지 않는다(디자인 정책 원칙).
 import type { Closure } from '@bv/contracts';
-import type { ResourceErrorCode, ResourceField, SettingsErrorCode } from '@bv/scheduling/shop-settings';
+import type { SettingsErrorCode } from '@bv/scheduling/shop-settings';
+import type { FormErrorCode, FormField } from './api';
 
 export const WEEKDAY_TEXT = { 1: '월', 2: '화', 3: '수', 4: '목', 5: '금', 6: '토', 7: '일' } as const;
 export type Weekday = keyof typeof WEEKDAY_TEXT;
@@ -15,9 +16,11 @@ export const SETTINGS_ERROR_TEXT: Record<SettingsErrorCode, string> = {
   START_AFTER_END: '시작일이 끝나는 날보다 늦어요.',
 };
 
-/** 칸마다 다른 문구. 메뉴·담당자 공통. */
-export function fieldErrorText(field: ResourceField, code: ResourceErrorCode): string {
+/** 칸마다 다른 문구. 메뉴·담당자·매장 안내 정보 공통. */
+export function fieldErrorText(field: FormField, code: FormErrorCode): string {
   if (code === 'NAME_REQUIRED') return '이름을 입력해 주세요.';
+  if (code === 'INVALID_URL') return '웹 주소로 적어 주세요. 예: https://naver.me/…';
+  if (code === 'INVALID_TEXT') return '글을 다시 적어 주세요.';
   return field === 'defaultPrepMin' ? '준비 시간은 0분 이상 숫자로 입력해 주세요.' : '관리 시간은 1분 이상 숫자로 입력해 주세요.';
 }
 

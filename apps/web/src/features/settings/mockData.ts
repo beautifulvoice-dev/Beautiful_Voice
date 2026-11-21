@@ -7,6 +7,14 @@ const row = { version: 1, createdAt: AT, updatedAt: AT };
 
 export function seedSettings(): SettingsSeed {
   return {
+    // 합성 주소·링크(실제 매장 아님). 인스타그램·홈페이지는 비워 둔다.
+    shopInfo: {
+      locationText: '합성시 가상구 예시로 1, 2층',
+      naverPlaceUrl: 'https://naver.me/example-shop',
+      instagramUrl: null,
+      landingUrl: null,
+      refundPolicy: null,
+    },
     // 화~토 10:00~20:00, 일 11:00~18:00, 월요일 쉼(키 없음).
     businessHours: {
       '2': [{ open: '10:00', close: '20:00' }],

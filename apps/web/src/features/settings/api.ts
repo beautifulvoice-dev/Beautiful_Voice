@@ -2,15 +2,18 @@
 // 화면은 이 인터페이스만 안다. 모양은 M1 계약(@bv/contracts crm)과 같고, 서버가 생기면 구현만 바꾼다(고객 화면과 같은 방식).
 // 입력 검사는 서버와 같은 함수(@bv/scheduling/shop-settings)를 쓴다 — 규칙을 두 벌 두지 않는다(절대 규칙 4).
 // 설정은 사람만 바꾼다. AI 실행기에는 설정 쓰기 권한이 없다(결정 R0).
-import type { BusinessHours, Closure, ClosureInput, Menu, MenuInput, MenuPatch, Staff, StaffPatch } from '@bv/contracts';
+import type { BusinessHours, Closure, ClosureInput, Menu, MenuInput, MenuPatch, ShopInfo, Staff, StaffPatch } from '@bv/contracts';
 import {
   validateBusinessHours,
   validateClosure,
   validateMenu,
+  validateShopInfo,
   validateStaff,
   type ResourceErrorCode,
   type ResourceField,
   type SettingsError,
+  type ShopInfoErrorCode,
+  type ShopInfoField,
 } from '@bv/scheduling/shop-settings';
 import { createContext, useContext } from 'react';
 import { seedSettings } from './mockData';
@@ -24,10 +27,14 @@ export class SettingsInvalidError extends Error {
   }
 }
 
-/** 422 VALIDATION_FAILED — 메뉴·담당자 칸 오류. */
+/** 칸 이름: 메뉴·담당자(ResourceField)와 매장 안내 정보(ShopInfoField). */
+export type FormField = ResourceField | ShopInfoField;
+export type FormErrorCode = ResourceErrorCode | ShopInfoErrorCode;
+
+/** 422 VALIDATION_FAILED — 메뉴·담당자·매장 안내 정보 칸 오류. */
 export class FieldsInvalidError extends Error {
-  readonly errors: { field: ResourceField; code: ResourceErrorCode }[];
-  constructor(errors: { field: ResourceField; code: ResourceErrorCode }[]) {
+  readonly errors: { field: FormField; code: FormErrorCode }[];
+  constructor(errors: { field: FormField; code: FormErrorCode }[]) {
     super('VALIDATION_FAILED');
     this.errors = errors;
   }
@@ -60,6 +67,10 @@ export interface WriteOptions {
 }
 
 export interface SettingsApi {
+  /** 매장 안내 정보(위치·링크·환불 정책). 넣지 않은 칸은 null(BEA-166). */
+  getShopInfo(): Promise<ShopInfo>;
+  /** 통째로 바꾼다(version 없음, 마지막 저장이 남음). */
+  putShopInfo(info: ShopInfo, options?: WriteOptions): Promise<ShopInfo>;
   /** null = 아직 넣지 않음 → 예약 저장 때 영업시간 검사를 하지 않는다. */
   getBusinessHours(): Promise<BusinessHours | null>;
   /** 통째로 바꾼다. 이미 있는 예약은 그대로 둔다(파생 S2). */
@@ -78,6 +89,8 @@ export interface SettingsApi {
 }
 
 export interface SettingsSeed {
+  /** 없으면 모든 칸 비움(null). */
+  shopInfo?: ShopInfo;
   businessHours: BusinessHours | null;
   closures: Closure[];
   menus: Menu[];
@@ -100,6 +113,7 @@ const clone = <T,>(v: T): T => structuredClone(v);
  * ASSUMPTION: 한 매장의 데이터만 담는다. 매장 격리(shop_id)는 실제 API가 경로의 shopId와 로그인 정보로 보장한다.
  */
 export function createMemorySettingsApi(seed: SettingsSeed = seedSettings(), now: () => Date = () => new Date()): SettingsApi {
+  let shopInfo: ShopInfo = clone(seed.shopInfo ?? { refundPolicy: null, naverPlaceUrl: null, instagramUrl: null, landingUrl: null, locationText: null });
   let businessHours = clone(seed.businessHours);
   const closures = clone(seed.closures);
   const menus = clone(seed.menus);
@@ -129,6 +143,17 @@ export function createMemorySettingsApi(seed: SettingsSeed = seedSettings(), now
     rows.filter((r) => options?.includeInactive || r.active).map(clone);
 
   return {
+    async getShopInfo() {
+      return clone(shopInfo);
+    },
+    putShopInfo(info, options) {
+      return once(options, async () => {
+        const r = validateShopInfo(info);
+        if (!r.ok) throw new FieldsInvalidError(r.errors);
+        shopInfo = r.value;
+        return clone(shopInfo);
+      });
+    },
     async getBusinessHours() {
       return clone(businessHours);
     },

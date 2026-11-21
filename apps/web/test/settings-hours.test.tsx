@@ -8,7 +8,7 @@ import { SessionLoaderProvider } from '@/features/auth/session';
 import { createMemorySettingsApi, SettingsApiProvider, SettingsNotFoundError, type SettingsApi } from '@/features/settings/api';
 import { fromDraft, hoursSummary, timeOptions, toDraft, weekdayAt, weeklyChanges } from '@/features/settings/hours';
 import { seedSettings } from '@/features/settings/mockData';
-import { HOURS_RULE_TEXT, HOURS_SAVED_TEXT, HOURS_UNSET_TEXT } from '@/pages/settings/HoursPage';
+import { HOURS_RULE_TEXT, HOURS_SAVED_TEXT, HOURS_UNSET_TEXT } from '@/pages/settings/ShopInfoPage';
 import { routes } from '@/routes';
 
 function renderAt(path: string, api: SettingsApi = createMemorySettingsApi()) {
@@ -79,7 +79,7 @@ describe('영업시간 값 바꾸기', () => {
 describe('영업시간 화면', () => {
   it('월요일 정기 휴무를 끄고 시각을 골라 저장하면, 매주 휴무가 지워지고 다시 열어도 그대로다', async () => {
     const api = createMemorySettingsApi();
-    renderAt('/settings/hours', api);
+    renderAt('/settings/shop', api);
     expect(await findHoliday('월')).toBeChecked(); // 합성 데이터: 매주 월요일 휴무
     await userEvent.click(holiday('월'));
     await userEvent.selectOptions(select('월요일 여는 시각'), '09:30');
@@ -91,7 +91,7 @@ describe('영업시간 화면', () => {
     expect(await weeklyDays(api)).toEqual([]);
 
     cleanup();
-    renderAt('/settings/hours', api);
+    renderAt('/settings/shop', api);
     expect(await findHoliday('월')).not.toBeChecked();
     expect(select('월요일 여는 시각')).toHaveValue('09:30');
   });
@@ -101,7 +101,7 @@ describe('영업시간 화면', () => {
       ...seedSettings(),
       businessHours: { '2': [{ open: '10:00', close: '13:00' }, { open: '14:00', close: '20:00' }] },
     });
-    renderAt('/settings/hours', api);
+    renderAt('/settings/shop', api);
     // 첫 구간을 둘째 구간보다 늦게 옮긴다 → 저장 값은 [14:00~20:00, 20:30~21:00]
     await userEvent.selectOptions(await screen.findByRole('combobox', { name: '화요일 닫는 시각' }), '21:00');
     await userEvent.selectOptions(select('화요일 여는 시각'), '20:30');
@@ -113,7 +113,7 @@ describe('영업시간 화면', () => {
 
   it('정기 휴무를 켜면 쉬는 날이 되고, 매주 휴무로 저장된다(W13 디자인)', async () => {
     const api = createMemorySettingsApi();
-    renderAt('/settings/hours', api);
+    renderAt('/settings/shop', api);
     await userEvent.click(await findHoliday('일'));
     expect(screen.queryByRole('combobox', { name: '일요일 여는 시각' })).toBeNull();
     expect(screen.getAllByText('쉬는 날')).toHaveLength(2); // 월·일
@@ -137,7 +137,7 @@ describe('영업시간 화면', () => {
         return created;
       },
     };
-    renderAt('/settings/hours', flaky);
+    renderAt('/settings/shop', flaky);
     await userEvent.click(await findHoliday('토'));
     await userEvent.click(screen.getByRole('button', { name: '저장' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('저장하지 못했어요');
@@ -150,7 +150,7 @@ describe('영업시간 화면', () => {
 
   it('닫는 시각이 여는 시각보다 빠르면 그 요일 줄에 이유를 보이고 저장하지 않는다', async () => {
     const api = createMemorySettingsApi();
-    renderAt('/settings/hours', api);
+    renderAt('/settings/shop', api);
     await userEvent.selectOptions(await screen.findByRole('combobox', { name: '화요일 여는 시각' }), '21:00');
     await userEvent.click(screen.getByRole('button', { name: '저장' }));
 
@@ -163,7 +163,7 @@ describe('영업시간 화면', () => {
 
   it('아직 안 넣은 매장은 안내와 예시 값을 보이고, 저장하면 안내가 사라진다', async () => {
     const api = unsetApi();
-    renderAt('/settings/hours', api);
+    renderAt('/settings/shop', api);
     expect(await screen.findByText(HOURS_UNSET_TEXT)).toBeInTheDocument();
     expect(holiday('화')).not.toBeChecked(); // 예시 값으로 영업
     expect(holiday('월')).toBeChecked(); // 이미 있는 매주 휴무는 그대로 정기 휴무
@@ -177,7 +177,7 @@ describe('영업시간 화면', () => {
     const api = createMemorySettingsApi();
     let fail = true;
     const flaky: SettingsApi = { ...api, getBusinessHours: () => (fail ? Promise.reject(new Error('offline')) : api.getBusinessHours()) };
-    renderAt('/settings/hours', flaky);
+    renderAt('/settings/shop', flaky);
     const retry = await screen.findByRole('button', { name: '다시 시도' });
     fail = false;
     await userEvent.click(retry);
@@ -195,7 +195,7 @@ describe('영업시간 화면', () => {
         return fail ? Promise.reject(new Error('offline')) : api.putBusinessHours(h, o);
       },
     };
-    renderAt('/settings/hours', flaky);
+    renderAt('/settings/shop', flaky);
     await userEvent.click(await screen.findByRole('button', { name: '저장' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('저장하지 못했어요');
     fail = false;
@@ -215,7 +215,7 @@ describe('영업시간 화면', () => {
         throw new SettingsNotFoundError();
       },
     };
-    renderAt('/settings/hours', flaky);
+    renderAt('/settings/shop', flaky);
     await userEvent.click(await findHoliday('월'));
     await userEvent.click(screen.getByRole('button', { name: '저장' }));
     expect(await screen.findByRole('status')).toHaveTextContent(HOURS_SAVED_TEXT);
@@ -223,8 +223,35 @@ describe('영업시간 화면', () => {
     expect(await weeklyDays(api)).toEqual([]);
   });
 
+  it('위치·링크·환불 정책을 저장한다 — 짧게 적은 링크는 주소로 바꾸고, 보일 때는 다시 짧게(W13 디자인)', async () => {
+    const api = createMemorySettingsApi();
+    renderAt('/settings/shop', api);
+    expect(await screen.findByRole('textbox', { name: '네이버 플레이스 (선택)' })).toHaveValue('naver.me/example-shop');
+    await userEvent.type(screen.getByRole('textbox', { name: '인스타그램 (선택)' }), '@example.shop');
+    await userEvent.type(screen.getByRole('textbox', { name: '환불 정책 (선택)' }), '예약 하루 전까지 전액 환불');
+    await userEvent.click(screen.getByRole('button', { name: '저장' }));
+    await screen.findByRole('status');
+    expect(await api.getShopInfo()).toMatchObject({
+      naverPlaceUrl: 'https://naver.me/example-shop',
+      instagramUrl: 'https://www.instagram.com/example.shop',
+      refundPolicy: '예약 하루 전까지 전액 환불',
+    });
+    expect(screen.getByRole('textbox', { name: '인스타그램 (선택)' })).toHaveValue('@example.shop');
+  });
+
+  it('주소가 아닌 링크는 칸 아래 이유를 보이고, 영업시간도 저장하지 않는다', async () => {
+    const api = createMemorySettingsApi();
+    renderAt('/settings/shop', api);
+    await userEvent.click(await findHoliday('일'));
+    await userEvent.type(screen.getByRole('textbox', { name: '홈페이지 (선택)' }), '우리 홈페이지');
+    await userEvent.click(screen.getByRole('button', { name: '저장' }));
+    expect(await screen.findByText('웹 주소로 적어 주세요. 예: https://naver.me/…')).toBeInTheDocument();
+    expect((await api.getBusinessHours())?.['7']).toBeDefined(); // 일요일 그대로
+    expect((await api.getShopInfo()).landingUrl).toBeNull();
+  });
+
   it('영업시간 규칙 안내를 보인다', async () => {
-    renderAt('/settings/hours');
+    renderAt('/settings/shop');
     expect(await screen.findByText(HOURS_RULE_TEXT)).toBeInTheDocument();
   });
 });
