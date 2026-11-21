@@ -1,22 +1,26 @@
-// 예약 넣기 W3 (화면 설계서 §4 F1·§5 W3, 디자인 w2.png 가운데). 관리 불가 시간(W4)은 다음 PR에서 세그먼트로 붙인다.
+// 예약 넣기 W3 · 관리 불가 시간 W4 (화면 설계서 §4 F1·§5 W3·W4, 디자인 w2.png 가운데·오른쪽). 한 시트를 세그먼트 `예약 · 관리 불가 시간`으로 바꾼다.
 // 폰은 큰 아래 시트, 웹은 오른쪽 패널(W2와 같은 틀). 저장 검사는 서버와 같은 @bv/scheduling checkBooking(절대 규칙 4) —
-// 거부되면 저장 버튼 위 빨간 알림(W3 거부 표).
-import { checkBooking } from '@bv/scheduling/booking';
+// 거부되면 저장 버튼 위 빨간 알림(W3 거부 표). 관리 불가 시간은 겹치는 예약을 막지 않고 미리 알린다(결정 R50).
+import { blockedAppointmentIds, checkBooking, occupiedOf } from '@bv/scheduling/booking';
 import {
   ActionButton,
   Icon,
   Callout,
   Chip,
+  CheckboxHiddenInput,
   Field,
   RadioGroupItemHiddenInput,
   ResponsiveSidePanel,
+  SegmentedControl,
+  SegmentedControlItemHiddenInput,
+  Switch,
   TextField,
 } from '@seed-design/react';
 import { CalendarDays, Minus, Plus, Search, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toBookingInputs, useCalendarApi } from '@/features/calendar/api';
 import { occupancyText, rejectText, shopIso } from '@/features/calendar/bookingText';
-import { addDays, shopDate, type Menu, type Staff } from '@/features/calendar/model';
+import { addDays, shopDate, shopTime, type CalendarData, type Menu, type Staff } from '@/features/calendar/model';
 import { useCustomerApi } from '@/features/customers/api';
 import type { Customer } from '@/features/customers/model';
 import { useIsPhone } from '@/lib/useLayout';
@@ -39,7 +43,10 @@ interface Props {
   onSaved: (date: string) => void;
 }
 
+type Kind = 'appointment' | 'block';
+
 export function EntrySheet({ start, staff, onClose, onSaved }: Props) {
+  const [kind, setKind] = useState<Kind>('appointment');
   const phone = useIsPhone();
   return (
     <CalendarSheet open={start !== null} onClose={onClose} full>
@@ -48,7 +55,7 @@ export function EntrySheet({ start, staff, onClose, onSaved }: Props) {
           <ResponsiveSidePanel.Header className={sheetHeadClass(phone)}>
             <div className="flex items-center justify-between gap-2">
               <ResponsiveSidePanel.Title className={cn(titleClass, 'text-xl font-bold tracking-[-0.02em]')}>
-                예약 넣기
+                {kind === 'appointment' ? '예약 넣기' : '관리 불가 시간'}
               </ResponsiveSidePanel.Title>
               <ResponsiveSidePanel.CloseButton asChild>
                 <ActionButton variant="ghost" size="small" layout="iconOnly" aria-label="닫기">
@@ -56,8 +63,23 @@ export function EntrySheet({ start, staff, onClose, onSaved }: Props) {
                 </ActionButton>
               </ResponsiveSidePanel.CloseButton>
             </div>
+            <SegmentedControl.Root aria-label="종류" value={kind} onValueChange={(v) => setKind(v as Kind)} className="w-full">
+              <SegmentedControl.Indicator />
+              <SegmentedControl.Item value="appointment">
+                <SegmentedControlItemHiddenInput />
+                예약
+              </SegmentedControl.Item>
+              <SegmentedControl.Item value="block">
+                <SegmentedControlItemHiddenInput />
+                관리 불가 시간
+              </SegmentedControl.Item>
+            </SegmentedControl.Root>
           </ResponsiveSidePanel.Header>
-          <AppointmentForm start={start} staff={staff} onSaved={onSaved} />
+          {kind === 'appointment' ? (
+            <AppointmentForm start={start} staff={staff} onSaved={onSaved} />
+          ) : (
+            <BlockForm start={start} staff={staff} onSaved={onSaved} />
+          )}
         </>
       )}
     </CalendarSheet>
@@ -357,5 +379,176 @@ function Stepper({
         </button>
       </span>
     </div>
+  );
+}
+
+// ── W4 관리 불가 시간 ─────────────────────────────────────────
+
+const hhmmPlus = (time: string, min: number) => {
+  const t = Math.min(24 * 60 - 1, Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5)) + min);
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+};
+
+function BlockForm({ start, staff, onSaved }: { start: EntryStart; staff: Staff[]; onSaved: (date: string) => void }) {
+  const api = useCalendarApi();
+  const phone = useIsPhone();
+  const [from, setFrom] = useState(`${start.date}T${start.time}`);
+  const [to, setTo] = useState(`${start.date}T${hhmmPlus(start.time, 120)}`);
+  const [allStaff, setAllStaff] = useState(false);
+  const [who, setWho] = useState<string[]>(start.staffId ? [start.staffId] : staff.length === 1 ? [staff[0]!.id] : []);
+  const [memo, setMemo] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [around, setAround] = useState<CalendarData | null>(null);
+
+  const startAt = from ? shopIso(from.slice(0, 10), from.slice(11, 16)) : null;
+  const endAt = to ? shopIso(to.slice(0, 10), to.slice(11, 16)) : null;
+  const valid = startAt !== null && endAt !== null && Date.parse(startAt) < Date.parse(endAt);
+  // ASSUMPTION: 담당자가 1명이면 스위치·칩을 숨기고 그 담당자로 넣는다(앞으로 생길 담당자는 포함하지 않음).
+  const ready = valid && (allStaff || who.length > 0);
+
+  useEffect(() => {
+    if (!startAt || !endAt) return;
+    let alive = true;
+    api
+      .range(shopDate(Date.parse(startAt)), shopDate(Math.max(Date.parse(startAt), Date.parse(endAt) - 1)))
+      .then((d) => alive && setAround(d));
+    return () => {
+      alive = false;
+    };
+  }, [api, startAt, endAt]);
+
+  // 겹치는 예약 미리 알림(결정 R50) — 서버와 같은 blockedAppointmentIds
+  const overlapping = useMemo(() => {
+    if (!around || !valid || !startAt || !endAt) return [];
+    const ids = new Set(
+      blockedAppointmentIds(
+        {
+          id: 'new',
+          start: new Date(startAt),
+          end: new Date(endAt),
+          allStaff,
+          staffIds: who,
+        },
+        around.appointments.map((a) => ({
+          id: a.id,
+          staffId: a.staffId,
+          status: a.status,
+          occupied: occupiedOf({
+            start: new Date(a.startAt),
+            durationMin: a.durationMin,
+            prepMin: a.prepMin,
+          }),
+        })),
+      ),
+    );
+    return around.appointments.filter((a) => ids.has(a.id));
+  }, [around, valid, startAt, endAt, allStaff, who]);
+
+  const save = async () => {
+    if (!startAt || !endAt) return;
+    if (!valid) return setError('끝이 시작보다 늦어야 해요.');
+    setBusy(true);
+    try {
+      await api.createBlock({
+        startAt,
+        endAt,
+        allStaff,
+        staffIds: allStaff ? [] : who,
+        memo: memo.trim() || null,
+      });
+      onSaved(shopDate(Date.parse(startAt)));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <ResponsiveSidePanel.Body className={cn(sheetBodyClass(phone), 'gap-3.5')}>
+        <Field.Root>
+          <Field.Header>
+            <Field.Label>시작</Field.Label>
+          </Field.Header>
+          <TextField.Root size="large">
+            <TextField.Input type="datetime-local" step={900} value={from} onChange={(e) => setFrom(e.target.value)} />
+          </TextField.Root>
+        </Field.Root>
+        <Field.Root>
+          <Field.Header>
+            <Field.Label>끝</Field.Label>
+          </Field.Header>
+          <TextField.Root size="large">
+            <TextField.Input type="datetime-local" step={900} value={to} onChange={(e) => setTo(e.target.value)} />
+          </TextField.Root>
+        </Field.Root>
+        {staff.length > 1 && (
+          <>
+            <Switch.Root checked={allStaff} onCheckedChange={setAllStaff} size="32" className="flex items-center justify-between">
+              <Switch.Label className="text-base">모든 담당자</Switch.Label>
+              <Switch.Control>
+                <Switch.Thumb />
+              </Switch.Control>
+              <Switch.HiddenInput />
+            </Switch.Root>
+            {!allStaff && (
+              <div className="grid gap-2">
+                <span className="pl-0.5 text-sm font-medium" id="who-label">
+                  누구
+                </span>
+                <div role="group" aria-labelledby="who-label" className="flex flex-wrap gap-2">
+                  {staff.map((s) => (
+                    <Chip.Toggle
+                      key={s.id}
+                      variant="outlineStrong"
+                      size="medium"
+                      checked={who.includes(s.id)}
+                      onCheckedChange={(on) => setWho((w) => (on ? [...w, s.id] : w.filter((x) => x !== s.id)))}
+                    >
+                      <CheckboxHiddenInput />
+                      <Chip.Label>{s.name}</Chip.Label>
+                    </Chip.Toggle>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+        <Field.Root>
+          <Field.Header>
+            <Field.Label>
+              메모 <Field.IndicatorText>(선택)</Field.IndicatorText>
+            </Field.Label>
+          </Field.Header>
+          <TextField.Root size="large">
+            <TextField.Input value={memo} onChange={(e) => setMemo(e.target.value)} />
+          </TextField.Root>
+        </Field.Root>
+        {overlapping.length > 0 && (
+          <Callout.Root tone="warning">
+            <Callout.Content>
+              <Callout.Title>이 시간에 예약 {overlapping.length}건이 있어요</Callout.Title>
+              <Callout.Description>
+                {overlapping.map((a) => `${a.customerName} · ${shopTime(a.startAt)} ${a.menuName ?? ''}`.trim()).join(', ')}. 예약은 그대로
+                두고 캘린더에 겹침으로 표시해요.
+              </Callout.Description>
+            </Callout.Content>
+          </Callout.Root>
+        )}
+        {error && (
+          <Callout.Root tone="critical" role="alert">
+            <Callout.Content>
+              <Callout.Title>저장하지 못했어요</Callout.Title>
+              <Callout.Description>{error}</Callout.Description>
+            </Callout.Content>
+          </Callout.Root>
+        )}
+      </ResponsiveSidePanel.Body>
+      <ResponsiveSidePanel.Footer className={sheetFootClass(phone)}>
+        <ActionButton variant="brandSolid" size="large" flexGrow={1} disabled={!ready} loading={busy} onClick={save}>
+          저장
+        </ActionButton>
+      </ResponsiveSidePanel.Footer>
+    </>
   );
 }

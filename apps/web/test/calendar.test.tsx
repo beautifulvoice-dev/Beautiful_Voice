@@ -522,7 +522,7 @@ describe('예약 보기 W2 — 웹 오른쪽 패널 / 폰 아래 시트 (캘린�
   });
 });
 
-describe('예약 넣기 W3', () => {
+describe('예약 넣기 W3 · 관리 불가 시간 W4', () => {
   /** 웹 + 예약 → 고객·날짜·시작을 채운다. 담당자는 1명이라 칸이 없다(F1-4). */
   async function openEntry(name: string, date: string, time: string) {
     await screen.findByRole('region', { name: '11월 16일' });
@@ -602,5 +602,23 @@ describe('예약 넣기 W3', () => {
     await userEvent.click(within(sheet).getByRole('button', { name: '저장' }));
     const tuesday = await screen.findByRole('region', { name: '11월 17일' });
     await waitFor(() => expect(within(tuesday).getByRole('button', { name: /나새봄/ })).toBeInTheDocument());
+  });
+
+  it('관리 불가 시간: 겹치는 예약을 막지 않고 미리 알린 뒤, 저장하면 그 예약에 "겹침"', async () => {
+    renderAt('/calendar?date=2026-11-18');
+    await screen.findByRole('region', { name: '11월 16일' });
+    await userEvent.click(screen.getByRole('button', { name: '예약' }));
+    const sheet = await screen.findByRole('dialog', { name: '예약 넣기' });
+    await userEvent.click(within(sheet).getByText('관리 불가 시간'));
+    const [from, to] = Array.from(sheet.querySelectorAll<HTMLInputElement>('input[type="datetime-local"]'));
+    await userEvent.clear(from!);
+    await userEvent.type(from!, '2026-11-16T15:30');
+    await userEvent.clear(to!);
+    await userEvent.type(to!, '2026-11-16T17:00');
+    expect(await within(sheet).findByText('이 시간에 예약 1건이 있어요')).toBeInTheDocument();
+    expect(sheet).toHaveTextContent('박지민 · 16:00 수분 관리. 예약은 그대로 두고 캘린더에 겹침으로 표시해요.');
+    await userEvent.click(within(sheet).getByRole('button', { name: '저장' }));
+    const monday = await screen.findByRole('region', { name: '11월 16일' });
+    await waitFor(() => expect(within(monday).getByRole('button', { name: /박지민/ })).toHaveAttribute('data-overlap', 'true'));
   });
 });
