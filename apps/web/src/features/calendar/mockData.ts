@@ -1,12 +1,13 @@
 // 개발용 합성 데이터. 실제 고객이 아니다(절대 규칙 8).
 // 이번 주(매장 날짜 기준) 월요일을 기준으로 만들어 언제 열어도 이번 주에 예약이 보인다.
 // 1인 매장(원장 1명) 기준. 담당자가 여럿인 경우는 테스트 안에서 따로 만들어 확인한다.
-import { addDays, dayStart, shopDate, weekDays, type CalendarAppointment, type CalendarData } from './model';
+import type { CalendarSeed } from './api';
+import { addDays, dayStart, shopDate, weekDays, type CalendarAppointment } from './model';
 
 /** 매장 날짜 date의 hh:mm → UTC ISO. */
 const at = (date: string, hh: number, mm = 0) => new Date(dayStart(date) + (hh * 60 + mm) * 60_000).toISOString();
 
-export function seedCalendar(today: string = shopDate(Date.now())): CalendarData {
+export function seedCalendar(today: string = shopDate(Date.now())): Required<CalendarSeed> {
   const [mon] = weekDays(today) as [string];
   const d = (n: number) => addDays(mon, n);
   let n = 0;
@@ -50,7 +51,11 @@ export function seedCalendar(today: string = shopDate(Date.now())): CalendarData
     ],
     blocks: [
       { id: 'b1', startAt: at(d(3), 12, 0), endAt: at(d(3), 13, 0), allStaff: true, staffIds: [], memo: '점심' },
-      { id: 'b2', startAt: at(d(4), 9, 0), endAt: at(d(4), 12, 0), allStaff: false, staffIds: ['s1'], memo: '원장 외출' },
+      // 15:00 한예린 예약과 겹친다 — 기존 예약은 그대로, 캘린더에 "겹침"(결정 R50)
+      { id: 'b2', startAt: at(d(4), 14, 0), endAt: at(d(4), 16, 0), allStaff: false, staffIds: ['s1'], memo: '원장 외출' },
     ],
+    // 월~토 10:00~22:00, 일요일 매주 휴무(계약 #42 모양)
+    businessHours: Object.fromEntries(['1', '2', '3', '4', '5', '6'].map((k) => [k, [{ open: '10:00', close: '22:00' }]])),
+    closures: [{ id: 'c1', kind: 'weekly', weekday: 7, note: '정기 휴무' }],
   };
 }
