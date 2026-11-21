@@ -413,6 +413,19 @@ describe('폰·웹 배치(캘린더 PR 2a) — 너비 기준 SEED md 768', () =>
     expect(await screen.findByRole('dialog', { name: '이서윤' })).toBeInTheDocument();
   });
 
+  it('폰 월 보기: 관리 불가와 겹치는 예약에만 겹침을 표시한다', async () => {
+    setTestWidth(390);
+    const data = seedCalendar('2026-11-18');
+    data.appointments.push(appt({ id: 'after-block', customerName: '합성 고객', startAt: '2026-11-20T08:00:00Z' }));
+    renderAt('/calendar?view=month&date=2026-11-18', createMemoryCalendarApi(data));
+
+    const friday = await screen.findByRole('region', { name: '11월 20일' });
+    await userEvent.click(within(friday).getByRole('button', { name: /20일 · 예약/ }));
+    const list = await screen.findByRole('region', { name: '11/20(금) 예약' });
+    expect(within(list).getByRole('button', { name: /한예린/ })).toHaveTextContent('겹침');
+    expect(within(list).getByRole('button', { name: /합성 고객/ })).not.toHaveTextContent('겹침');
+  });
+
   it('웹 월 보기: 날마다 3건까지 이름, 넘치면 "+N"', async () => {
     const many = Array.from({ length: 5 }, (_, i) =>
       appt({ id: `m${i}`, customerName: `손님${i}`, startAt: `2026-11-18T0${i}:00:00Z`, prepMin: 0, durationMin: 30 }),
