@@ -1,0 +1,6 @@
+/* SEED Design 3.4.0 (ADR-0008). layered 판을 써서 Tailwind 층 순서 안에 넣는다(index.css 맨 위 @layer 순서).
+   레시피는 쓰는 것만 여기 한 줄씩 더한다 — SEED 부품을 처음 쓰는 PR이 그 부품 레시피를 추가한다. */
+@import '@seed-design/css/base.layered.css';
+
+/* 글꼴: Pretendard 가변 글꼴 동적 서브셋. woff2는 빌드에 함께 실린다(외부 CDN 없음). */
+@import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';

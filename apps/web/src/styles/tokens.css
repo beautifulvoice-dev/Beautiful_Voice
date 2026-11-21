@@ -1,0 +1,56 @@
+/* NABI 원장 웹의 색·글꼴 역할 토큰 (ADR-0008, 화면 설계서 §9).
+   규칙: 화면 코드와 다른 스타일시트는 색 값을 직접 쓰지 않고 여기 역할만 쓴다.
+   값은 모두 SEED Design 3.4.0 토큰을 가리킨다. 밝은 모드만 쓴다(index.html data-seed-color-mode="light-only"). */
+
+/* 브랜드: SEED 기본 브랜드(당근 주황)를 SEED 자체 보라 단계로 돌린다. 패키지와 다른 줄은 이 여덟 줄뿐이다.
+   주 버튼 purple-800 위 흰 글자 대비 5.74:1. */
+:root[data-seed-color-mode='light-only'] {
+  --seed-color-bg-brand-solid: var(--seed-color-palette-purple-800);
+  --seed-color-bg-brand-solid-pressed: var(--seed-color-palette-purple-900);
+  --seed-color-bg-brand-weak: var(--seed-color-palette-purple-200);
+  --seed-color-bg-brand-weak-pressed: var(--seed-color-palette-purple-300);
+  --seed-color-fg-brand: var(--seed-color-palette-purple-800);
+  --seed-color-fg-brand-contrast: var(--seed-color-palette-purple-900);
+  --seed-color-stroke-brand-solid: var(--seed-color-palette-purple-800);
+  --seed-color-stroke-brand-weak: var(--seed-color-palette-purple-400);
+}
+
+/* 레시피 보정: SEED 3.4.0의 진행 원(버튼 로딩 포함) 바탕은 브랜드 토큰이 아니라 carrot-200을 직접 쓴다 → 보라로. */
+.seed-progress-circle__root--tone_brand {
+  --track-color: var(--seed-color-palette-purple-200);
+}
+
+:root {
+  color-scheme: light;
+
+  /* 글꼴: Pretendard를 빌드에 함께 싣는다(외부에서 받지 않음). 없으면 SEED 기본 글꼴 목록. */
+  --font-body: 'Pretendard Variable', Pretendard, var(--seed-font-family);
+
+  /* 바탕·글자 */
+  --paper: var(--seed-color-bg-layer-default); /* 화면 바탕 */
+  --surface: var(--seed-color-bg-layer-default); /* 카드, 시트, 입력 칸 */
+  --ink: var(--seed-color-fg-neutral); /* 글자 */
+  --ink-soft: var(--seed-color-fg-neutral-muted); /* 보조 글자 */
+  --line: var(--seed-color-stroke-neutral-weak); /* 구분선, 카드 테두리 */
+  --control-line: var(--seed-color-palette-gray-700); /* 입력 칸 테두리 */
+  --neutral-weak: var(--seed-color-bg-neutral-weak);
+  --disabled: var(--seed-color-bg-disabled);
+
+  /* 브랜드 */
+  --brand: var(--seed-color-bg-brand-solid);
+  --brand-pressed: var(--seed-color-bg-brand-solid-pressed);
+  --brand-weak: var(--seed-color-bg-brand-weak);
+  --brand-text: var(--seed-color-fg-brand);
+  --on-brand: var(--seed-color-fg-on-brand-solid);
+  --critical: var(--seed-color-bg-critical-solid);
+  --critical-text: var(--seed-color-fg-critical);
+
+  /* 캘린더 (§9.4·§9.5) — 캘린더 화면을 옮기는 PR에서 쓴다 */
+  --cal-appt: var(--seed-color-bg-brand-weak);
+  --cal-appt-text: var(--seed-color-fg-brand-contrast);
+  --cal-prep: var(--seed-color-bg-brand-weak);
+  --cal-prep-stripe: var(--seed-color-stroke-brand-weak);
+  --cal-block: var(--seed-color-bg-neutral-weak);
+  --cal-closed: var(--seed-color-bg-disabled);
+  --cal-overlap: var(--seed-color-stroke-critical-solid);
+}
