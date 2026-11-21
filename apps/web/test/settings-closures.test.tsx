@@ -7,7 +7,7 @@ import { RouterProvider } from 'react-router/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SessionLoaderProvider } from '@/features/auth/session';
 import { createMemorySettingsApi, SettingsApiProvider, type SettingsApi } from '@/features/settings/api';
-import { closuresSummary, groupClosures, toClosureInput } from '@/features/settings/closures';
+import { closuresSummary, groupClosures, noLocalChanges, toClosureInput, withLocalChanges } from '@/features/settings/closures';
 import { seedSettings } from '@/features/settings/mockData';
 import { routes } from '@/routes';
 
@@ -71,6 +71,22 @@ describe('휴무 묶기·문구', () => {
       note: null,
     });
     expect(toClosureInput({ kind: 'weekly', weekday: 3, startDate: '', endDate: '', note: '정기 휴무' })).toEqual({ kind: 'weekly', weekday: 3, note: '정기 휴무' });
+  });
+});
+
+describe('방금 바뀐 휴무 반영(#59·#60 리뷰)', () => {
+  it('새 목록이 오기 전에는 방금 추가·지운 것을 반영하고, 같은 id는 한 번만 보인다', () => {
+    const base = seedSettings().closures;
+    const added = day('n', 'holiday', '2026-12-25');
+    const local = { base, added: [added, { ...base[0]! }], removed: ['closure-2'] };
+    expect(withLocalChanges(base, local).map((c) => c.id)).toEqual(['closure-1', 'n']);
+  });
+
+  it('새 목록(다른 배열)이 오면 방금 바뀐 것을 버린다 — 새 목록에 이미 들어 있다', () => {
+    const base = seedSettings().closures;
+    const local = { ...noLocalChanges(base), removed: ['closure-1'] };
+    const fresh = [...base];
+    expect(withLocalChanges(fresh, local).map((c) => c.id)).toEqual(['closure-1', 'closure-2']);
   });
 });
 
@@ -149,6 +165,43 @@ describe('휴무·휴가 화면', () => {
     renderAt('/settings/closures', api);
     expect(await screen.findByText('지난 휴무 1개')).toBeInTheDocument();
     expect(screen.queryByRole('list', { name: '다가오는 휴무' })).toBeNull();
+  });
+
+  it('저장은 됐는데 응답만 끊긴 뒤 시트를 닫았다 다시 추가해도 두 줄이 되지 않는다(#59 리뷰)', async () => {
+    const api = createMemorySettingsApi();
+    const keys: (string | undefined)[] = [];
+    let dropResponse = true;
+    const flaky: SettingsApi = {
+      ...api,
+      addClosure: async (input, o) => {
+        keys.push(o?.idempotencyKey);
+        const created = await api.addClosure(input, o); // 서버에는 저장된다
+        if (dropResponse) throw new Error('response lost');
+        return created;
+      },
+    };
+    renderAt('/settings/closures', flaky);
+    let sheet = await openSheet();
+    await userEvent.click(within(sheet).getByRole('radio', { name: '공휴일' }));
+    await userEvent.type(within(sheet).getByLabelText('시작일'), '2026-12-25');
+    await userEvent.click(within(sheet).getByRole('button', { name: '추가' }));
+    expect(await within(sheet).findByRole('alert')).toHaveTextContent('저장하지 못했어요');
+
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // 닫으면 목록을 다시 읽어서, 이미 저장된 공휴일이 보인다.
+    expect(texts(await section('다가오는 휴무'))).toContain('12월 25일공휴일지우기');
+
+    dropResponse = false;
+    sheet = await openSheet();
+    expect(within(sheet).getByLabelText('시작일')).toHaveValue('2026-12-25'); // 입력이 그대로
+    await userEvent.click(within(sheet).getByRole('button', { name: '추가' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    expect(keys).toHaveLength(2);
+    expect(keys[1]).toBe(keys[0]);
+    expect((await api.listClosures()).filter((c) => c.kind === 'holiday')).toHaveLength(1);
+    expect(texts(await section('다가오는 휴무')).filter((t) => t?.startsWith('12월 25일'))).toHaveLength(1);
   });
 
   it('지우기가 끊기면 같은 항목은 같은 키로, 다른 항목은 새 키로 보낸다', async () => {

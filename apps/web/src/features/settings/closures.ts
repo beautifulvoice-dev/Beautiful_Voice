@@ -35,6 +35,26 @@ export function closuresSummary(closures: readonly Closure[], today: string): st
   return parts.length ? parts.join(' · ') : '없음';
 }
 
+/**
+ * 방금 추가·지운 휴무. 서버 목록을 다시 불러오기 전에도 화면에 반영한다(#59·#60 리뷰) —
+ * 느린 목록 갱신 중에 같은 요일을 또 추가하거나, 지운 줄을 또 누르지 않게.
+ * base가 바뀌면(새 목록 도착) 비운다: 새 목록에 이미 들어 있다.
+ */
+export interface LocalChanges {
+  base: readonly Closure[];
+  added: Closure[];
+  removed: string[];
+}
+
+export const noLocalChanges = (base: readonly Closure[]): LocalChanges => ({ base, added: [], removed: [] });
+
+/** 서버 목록 + 방금 바뀐 것. 같은 id는 한 번만(같은 키로 다시 보내 같은 휴무가 돌아온 경우). */
+export function withLocalChanges(closures: readonly Closure[], local: LocalChanges): Closure[] {
+  const mine = local.base === closures ? local : noLocalChanges(closures);
+  const ids = new Set(closures.map((c) => c.id));
+  return [...closures, ...mine.added.filter((a) => !ids.has(a.id))].filter((c) => !mine.removed.includes(c.id));
+}
+
 /** 추가 시트의 입력. 끝나는 날을 비우면 하루짜리(시작일과 같음). */
 export interface ClosureDraft {
   kind: ClosureKind;

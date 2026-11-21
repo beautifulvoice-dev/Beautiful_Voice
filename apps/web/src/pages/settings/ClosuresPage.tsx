@@ -8,7 +8,7 @@ import { Link } from 'react-router';
 import { EmptyState, ErrorState } from '@/components/states/DataState';
 import { shopToday } from '@/features/customers/model';
 import { useSettingsApi } from '@/features/settings/api';
-import { groupClosures, KIND_TEXT, toClosureInput, type ClosureDraft, type ClosureKind } from '@/features/settings/closures';
+import { groupClosures, KIND_TEXT, noLocalChanges, toClosureInput, withLocalChanges, type ClosureDraft, type ClosureKind, type LocalChanges } from '@/features/settings/closures';
 import { WEEKDAYS } from '@/features/settings/hours';
 import { closureText, WEEKDAY_TEXT, type Weekday } from '@/features/settings/messages';
 import { useSaveAction } from '@/features/settings/useSaveAction';
@@ -21,6 +21,13 @@ export function ClosuresPage() {
   const api = useSettingsApi();
   const load = useCallback(() => api.listClosures(), [api]);
   const { state, reload } = useLoad(load);
+  // 시트와 "방금 바뀐 것"은 목록 바깥에 둔다 — 목록을 다시 불러와도 시트의 입력·재시도 키가 사라지지 않게(#59 리뷰).
+  const [adding, setAdding] = useState(false);
+  const [local, setLocal] = useState<LocalChanges>(() => noLocalChanges([]));
+  const closures = state.status === 'ok' ? state.data : null;
+  const mine = closures && local.base === closures ? local : noLocalChanges(closures ?? []);
+  const shown = closures ? withLocalChanges(closures, mine) : [];
+  const takenWeekdays = shown.flatMap((c) => (c.kind === 'weekly' ? [c.weekday] : []));
 
   return (
     <div className="flex flex-col gap-4 px-4 pt-6 md:max-w-lg">
@@ -30,17 +37,39 @@ export function ClosuresPage() {
       <h1 className="text-xl font-semibold text-ink">휴무·휴가</h1>
       {state.status === 'loading' && <p className="py-8 text-center text-sm text-ink-soft">불러오는 중…</p>}
       {state.status === 'error' && <ErrorState onRetry={reload} />}
-      {state.status === 'ok' && <ClosureList closures={state.data} reload={reload} />}
+      {closures && (
+        <ClosureList
+          closures={shown}
+          reload={reload}
+          onAdd={() => setAdding(true)}
+          onRemoved={(id) => setLocal({ ...mine, removed: [...mine.removed, id] })}
+        />
+      )}
+      <AddClosureSheet
+        open={adding}
+        onOpenChange={setAdding}
+        takenWeekdays={takenWeekdays}
+        reload={reload}
+        onAdded={(created) => setLocal({ ...mine, added: [...mine.added, created] })}
+      />
     </div>
   );
 }
 
-function ClosureList({ closures, reload }: { closures: Closure[]; reload: () => void }) {
+function ClosureList({
+  closures,
+  reload,
+  onAdd,
+  onRemoved,
+}: {
+  closures: Closure[];
+  reload: () => void;
+  onAdd: () => void;
+  onRemoved: (id: string) => void;
+}) {
   const api = useSettingsApi();
   const remove = useSaveAction(reload);
-  const [adding, setAdding] = useState(false);
   const { weekly, upcoming, past } = groupClosures(closures, shopToday());
-  const takenWeekdays = weekly.flatMap((c) => (c.kind === 'weekly' ? [c.weekday] : []));
 
   const lastTarget = useRef<string | null>(null);
   async function removeOne(id: string) {
@@ -51,14 +80,17 @@ function ClosureList({ closures, reload }: { closures: Closure[]; reload: () => 
       await api.removeClosure(id, { idempotencyKey });
       return true;
     });
-    if (done) reload();
+    if (done) {
+      onRemoved(id);
+      reload();
+    }
   }
 
   const row = (c: Closure) => <ClosureRow key={c.id} closure={c} disabled={remove.saving} onRemove={() => removeOne(c.id)} />;
 
   return (
     <div className="flex flex-col gap-5">
-      <ActionButton variant="neutralWeak" onClick={() => setAdding(true)}>
+      <ActionButton variant="neutralWeak" onClick={onAdd}>
         휴무 추가
       </ActionButton>
       {remove.problem && 'message' in remove.problem && (
@@ -67,7 +99,7 @@ function ClosureList({ closures, reload }: { closures: Closure[]; reload: () => 
         </p>
       )}
 
-      {weekly.length + upcoming.length + past.length === 0 && <EmptyState title="등록한 휴무가 없어요" description="매주 쉬는 요일이나 공휴일·휴가를 추가해 주세요." />}
+      {closures.length === 0 && <EmptyState title="등록한 휴무가 없어요" description="매주 쉬는 요일이나 공휴일·휴가를 추가해 주세요." />}
       {weekly.length > 0 && <Section title="매주 쉬는 요일">{weekly.map(row)}</Section>}
       {upcoming.length > 0 && <Section title="다가오는 휴무">{upcoming.map(row)}</Section>}
       {past.length > 0 && (
@@ -76,8 +108,6 @@ function ClosureList({ closures, reload }: { closures: Closure[]; reload: () => 
           <ul className="flex flex-col divide-y divide-line">{past.map(row)}</ul>
         </details>
       )}
-
-      <AddClosureSheet open={adding} onOpenChange={setAdding} takenWeekdays={takenWeekdays} reload={reload} />
     </div>
   );
 }
@@ -115,11 +145,13 @@ function AddClosureSheet({
   onOpenChange,
   takenWeekdays,
   reload,
+  onAdded,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   takenWeekdays: Weekday[];
   reload: () => void;
+  onAdded: (created: Closure) => void;
 }) {
   const api = useSettingsApi();
   const save = useSaveAction(reload);
@@ -136,16 +168,22 @@ function AddClosureSheet({
 
   function close(next: boolean) {
     onOpenChange(next);
-    if (!next) {
-      setDraft(emptyDraft(freeWeekdays[0] ?? 1));
-      save.clear();
+    if (next) return;
+    if (save.problem?.kind === 'failed') {
+      // 결과를 모르는 추가(응답이 끊김): 서버에는 저장됐을 수 있다(#59 리뷰).
+      // 입력과 키를 그대로 두고 목록을 다시 읽는다 — 저장됐으면 목록에 보이고, 같은 입력으로 다시 누르면 같은 키라 두 줄이 되지 않는다.
+      reload();
+      return;
     }
+    setDraft(emptyDraft(freeWeekdays[0] ?? 1));
+    save.clear();
   }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     const created = await save.run((idempotencyKey) => api.addClosure(toClosureInput(draft), { idempotencyKey }));
     if (created !== undefined) {
+      onAdded(created);
       close(false);
       reload();
     }
