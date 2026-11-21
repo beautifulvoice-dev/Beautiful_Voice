@@ -143,6 +143,18 @@ describe('생년월일·거주지 (BEA-172, 명세 1 §2.3)', () => {
     expect(info).toHaveTextContent('거주지없음');
   });
 
+  it('생년월일을 덜 입력하면(브라우저가 빈 값을 줌) 지우지 않고 저장을 막는다 (#52 리뷰)', async () => {
+    const api = createMemoryCustomerApi();
+    renderAt('/customers/c3/edit', api);
+    const birthdate = await screen.findByLabelText('생년월일');
+    // 노트북 브라우저에서 "1990. 02."까지만 치면 value는 ''이고 validity.badInput이 true다. jsdom에는 없어서 흉내 낸다.
+    await userEvent.clear(birthdate);
+    Object.defineProperty(birthdate, 'validity', { value: { badInput: true } });
+    await userEvent.click(screen.getByRole('button', { name: '저장' }));
+    expect(screen.getByText(/생년월일을 끝까지 입력하거나/)).toBeInTheDocument();
+    expect((await api.get('c3'))?.birthdate).toBe('1992-07-15');
+  });
+
   it('생년월일 달력은 오늘(매장 날짜)까지만 고를 수 있다', async () => {
     renderAt('/customers/new');
     expect(await screen.findByLabelText('생년월일')).toHaveAttribute('max', shopToday());

@@ -2,7 +2,7 @@
 // 같은 이름 고객이 있으면 저장 전에 "같은 이름의 고객이 있어요"로 확인을 받는다. 자동으로 합치지 않는다(CUS-2).
 import { validateNewCustomer, type CustomerErrorCode, type CustomerField, type FieldError } from '@bv/customers';
 import type { Candidate } from '@bv/customers/duplicates';
-import { useCallback, useState, type ReactElement, type SyntheticEvent } from 'react';
+import { useCallback, useRef, useState, type ReactElement, type SyntheticEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { EmptyState, ErrorState } from '@/components/states/DataState';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,9 @@ const ERROR_TEXT: Record<CustomerErrorCode, string> = {
   PHONE_INVALID_FORMAT: '전화번호 형식이 맞지 않아요. 예: 010-1234-5678',
   BIRTHDATE_INVALID: '생년월일은 실제 날짜로 적어 주세요. 예: 1990-01-31',
 };
+
+/** 달력 칸에 날짜를 덜 입력하면 브라우저가 값을 빈 문자열로 준다 — 지운 것과 구분해 저장을 막는다(#52 리뷰). */
+const BIRTHDATE_INCOMPLETE_TEXT = '생년월일을 끝까지 입력하거나, 지우려면 칸을 비워 주세요.';
 
 const HINT_TEXT: Record<Candidate['hint'], string> = {
   same_phone: '전화번호도 같아요 — 이미 등록된 고객일 수 있어요',
@@ -45,6 +48,8 @@ function CustomerForm({ initial }: { initial: Customer | null }) {
   const [birthdate, setBirthdate] = useState(initial?.birthdate ?? '');
   const [address, setAddress] = useState(initial?.address ?? '');
   const [errors, setErrors] = useState<FieldError[]>([]);
+  const birthdateInput = useRef<HTMLInputElement>(null);
+  const [birthdateIncomplete, setBirthdateIncomplete] = useState(false);
   // 동명이인 후보는 어떤 입력으로 조회했는지와 묶어 둔다 — 그 입력 그대로일 때만 "다른 고객이에요, 저장"이 통한다(#32 리뷰).
   const [sameName, setSameName] = useState<{ candidates: Candidate[]; name: string; phone: string | null } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -54,8 +59,11 @@ function CustomerForm({ initial }: { initial: Customer | null }) {
   async function submit(e: SyntheticEvent, confirmedSameName = false) {
     e.preventDefault();
     setFailed(false);
+    const incomplete = birthdateInput.current?.validity.badInput ?? false;
+    setBirthdateIncomplete(incomplete);
     const checked = validateNewCustomer({ name, phone, memo, birthdate, address });
     if (!checked.ok) return setErrors(checked.errors);
+    if (incomplete) return setErrors([]);
     setErrors([]);
     setSaving(true);
     try {
@@ -94,8 +102,8 @@ function CustomerForm({ initial }: { initial: Customer | null }) {
             }} type="tel" inputMode="tel" autoComplete="off" />
         </Field>
         {/* ASSUMPTION(설계 메모 6단계): 생년월일은 달력으로 고르고 오늘(매장 날짜)까지만. 미래 날짜 금지는 명세에 없어 화면에서만 막는다. */}
-        <Field label="생년월일" error={errorOf('birthdate')}>
-          <input value={birthdate} onChange={(e) => setBirthdate(e.target.value)} type="date" max={shopToday()} />
+        <Field label="생년월일" error={errorOf('birthdate')} message={birthdateIncomplete ? BIRTHDATE_INCOMPLETE_TEXT : undefined}>
+          <input ref={birthdateInput} value={birthdate} onChange={(e) => setBirthdate(e.target.value)} type="date" max={shopToday()} />
         </Field>
         <Field label="거주지">
           <input value={address} onChange={(e) => setAddress(e.target.value)} autoComplete="off" placeholder="예: 동네 이름" />
@@ -137,14 +145,15 @@ function CustomerForm({ initial }: { initial: Customer | null }) {
   );
 }
 
-function Field({ label, error, children }: { label: string; error?: FieldError; children: ReactElement }) {
+function Field({ label, error, message, children }: { label: string; error?: FieldError; message?: string; children: ReactElement }) {
+  const text = message ?? (error && ERROR_TEXT[error.code]);
   return (
     <div className="flex flex-col gap-1 text-sm">
       <label className="flex flex-col gap-1 font-medium [&>*]:rounded-md [&>*]:border [&>*]:px-3 [&>*]:py-2 [&>*]:text-base [&>*]:font-normal">
         {label}
         {children}
       </label>
-      {error && <p className="text-destructive">{ERROR_TEXT[error.code]}</p>}
+      {text && <p className="text-destructive">{text}</p>}
     </div>
   );
 }
