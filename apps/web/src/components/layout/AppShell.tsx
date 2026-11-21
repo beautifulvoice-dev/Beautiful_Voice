@@ -21,7 +21,7 @@ export function AppShell() {
   return (
     <div className="min-h-dvh bg-paper text-ink">
       <header className="sticky top-0 z-30 border-b border-line bg-paper">
-        <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-4 px-4">
+        <div className="mx-auto flex h-14 max-w-[1280px] items-center gap-4 px-4">
           <BrandLockup />
           <p className="truncate text-sm text-ink-soft" aria-label="매장">
             {shopName}
@@ -50,7 +50,7 @@ export function AppShell() {
           </nav>
         </div>
       </header>
-      <main className="mx-auto max-w-[1200px] pb-20 md:pb-0">
+      <main className="mx-auto max-w-[1280px] pb-20 md:pb-0">
         <Outlet />
       </main>
     </div>

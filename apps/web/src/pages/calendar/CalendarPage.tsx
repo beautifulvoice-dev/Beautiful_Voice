@@ -18,11 +18,13 @@ import {
   type CalendarData,
   type Staff,
 } from '@/features/calendar/model';
+import { useIsPhone } from '@/lib/useLayout';
 import { useLoad } from '@/lib/useLoad';
 import { cn } from '@/lib/utils';
 import { AppointmentDetail } from './AppointmentDetail';
 import { MonthView } from './MonthView';
 import { KIND_CLASS } from './styles';
+import { WeekStrip } from './WeekStrip';
 import { WeekView } from './WeekView';
 
 type View = 'week' | 'month';
@@ -45,6 +47,8 @@ const ALL = 'all';
 
 export function CalendarPage() {
   const api = useCalendarApi();
+  // 폰은 주 보기를 7일 띠 + 고른 날 하루 시간표로, 월 보기를 예약 수 + 아래 목록으로(설계 D4: 부품이 다른 곳만 JS로).
+  const phone = useIsPhone();
   const [params, setParams] = useSearchParams();
   const view: View = params.get('view') === 'month' ? 'month' : 'week';
   const raw = params.get('date');
@@ -104,10 +108,22 @@ export function CalendarPage() {
       {state.status === 'loading' && <p className="py-8 text-center text-sm text-ink-soft">불러오는 중…</p>}
       {state.status === 'error' && <ErrorState onRetry={reload} />}
       {shown && view === 'week' && (
-        <WeekView days={days} data={shown} today={shopDate(Date.now())} now={Date.now()} onOpen={setOpen} staffName={staffName} />
+        <>
+          {phone && <WeekStrip days={days} data={shown} selected={date} today={shopDate(Date.now())} onPick={(d) => go({ date: d })} />}
+          <WeekView days={phone ? [date] : days} data={shown} today={shopDate(Date.now())} now={Date.now()} onOpen={setOpen} staffName={staffName} />
+        </>
       )}
       {shown && view === 'month' && (
-        <MonthView days={days} month={date.slice(0, 7)} data={shown} today={shopDate(Date.now())} onOpen={setOpen} />
+        <MonthView
+          days={days}
+          month={date.slice(0, 7)}
+          data={shown}
+          today={shopDate(Date.now())}
+          onOpen={setOpen}
+          phone={phone}
+          selected={date}
+          onPick={(d) => go({ date: d })}
+        />
       )}
 
       <AppointmentDetail appointment={open} staffName={open ? staffName(open.staffId) : ''} onClose={() => setOpen(null)} />
