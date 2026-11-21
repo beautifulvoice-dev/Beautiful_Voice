@@ -35,6 +35,8 @@ describe('설정 — 폰(390px)', () => {
       '담당자원장›',
     ]);
     expect(screen.queryByRole('navigation', { name: '설정 메뉴' })).toBeNull();
+    // 폰은 제목 위에 매장 이름(디자인 .p-shop). 테스트에는 매장 이름이 없어 자리 글자.
+    expect(screen.getByRole('heading', { name: '설정' }).previousElementSibling).toHaveTextContent('내 매장');
 
     await userEvent.click(rows[2]!);
     expect(router.state.location.pathname).toBe('/settings/menus');

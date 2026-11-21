@@ -8,6 +8,7 @@ import type { Customer } from '@/features/customers/model';
 import { ActionButton, ResponsiveDialog, SearchInput } from '@seed-design/react';
 import { useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
+import { PhoneShopName } from '@/components/layout/PhoneShopName';
 import { EmptyState, ErrorState } from '@/components/states/DataState';
 import { useCustomerApi } from '@/features/customers/api';
 import { formatPhone } from '@/features/customers/model';
@@ -39,6 +40,7 @@ export function CustomersPage() {
     <div className="flex flex-col gap-4 px-4 pt-6 md:max-w-2xl">
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col">
+          <PhoneShopName />
           <h1 className="text-2xl font-bold text-ink">고객</h1>
           {state.status === 'ok' && (
             <p className="text-sm text-ink-soft">{q ? `찾은 고객 ${state.data.length}명` : `고객 ${state.data.length}명`}</p>

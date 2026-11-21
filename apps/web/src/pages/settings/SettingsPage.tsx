@@ -10,6 +10,7 @@ import { useSettingsApi } from '@/features/settings/api';
 import { closuresSummary } from '@/features/settings/closures';
 import { hoursSummary, weeklyDaysOf } from '@/features/settings/hours';
 import { useLoad } from '@/lib/useLoad';
+import { PhoneShopName } from '@/components/layout/PhoneShopName';
 
 /** 설정 하위 화면. 폰 목록과 웹 왼쪽 메뉴가 같은 순서를 쓴다(디자인 순서). */
 export const SETTINGS_SECTIONS = [
@@ -74,7 +75,10 @@ function SettingsList() {
 
   return (
     <div className="flex flex-col gap-2 pt-6">
-      <h1 className="px-4 text-2xl font-bold text-ink">설정</h1>
+      <div className="px-4">
+        <PhoneShopName />
+        <h1 className="text-2xl font-bold text-ink">설정</h1>
+      </div>
       <List.Root aria-label="설정 항목">
         {SETTINGS_SECTIONS.map((s) => (
           <li key={s.to} className="border-b border-line last:border-b-0">
