@@ -7,7 +7,8 @@ import { LoginPage } from '@/pages/LoginPage';
 import { CustomerDetailPage } from '@/pages/customers/CustomerDetailPage';
 import { CustomerFormPage } from '@/pages/customers/CustomerFormPage';
 import { CustomersPage } from '@/pages/customers/CustomersPage';
-import { SettingsPage } from '@/pages/SettingsPage';
+import { HoursPage } from '@/pages/settings/HoursPage';
+import { SettingsPage } from '@/pages/settings/SettingsPage';
 
 export const routes: RouteObject[] = [
   { path: 'login', element: <LoginPage /> },
@@ -27,6 +28,7 @@ export const routes: RouteObject[] = [
       { path: 'customers/:id', element: <CustomerDetailPage /> },
       { path: 'customers/:id/edit', element: <CustomerFormPage /> },
       { path: 'settings', element: <SettingsPage /> },
+      { path: 'settings/hours', element: <HoursPage /> },
       { path: '*', element: <EmptyState title="없는 화면이에요" /> },
     ],
   },

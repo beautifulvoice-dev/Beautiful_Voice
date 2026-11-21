@@ -12,6 +12,7 @@
   "dependencies": {
     "@bv/contracts": "workspace:*",
     "@bv/customers": "workspace:*",
+    "@bv/scheduling": "workspace:*",
     "@seed-design/css": "3.4.0",
     "@seed-design/react": "3.4.0",
     "@tailwindcss/vite": "^4.3.5",

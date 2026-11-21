@@ -51,6 +51,9 @@
     --color-ink: var(--ink);
     --color-ink-soft: var(--ink-soft);
     --color-line: var(--line);
+    --color-surface: var(--surface);
+    --color-control-line: var(--control-line);
+    --color-critical-text: var(--critical-text);
     --color-brand: var(--brand);
     --color-brand-weak: var(--brand-weak);
     --color-brand-text: var(--brand-text);

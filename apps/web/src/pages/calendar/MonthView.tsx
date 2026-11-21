@@ -141,7 +141,9 @@ export function MonthView({ days, month, data, today, onOpen, phone = false, sel
           })}
         </div>
       </div>
-      {phone && selected && <DayList date={selected} appointments={shown.filter((a) => dayOf(a) === selected)} onOpen={onOpen} />}
+      {phone && selected && (
+        <DayList date={selected} appointments={shown.filter((a) => dayOf(a) === selected)} blocks={data.blocks} onOpen={onOpen} />
+      )}
     </>
   );
 }
@@ -152,10 +154,12 @@ const WEEKDAY_SHORT = ['일', '월', '화', '수', '목', '금', '토'];
 function DayList({
   date,
   appointments,
+  blocks,
   onOpen,
 }: {
   date: string;
   appointments: CalendarAppointment[];
+  blocks: CalendarData['blocks'];
   onOpen: (a: CalendarAppointment) => void;
 }) {
   const label = `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}(${WEEKDAY_SHORT[new Date(`${date}T00:00:00Z`).getUTCDay()]})`;
@@ -180,6 +184,7 @@ function DayList({
                   <Badge.Label>{STATUS_TEXT[a.status]}</Badge.Label>
                 </Badge.Root>
               )}
+              {overlapsBlock(a, blocks) && <span className="shrink-0 font-semibold text-cal-overlap">겹침</span>}
             </button>
           </li>
         ))}
