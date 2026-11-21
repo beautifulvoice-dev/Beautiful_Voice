@@ -33,7 +33,7 @@ export function WeekStrip({ days, data, selected, today, onPick, onStep }: Props
             aria-label={`${Number(d.slice(5, 7))}월 ${Number(d.slice(8, 10))}일 ${WEEKDAY[i]}요일 · ${closed ? '휴무' : `예약 ${n}건`}`}
             onClick={() => onPick(d)}
             className={cn(
-              'grid justify-items-center gap-0.5 rounded-[14px] pt-1.5 pb-[7px] text-[13px]',
+              'grid justify-items-center gap-0.5 rounded-[14px] pt-1.5 pb-[7px] text-sm',
               on ? 'bg-brand text-on-brand' : 'text-ink-soft',
             )}
           >
