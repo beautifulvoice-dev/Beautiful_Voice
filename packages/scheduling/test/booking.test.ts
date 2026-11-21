@@ -76,6 +76,17 @@ describe("영업시간·휴무 (AC-S2-1)", () => {
     assert.equal(reasonOf(checkBooking(req("A", "09:30"), hours, [], [])), "OUTSIDE_BUSINESS_HOURS");
   });
 
+  it("맞닿은 영업 구간은 이어서 본다 — 실제 휴게 공백에 걸치면 거부(#55 리뷰)", () => {
+    const touching: ShopHours = { businessHours: { 2: [{ open: "13:00", close: "18:00" }, { open: "10:00", close: "13:00" }] }, closures: [] };
+    assert.equal(reasonOf(checkBooking(req("A", "12:30", 60), touching, [], [])), "ok");
+    assert.equal(reasonOf(checkBooking(req("A", "10:00", 480), touching, [], [])), "ok");
+    assert.equal(reasonOf(checkBooking(req("A", "17:30", 60), touching, [], [])), "OUTSIDE_BUSINESS_HOURS");
+    const withBreak: ShopHours = { businessHours: { 2: [{ open: "10:00", close: "13:00" }, { open: "14:00", close: "18:00" }] }, closures: [] };
+    assert.equal(reasonOf(checkBooking(req("A", "12:30", 60), withBreak, [], [])), "OUTSIDE_BUSINESS_HOURS");
+    assert.equal(reasonOf(checkBooking(req("A", "12:00", 60), withBreak, [], [])), "ok");
+    assert.equal(reasonOf(checkBooking(req("A", "14:00", 60), withBreak, [], [])), "ok");
+  });
+
   it("준비 시간은 영업 시작 전에 걸쳐도 된다", () => {
     assert.equal(reasonOf(checkBooking(req("A", "10:00", 60, 30), hours, [], [])), "ok");
   });

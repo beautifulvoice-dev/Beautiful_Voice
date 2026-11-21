@@ -48,7 +48,7 @@ export function AppShell() {
                     to={to}
                     className={({ isActive }) =>
                       cn(
-                        'flex flex-col items-center gap-0.5 pt-[9px] pb-1 text-[13px] font-semibold text-ink-soft',
+                        'flex flex-col items-center gap-0.5 pt-[9px] pb-1 text-sm font-semibold text-ink-soft',
                         'md:h-full md:flex-row md:px-3.5 md:py-0 md:text-base md:font-bold',
                         isActive && 'text-brand-text md:text-ink md:shadow-[inset_0_-2px_0_var(--brand)]',
                       )
