@@ -51,6 +51,8 @@ function HoursForm({ initial, reload }: { initial: BusinessHours | null; reload:
     e.preventDefault();
     const result = await save.run((idempotencyKey) => api.putBusinessHours(fromDraft(draft), { idempotencyKey }));
     if (result !== undefined) {
+      // 저장된 모양(구간을 여는 시각 순으로 정렬)으로 화면을 맞춘다 — 다시 열었을 때와 같게(#58 리뷰).
+      setDraft(toDraft(result));
       setUnset(false);
       setSaved(true);
     }

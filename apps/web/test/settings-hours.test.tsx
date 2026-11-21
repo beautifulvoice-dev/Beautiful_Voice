@@ -85,6 +85,21 @@ describe('영업시간 화면', () => {
     expect(select('월요일 여는 시각')).toHaveValue('09:30');
   });
 
+  it('저장하면 화면을 저장된 모양(구간 정렬)으로 맞춘다 — 다시 열었을 때와 같다', async () => {
+    const api = createMemorySettingsApi({
+      ...seedSettings(),
+      businessHours: { '2': [{ open: '10:00', close: '13:00' }, { open: '14:00', close: '20:00' }] },
+    });
+    renderAt('/settings/hours', api);
+    // 첫 구간을 둘째 구간보다 늦게 옮긴다 → 저장 값은 [14:00~20:00, 20:30~21:00]
+    await userEvent.selectOptions(await screen.findByRole('combobox', { name: '화요일 닫는 시각' }), '21:00');
+    await userEvent.selectOptions(select('화요일 여는 시각'), '20:30');
+    await userEvent.click(screen.getByRole('button', { name: '저장' }));
+    await screen.findByRole('status');
+    expect(select('화요일 여는 시각')).toHaveValue('14:00');
+    expect(select('화요일 닫는 시각')).toHaveValue('20:00');
+  });
+
   it('요일을 끄면 쉬는 날로 저장된다', async () => {
     const api = createMemorySettingsApi();
     renderAt('/settings/hours', api);
