@@ -39,7 +39,9 @@ before(async () => {
   [staff1, staff2, staffOff, staffB, shopA, shopB]);
   await admin.query("INSERT INTO crm.menu (id, shop_id, name) VALUES ($1, $3, '합성 관리'), ($2, $4, 'B 관리')", [menuA, menuB, shopA, shopB]);
   // 월~토 10:00~20:00(서울), 일요일은 키 없음 = 휴무. 12/25(금)는 공휴일 휴무.
-  const week = Object.fromEntries([1, 2, 3, 4, 5, 6].map((d) => [d, [{ open: '10:00', close: '20:00' }]]));
+  // 토요일만 휴게 없이 맞닿은 구간 + 실제 휴게(15:00~16:00) — 설정 API가 이렇게 저장한다(#55 리뷰).
+  const week = Object.fromEntries([1, 2, 3, 4, 5].map((d) => [d, [{ open: '10:00', close: '20:00' }]]));
+  week[6] = [{ open: '10:00', close: '13:00' }, { open: '13:00', close: '15:00' }, { open: '16:00', close: '20:00' }];
   await admin.query('UPDATE crm.shop_settings SET business_hours = $2 WHERE shop_id = $1', [shopA, JSON.stringify(week)]);
   await admin.query("INSERT INTO crm.shop_closure (shop_id, kind, start_date, end_date) VALUES ($1, 'holiday', '2026-12-25', '2026-12-25')", [shopA]);
 
@@ -125,6 +127,13 @@ test('영업시간·휴무는 관리 구간만 본다 — 준비만 영업 전�
   const prepBeforeOpen = await book({ startAt: at('04', '10:00'), prepMin: 30 });
   assert.equal(prepBeforeOpen.status, 201);
   assert.equal((await book({ startAt: at('04', '19:00'), staffId: staff2 })).status, 201, '마감 시각에 딱 끝나면 허용');
+});
+
+test('맞닿은 영업 구간에 걸친 관리는 201, 실제 휴게 공백에 걸치면 422(#55 리뷰)', async () => {
+  assert.equal((await book({ startAt: at('12', '12:30') })).status, 201, '13:00에 맞닿은 두 구간은 이어진 영업시간');
+  const gap = await book({ startAt: at('12', '14:30'), staffId: staff2 });
+  assert.equal(gap.status, 422);
+  assert.equal(gap.body.code, 'OUTSIDE_BUSINESS_HOURS');
 });
 
 test('다른 매장·비활성 참조와 형식 오류는 422 VALIDATION_FAILED(ASSUMPTION D3)', async () => {
