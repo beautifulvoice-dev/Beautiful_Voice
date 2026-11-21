@@ -1,4 +1,4 @@
-// 주간 보기(화면 설계서 W1): 요일 7칸 × 시간. 한 요일 칸은 담당자 수만큼 세로 줄로 나눈다(담당자별 겹침 금지라 같은 시각에 담당자마다 예약이 있을 수 있음).
+// 주간 보기(화면 설계서 W1): 요일 7칸 × 시간 — 폰에서는 고른 하루 1칸(위 7일 띠는 WeekStrip). 한 요일 칸은 담당자 수만큼 세로 줄로 나눈다(담당자별 겹침 금지라 같은 시각에 담당자마다 예약이 있을 수 있음).
 // 1분 = 1px. 자정을 넘는 예약은 날마다 잘라 그린다(segmentsForDay). 영업시간 밖·휴무일은 회색으로 덮는다(결정 S2).
 import { Badge } from '@seed-design/react';
 import {
@@ -18,6 +18,8 @@ import { cn } from '@/lib/utils';
 import { KIND_CLASS, STATUS_CLASS, STATUS_TONE } from './styles';
 
 const WEEKDAY = ['월', '화', '수', '목', '금', '토', '일'];
+/** 0=월 … 6=일 */
+const weekdayOf = (d: string) => (new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7;
 
 interface Props {
   days: string[];
@@ -39,6 +41,7 @@ export function WeekView({ days, data, today, now, onOpen, staffName }: Props) {
   const appt = new Map(data.appointments.map((a) => [a.id, a]));
   const block = new Map(data.blocks.map((b) => [b.id, b]));
   const closed = days.map((d) => isClosedDay(d, data.closures));
+  const single = days.length === 1;
 
   const place = (s: Segment) => {
     const lane = s.staffId === null ? -1 : lanes.indexOf(s.staffId);
@@ -59,19 +62,50 @@ export function WeekView({ days, data, today, now, onOpen, staffName }: Props) {
   return (
     // isolate: 칸 안의 z-index(예약·지금 줄)가 머리줄·아래 탭과 겨루지 않게 이 표 안에 가둔다.
     <div className="isolate overflow-x-auto rounded-lg border border-line">
-      <div className="grid min-w-[640px] grid-cols-[3rem_repeat(7,minmax(0,1fr))]">
+      {/* 7일이면 768~1279px에서 가로로 넘긴다(설계 D2). 폰은 하루(days 1개)만 넘겨받는다. */}
+      <div
+        className={cn('grid', !single && 'min-w-[640px]')}
+        style={{
+          gridTemplateColumns: `3rem repeat(${days.length}, minmax(0, 1fr))`,
+        }}
+      >
         <div className="border-b border-line" />
-        {days.map((d, i) => (
+        {single ? (
+          // 폰 하루 시간표: 날짜는 위 7일 띠에 있으므로 머리줄엔 담당자별 칸 이름만(2명 이상일 때)
           <div
-            key={d}
             role="columnheader"
-            aria-current={d === today ? 'date' : undefined}
-            className={cn('border-b border-l border-line px-2 py-2 text-sm', d === today && 'font-semibold text-brand-text', closed[i] && 'bg-cal-closed')}
+            className="grid border-b border-l border-line text-sm text-ink-soft"
+            style={{
+              gridTemplateColumns: `repeat(${lanes.length}, minmax(0, 1fr))`,
+            }}
           >
-            {WEEKDAY[i]} {Number(d.slice(8, 10))}
-            {closed[i] && <span className="ml-1 text-ink-soft"> · 휴무</span>}
+            {showStaff ? (
+              data.staff.map((st) => (
+                <span key={st.id} className="px-2 py-1">
+                  {st.name}
+                </span>
+              ))
+            ) : (
+              <span className="sr-only">{days[0]}</span>
+            )}
           </div>
-        ))}
+        ) : (
+          days.map((d, i) => (
+            <div
+              key={d}
+              role="columnheader"
+              aria-current={d === today ? 'date' : undefined}
+              className={cn(
+                'border-b border-l border-line px-2 py-2 text-sm',
+                d === today && 'font-semibold text-brand-text',
+                closed[i] && 'bg-cal-closed',
+              )}
+            >
+              {WEEKDAY[weekdayOf(d)]} {Number(d.slice(8, 10))}
+              {closed[i] && <span className="ml-1 text-ink-soft"> · 휴무</span>}
+            </div>
+          ))
+        )}
 
         {/* 시간 눈금 */}
         <div className="relative" style={{ height }}>
@@ -95,7 +129,17 @@ export function WeekView({ days, data, today, now, onOpen, staffName }: Props) {
               {/* 영업시간 밖·휴무: 예약·차단보다 아래 층 */}
               {(closed[i] ? [[0, 24 * 60] as [number, number]] : outsideHours(d, data.businessHours)).map(([f, t]) => {
                 const pos = band(f, t);
-                return pos && <div key={`closed-${f}`} data-kind="closed" aria-hidden className={cn('absolute inset-x-0', KIND_CLASS.closed)} style={pos} />;
+                return (
+                  pos && (
+                    <div
+                      key={`closed-${f}`}
+                      data-kind="closed"
+                      aria-hidden
+                      className={cn('absolute inset-x-0', KIND_CLASS.closed)}
+                      style={pos}
+                    />
+                  )
+                );
               })}
               {byDay[i]!.map((s) => {
                 const pos = place(s);
@@ -103,14 +147,21 @@ export function WeekView({ days, data, today, now, onOpen, staffName }: Props) {
                 if (s.kind === 'block') {
                   const b = block.get(s.sourceId)!;
                   return (
-                    <div key={key} data-kind="block" className={cn('absolute overflow-hidden rounded-md px-1 text-xs', KIND_CLASS.block)} style={pos}>
+                    <div
+                      key={key}
+                      data-kind="block"
+                      className={cn('absolute overflow-hidden rounded-md px-1 text-xs', KIND_CLASS.block)}
+                      style={pos}
+                    >
                       관리 불가{b.memo ? ` · ${b.memo}` : ''}
                     </div>
                   );
                 }
                 const a = appt.get(s.sourceId)!;
                 if (s.kind === 'prep') {
-                  return <div key={key} data-kind="prep" aria-hidden className={cn('absolute rounded-t-md', KIND_CLASS.prep)} style={pos} />;
+                  return (
+                    <div key={key} data-kind="prep" aria-hidden className={cn('absolute rounded-t-md', KIND_CLASS.prep)} style={pos} />
+                  );
                 }
                 const overlap = overlapsBlock(a, data.blocks);
                 return (
@@ -144,7 +195,9 @@ export function WeekView({ days, data, today, now, onOpen, staffName }: Props) {
                   </button>
                 );
               })}
-              {nowLine && <div data-kind="now" aria-hidden className="absolute inset-x-0 z-20 h-0.5 bg-cal-now" style={{ top: nowLine.top }} />}
+              {nowLine && (
+                <div data-kind="now" aria-hidden className="absolute inset-x-0 z-20 h-0.5 bg-cal-now" style={{ top: nowLine.top }} />
+              )}
             </section>
           );
         })}

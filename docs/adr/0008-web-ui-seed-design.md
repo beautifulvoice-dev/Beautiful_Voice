@@ -24,6 +24,7 @@ shadcn으로 계속 가면 디자인의 부품(ActionButton·Badge·Chip·Segmen
 - **SEED는 층 있는 판만**: `@seed-design/react` 부품은 자기 레시피 CSS를 스스로 불러온다. 패키지 기본 판은 층 없는 CSS라 모든 층을 이기므로, Vite `resolve.conditions`에 `seed-layered`를 넣어 층 있는 판(`@layer seed-components`)을 고른다.
 - **레시피는 쓰는 것만 실린다**: 레시피를 우리가 따로 불러오지 않는다. 패키지가 CSS만 부수 효과로 표시(`sideEffects: *.css`)해서, 빌드에는 실제로 쓴 부품의 레시피만 남는다(개발 서버는 전부 내려받음). 글꼴은 빌드에 함께 싣고 외부에서 받지 않는다.
 - **shadcn·radix·lucide는 화면을 옮길 때마다 뺀다.** 그동안은 shadcn 색 변수를 SEED 역할 토큰으로 이어 아직 안 옮긴 화면도 같은 브랜드로 보이게 한다. 마지막 화면을 옮기는 PR에서 `components/ui/button.tsx`·`radix-ui`·`class-variance-authority`·`lucide-react`를 지운다.
+- **화면 너비 기준도 SEED와 같게**: Tailwind 브레이크포인트를 `sm 480 · md 768 · lg 1280 · xl 1440`으로 바꾼다(`@seed-design/css/breakpoints`·디자인 HTML과 같은 값). 본문 최대 폭 1280px. 화면 설계서 §2의 1200px은 [제안]이라 따르지 않는다(2026-11-21 옵마). 폰·웹에서 부품이 다른 곳만 `lib/useLayout`(SEED `useBreakpoint`)으로 가르고, 배치 차이는 CSS로 한다.
 - 새 화면(예약 넣기·설정 등)은 처음부터 SEED로 만든다.
 
 ## 옮기기 체크리스트
