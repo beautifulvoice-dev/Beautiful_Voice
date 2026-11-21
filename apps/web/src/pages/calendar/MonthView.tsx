@@ -4,6 +4,7 @@ import { Badge } from '@seed-design/react';
 import {
   isClosedDay,
   isShown,
+  overlapsBlock,
   segmentsForDay,
   shopDate,
   shopTime,
@@ -106,8 +107,13 @@ export function MonthView({ days, month, data, today, onOpen, phone = false, sel
                           <button
                             type="button"
                             data-kind="care"
+                            data-overlap={overlapsBlock(a, data.blocks) || undefined}
                             onClick={() => onOpen(a)}
-                            className="w-full truncate rounded-sm px-1 text-left hover:bg-brand-weak"
+                            className={cn(
+                              'w-full truncate rounded-sm px-1 text-left hover:bg-brand-weak',
+                              // 관리 불가와 겹친 예약은 주간처럼 빨간 테두리 + "겹침"(R50, #50 리뷰)
+                              overlapsBlock(a, data.blocks) && 'ring-1 ring-cal-overlap ring-inset',
+                            )}
                           >
                             {/* 좁은 칸에서도 잘리지 않게 준비 표시는 글자 앞의 작은 빗금 칸으로. 글자는 화면 읽기·툴팁용. */}
                             {a.prepMin > 0 && (
@@ -122,6 +128,7 @@ export function MonthView({ days, month, data, today, onOpen, phone = false, sel
                             <span aria-hidden className={cn('mr-1 inline-block size-2 rounded-full align-middle', KIND_CLASS.care)} />
                             {shopTime(a.startAt)} {a.customerName}
                             {a.status !== 'scheduled' && ` (${STATUS_TEXT[a.status]})`}
+                            {overlapsBlock(a, data.blocks) && <span className="ml-1 font-semibold text-cal-overlap">겹침</span>}
                           </button>
                         </li>
                       ))}

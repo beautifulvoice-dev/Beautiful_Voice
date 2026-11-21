@@ -111,6 +111,39 @@ export function validateStaff(input: { name: string }): ResourceResult<{ name: s
   return name === null ? { ok: false, errors: [{ field: "name", code: "NAME_REQUIRED" }] } : { ok: true, value: { name } };
 }
 
+// ── 매장 안내 정보(shop_settings) ──────────────────────
+
+export type ShopInfoField = "refundPolicy" | "naverPlaceUrl" | "instagramUrl" | "landingUrl" | "locationText";
+export type ShopInfoErrorCode = "INVALID_TEXT" | "INVALID_URL";
+export type ShopInfoValues = Record<ShopInfoField, string | null>;
+export type ShopInfoResult = { ok: true; value: ShopInfoValues } | { ok: false; errors: { field: ShopInfoField; code: ShopInfoErrorCode }[] };
+
+const TEXT_FIELDS = ["refundPolicy", "locationText"] as const;
+const URL_FIELDS = ["naverPlaceUrl", "instagramUrl", "landingUrl"] as const;
+
+/**
+ * 환불 정책·매장 링크 3개·위치(BEA-166). 5칸을 모두 받아 통째로 저장한다(#42 PUT settings/shop-info).
+ * 빈 글·공백만 있는 글은 null(비우기)로 저장한다. 글은 앞뒤 공백만 정리하고 줄바꿈은 그대로 둔다(환불 정책은 여러 줄).
+ * ASSUMPTION: 링크는 http·https 주소만 — 고객에게 보여 줄 링크라 javascript: 같은 주소를 막는다(#42). 길이 제한은 명세에 없어 두지 않는다.
+ */
+export function validateShopInfo(input: unknown): ShopInfoResult {
+  const errors: { field: ShopInfoField; code: ShopInfoErrorCode }[] = [];
+  const body = typeof input === "object" && input !== null && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
+  const value = {} as ShopInfoValues;
+  for (const field of TEXT_FIELDS) {
+    const text = cleanText(body[field]);
+    if (text === undefined) errors.push({ field, code: "INVALID_TEXT" });
+    else value[field] = text;
+  }
+  for (const field of URL_FIELDS) {
+    const text = cleanText(body[field]);
+    if (text === undefined) errors.push({ field, code: "INVALID_TEXT" });
+    else if (text !== null && !isWebLink(text)) errors.push({ field, code: "INVALID_URL" });
+    else value[field] = text;
+  }
+  return errors.length > 0 ? { ok: false, errors } : { ok: true, value };
+}
+
 // ── 내부 ──────────────────────────────────────────────
 
 function fail<T>(code: SettingsErrorCode, at?: string): SettingsResult<T> {
@@ -132,4 +165,22 @@ function cleanName(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const name = raw.normalize("NFC").trim().replace(/\s+/gu, " ");
   return name === "" ? null : name;
+}
+
+/** null·빈 글 → null, 글 → 앞뒤 공백 정리, 그 밖(숫자·빠진 칸 등) → undefined(잘못됨). */
+function cleanText(raw: unknown): string | null | undefined {
+  if (raw === null) return null;
+  if (typeof raw !== "string") return undefined;
+  const text = raw.normalize("NFC").trim();
+  return text === "" ? null : text;
+}
+
+function isWebLink(text: string): boolean {
+  if (!/^https?:\/\//iu.test(text) || /\s/u.test(text)) return false;
+  try {
+    const url = new URL(text);
+    return (url.protocol === "http:" || url.protocol === "https:") && url.hostname !== "";
+  } catch {
+    return false;
+  }
 }

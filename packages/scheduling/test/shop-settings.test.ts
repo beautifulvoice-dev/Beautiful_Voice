@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { MAX_MINUTES, validateBusinessHours, validateClosure, validateMenu, validateStaff } from "../src/shop-settings.ts";
+import { MAX_MINUTES, validateBusinessHours, validateClosure, validateMenu, validateShopInfo, validateStaff } from "../src/shop-settings.ts";
 
 describe("영업시간", () => {
   it("요일(1=월 … 7=일)별 구간을 시작 순으로 정리해 돌려준다", () => {
@@ -127,5 +127,32 @@ describe("메뉴와 담당자", () => {
   it("담당자: 이름 필수(원장 자신도 담당자로 등록 가능)", () => {
     assert.deepEqual(validateStaff({ name: " 원장 " }), { ok: true, value: { name: "원장" } });
     assert.deepEqual(validateStaff({ name: "" }), { ok: false, errors: [{ field: "name", code: "NAME_REQUIRED" }] });
+  });
+});
+
+describe("매장 안내 정보(환불 정책·링크·위치)", () => {
+  const empty = { refundPolicy: null, naverPlaceUrl: null, instagramUrl: null, landingUrl: null, locationText: null };
+
+  it("5칸을 정리해 돌려준다 — 앞뒤 공백 제거, 여러 줄 글은 그대로", () => {
+    assert.deepEqual(
+      validateShopInfo({ ...empty, refundPolicy: "  당일 취소 불가\n하루 전 취소 가능 ", naverPlaceUrl: "https://example.com/place/1", locationText: "합성시 합성로 1" }),
+      { ok: true, value: { ...empty, refundPolicy: "당일 취소 불가\n하루 전 취소 가능", naverPlaceUrl: "https://example.com/place/1", locationText: "합성시 합성로 1" } },
+    );
+  });
+
+  it("빈 글·공백만은 비우기(null)", () => {
+    assert.deepEqual(validateShopInfo({ ...empty, refundPolicy: "   ", landingUrl: "" }), { ok: true, value: empty });
+  });
+
+  it("링크는 http·https만 — javascript:·ftp·공백 섞인 주소는 거부", () => {
+    const result = validateShopInfo({ ...empty, naverPlaceUrl: "javascript:alert(1)", instagramUrl: "ftp://example.com", landingUrl: "https://exa mple.com" });
+    assert.deepEqual(result, { ok: false, errors: [
+      { field: "naverPlaceUrl", code: "INVALID_URL" }, { field: "instagramUrl", code: "INVALID_URL" }, { field: "landingUrl", code: "INVALID_URL" },
+    ] });
+  });
+
+  it("빠진 칸·글이 아닌 값은 거부 — 5칸 모두 보내야 한다(통째로 저장)", () => {
+    const result = validateShopInfo({ refundPolicy: 3, naverPlaceUrl: null, instagramUrl: null, landingUrl: null });
+    assert.deepEqual(result, { ok: false, errors: [{ field: "refundPolicy", code: "INVALID_TEXT" }, { field: "locationText", code: "INVALID_TEXT" }] });
   });
 });
