@@ -17,5 +17,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./test/setup.ts'],
+    // SEED 패키지는 Node가 바로 읽지 못하는 레시피 경로를 쓴다 → Vite가 풀어서 테스트에 넣는다(ADR-0008).
+    server: { deps: { inline: [/@seed-design\//] } },
   },
 });

@@ -3,6 +3,8 @@
 // ASSUMPTION: 매장 시간대는 Asia/Seoul 고정(ADR-0007). 서울은 일광절약시간이 없어 +9시간으로 계산한다.
 // 다른 시간대 매장이 생기면 여기만 바꾼다.
 
+import type { BusinessHours, Closure } from '@bv/contracts';
+
 /** 예약 상태(명세 01 §2.2). */
 export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show' | 'voided';
 
@@ -48,6 +50,10 @@ export interface CalendarData {
   staff: Staff[];
   appointments: CalendarAppointment[];
   blocks: CalendarBlock[];
+  /** 매장 영업시간(계약 #42 settings/business-hours). null = 아직 안 넣음 → 회색 덮기 없음. */
+  businessHours: BusinessHours | null;
+  /** 휴무(계약 #42 closures). 그날은 격자 전체를 회색으로 덮는다(결정 S2). */
+  closures: Closure[];
 }
 
 // ── 날짜 계산(매장 날짜 'YYYY-MM-DD') ─────────────────────────────
@@ -171,4 +177,80 @@ export function appointmentTimeText(a: CalendarAppointment): string {
   const start = Date.parse(a.startAt);
   const care = `${shopTime(start)}–${shopTime(start + a.durationMin * MIN)}`;
   return a.prepMin > 0 ? `${shopTime(start - a.prepMin * MIN)} 준비 · ${care}` : care;
+}
+
+// ── W1 디자인(SEED 옮기기): 제목·영업시간 밖·겹침·담당자 거르기 ─────────────
+
+const ORDINAL = ['첫째', '둘째', '셋째', '넷째', '다섯째'];
+
+/**
+ * 주 제목 "11월 넷째 주"(화면 설계서 W1). 그 주의 목요일이 든 달·몇째 주로 센다 — 달이 걸친 주는 목요일 쪽 달.
+ * ASSUMPTION: 설계서 예시(11/23~29 = 11월 넷째 주)와 맞는 규칙. 명세에 계산법은 없다.
+ */
+export function weekTitle(date: string): string {
+  const thursday = addDays(weekDays(date)[0]!, 3);
+  const month = Number(thursday.slice(5, 7));
+  return `${month}월 ${ORDINAL[Math.ceil(Number(thursday.slice(8, 10)) / 7) - 1]} 주`;
+}
+
+/** 그날이 휴무(매주 요일 휴무 또는 공휴일·휴가 기간)인가. */
+export function isClosedDay(date: string, closures: readonly Closure[]): boolean {
+  const weekday = weekdayIndex(date) + 1;
+  return closures.some((c) => (c.kind === 'weekly' ? c.weekday === weekday : c.startDate <= date && date <= c.endDate));
+}
+
+/** 영업시간 밖 구간(그날 0시부터 분). 영업시간을 안 넣었으면 없음. 그 요일 구간이 없으면 하루 전체. */
+export function outsideHours(date: string, hours: BusinessHours | null): [number, number][] {
+  if (!hours) return [];
+  const toMin = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+  const key = String(weekdayIndex(date) + 1) as keyof BusinessHours;
+  const open = [...(hours[key] ?? [])].map((w) => [toMin(w.open), toMin(w.close)] as const).sort((a, b) => a[0] - b[0]);
+  const out: [number, number][] = [];
+  let at = 0;
+  for (const [o, c] of open) {
+    if (o > at) out.push([at, o]);
+    at = Math.max(at, c);
+  }
+  if (at < 24 * 60) out.push([at, 24 * 60]);
+  return out;
+}
+
+/** 세로 시간 범위의 기본값: 보이는 날들의 영업시간 ±1시간(설계서 W1). 영업시간이 없으면 9~21시. */
+export function hoursBase(days: readonly string[], hours: BusinessHours | null): [number, number] {
+  if (!hours) return [9, 21];
+  let from = 24;
+  let to = 0;
+  for (const d of days) {
+    const key = String(weekdayIndex(d) + 1) as keyof BusinessHours;
+    for (const w of hours[key] ?? []) {
+      from = Math.min(from, Number(w.open.slice(0, 2)) - 1);
+      to = Math.max(to, Math.ceil((Number(w.close.slice(0, 2)) * 60 + Number(w.close.slice(3, 5))) / 60) + 1);
+    }
+  }
+  return from < to ? [Math.max(0, from), Math.min(24, to)] : [9, 21];
+}
+
+/**
+ * 관리 불가 시간과 겹치는 예약인가(결정 R50: 기존 예약은 그대로 두고 캘린더에서 겹침으로 보인다).
+ * 점유 [시작−준비, 시작+관리)가 그 담당자에게 걸린 차단(매장 전체 포함)과 겹치면 true.
+ * 표시용이다 — 저장 거부는 서버(#36 checkBooking)·DB가 한다. API를 붙이면 서버가 주는 blockedBy로 바꾼다.
+ */
+export function overlapsBlock(a: CalendarAppointment, blocks: readonly CalendarBlock[]): boolean {
+  const start = Date.parse(a.startAt);
+  const from = start - a.prepMin * MIN;
+  const to = start + a.durationMin * MIN;
+  return blocks.some(
+    (b) => (b.allStaff || b.staffIds.includes(a.staffId)) && Date.parse(b.startAt) < to && Date.parse(b.endAt) > from,
+  );
+}
+
+/** 담당자 거르기. null = 전체. 매장 전체 차단은 누구를 골라도 보인다. */
+export function forStaff(data: CalendarData, staffId: string | null): CalendarData {
+  if (staffId === null) return data;
+  return {
+    ...data,
+    staff: data.staff.filter((s) => s.id === staffId),
+    appointments: data.appointments.filter((a) => a.staffId === staffId),
+    blocks: data.blocks.filter((b) => b.allStaff || b.staffIds.includes(staffId)),
+  };
 }
