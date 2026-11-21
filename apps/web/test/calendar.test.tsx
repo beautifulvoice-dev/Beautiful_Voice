@@ -434,6 +434,20 @@ describe('폰·웹 배치(캘린더 PR 2a) — 너비 기준 SEED md 768', () =>
     expect(within(list).getByRole('button', { name: /합성 고객/ })).not.toHaveTextContent('겹침');
   });
 
+  it('폰 월 보기: 담당자가 2명이면 목록 줄에 "메뉴 · 담당자"', async () => {
+    setTestWidth(390);
+    renderAt(
+      '/calendar?view=month&date=2026-11-18',
+      createMemoryCalendarApi({
+        staff: [{ id: 's1', name: '원장' }, { id: 's2', name: '보조' }],
+        appointments: [appt({ id: 'p1', customerName: '손님가', staffId: 's2', menuName: '등 관리' })],
+        blocks: [],
+      }),
+    );
+    const list = await screen.findByRole('region', { name: '11/18(수) 예약' });
+    expect(within(list).getByRole('button', { name: /손님가/ })).toHaveTextContent('등 관리 · 보조');
+  });
+
   it('웹 월 보기: 날마다 3건까지 이름, 넘치면 "+N"', async () => {
     const many = Array.from({ length: 5 }, (_, i) =>
       appt({ id: `m${i}`, customerName: `손님${i}`, startAt: `2026-11-18T0${i}:00:00Z`, prepMin: 0, durationMin: 30 }),

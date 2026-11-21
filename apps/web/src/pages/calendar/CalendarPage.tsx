@@ -190,6 +190,8 @@ export function CalendarPage() {
           phone={phone}
           selected={date}
           onPick={(d) => go({ date: d })}
+          onStep={step}
+          staffName={shown.staff.length > 1 ? staffName : undefined}
         />
       )}
 
