@@ -30,7 +30,7 @@ shadcn으로 계속 가면 디자인의 부품(ActionButton·Badge·Chip·Segmen
 ## 옮기기 체크리스트
 shadcn이 남은 화면을 SEED로 옮길 때마다 체크한다. 모두 끝나면 마지막 PR에서 아래 "정리"를 한다.
 - [x] 웹셸(`AppShell`) — 이 ADR의 기반 PR
-- [ ] 캘린더 W1·W2(`pages/calendar/*`) — 예약 칸 하늘색을 `--cal-*` 토큰으로
+- [x] 캘린더 W1·W2(`pages/calendar/*`) — 토큰 색(#50), 폰·웹 배치(캘린더 PR 2a), 예약 패널·시트(PR 2b)
 - [ ] 로그인 W0(`LoginPage`) — 카카오 버튼 규칙
 - [ ] 설정 W13(`SettingsPage`)
 - [ ] 고객 W5·W6(`pages/customers/*`)

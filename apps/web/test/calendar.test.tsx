@@ -1,6 +1,6 @@
 // BEA-175 수용 기준: 주·월 전환 / 관리·준비·차단이 다르게 보임 / 예약 카드에 고객·메뉴·담당자, 누르면 메모.
 // 데이터는 합성(절대 규칙 8). 날짜는 주소로 고정해 언제 돌려도 같은 결과가 나오게 한다.
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
@@ -248,7 +248,8 @@ describe('캘린더 화면', () => {
     await userEvent.click(card);
     const dialog = await screen.findByRole('dialog', { name: '이서윤' });
     expect(dialog).toHaveTextContent('임산부 — 복부 관리 제외');
-    expect(dialog).toHaveTextContent('2026-11-16 13:40 준비 · 14:00–15:00');
+    expect(dialog).toHaveTextContent('11/16(월) 14:00–15:00 · 60분');
+    expect(dialog).toHaveTextContent('준비 20분 · 13:40부터 일정이 잡혀요');
     expect(dialog).toHaveTextContent('예정'); // scheduled 화면 표기
   });
 
@@ -413,5 +414,51 @@ describe('폰·웹 배치(캘린더 PR 2a) — 너비 기준 SEED md 768', () =>
     expect(within(wed).getAllByRole('button')).toHaveLength(3);
     expect(within(wed).getByText('+2')).toBeInTheDocument();
     expect(screen.queryByRole('group', { name: '날짜 고르기' })).not.toBeInTheDocument();
+  });
+});
+
+describe('예약 보기 W2 — 웹 오른쪽 패널 / 폰 아래 시트 (캘린더 PR 2b)', () => {
+  it('웹: 패널이 열려도 격자는 남아 있고(모달 아님), Esc로 닫히면 누른 예약 칸으로 초점이 돌아온다', async () => {
+    renderAt('/calendar?date=2026-11-18');
+    const monday = await screen.findByRole('region', { name: '11월 16일' });
+    const card = within(monday).getByRole('button', { name: /이서윤/ });
+    await userEvent.click(card);
+    const panel = await screen.findByRole('dialog', { name: '이서윤' });
+    expect(panel).not.toHaveAttribute('aria-modal', 'true');
+    expect(screen.getByRole('region', { name: '11월 16일' })).toBeVisible();
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '이서윤' })).not.toBeInTheDocument());
+    await waitFor(() => expect(card).toHaveFocus());
+  });
+
+  it('예정 예약: 완료·노쇼·문자 보내기·더보기 자리, 꺼짐 + 설명 / 겹친 예약은 빨간 알림', async () => {
+    renderAt('/calendar?date=2026-11-18');
+    const friday = await screen.findByRole('region', { name: '11월 20일' });
+    await userEvent.click(within(friday).getByRole('button', { name: /한예린/ }));
+    const panel = await screen.findByRole('dialog', { name: '한예린' });
+    for (const name of ['완료', '노쇼', '문자 보내기', '더보기']) {
+      expect(within(panel).getByRole('button', { name })).toBeDisabled();
+    }
+    expect(panel).toHaveTextContent('예약 상태 바꾸기는 예약 저장 기능과 함께 열려요.');
+    expect(panel).toHaveTextContent('관리 불가 시간(14:00–16:00 원장 외출)과 겹쳐요. 예약은 그대로 있어요.');
+  });
+
+  it('완료된 예약은 "상태 고치기" 하나', async () => {
+    renderAt('/calendar?date=2026-11-18');
+    const monday = await screen.findByRole('region', { name: '11월 16일' });
+    await userEvent.click(within(monday).getByRole('button', { name: /김하늘/ }));
+    const panel = await screen.findByRole('dialog', { name: '김하늘' });
+    expect(within(panel).getByRole('button', { name: '상태 고치기' })).toBeDisabled();
+    expect(within(panel).queryByRole('button', { name: '완료' })).not.toBeInTheDocument();
+  });
+
+  it('폰: 같은 내용이 아래 시트로 열리고, "+ 예약"은 떠 있는 버튼 자리', async () => {
+    setTestWidth(390);
+    renderAt('/calendar?date=2026-11-16');
+    const monday = await screen.findByRole('region', { name: '11월 16일' });
+    expect(screen.getByRole('button', { name: '+ 예약' })).toBeDisabled(); // 시트가 열리면 뒤 화면은 가려지므로 먼저 확인
+    await userEvent.click(within(monday).getByRole('button', { name: /이서윤/ }));
+    const sheet = await screen.findByRole('dialog', { name: '이서윤' });
+    expect(sheet).toHaveTextContent('준비 20분 · 13:40부터 일정이 잡혀요');
   });
 });
