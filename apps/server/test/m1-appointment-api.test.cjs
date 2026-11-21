@@ -167,12 +167,13 @@ test('동시 저장: 앱 검사를 통과해도 DB 제약이 409 STAFF_OVERLAP �
   try {
     // 커밋 전 행은 API 트랜잭션에 보이지 않는다 → 앱 검사는 통과하고 INSERT가 제약 대기 → 커밋 뒤 23P01.
     await race.query('BEGIN');
+    const { rows: [{ pid: blockerPid }] } = await race.query('SELECT pg_backend_pid() AS pid');
     await race.query(`INSERT INTO crm.appointment_m1 (id, shop_id, customer_id, staff_id, start_at, duration_min)
       VALUES ($1, $2, $3, $4, '2026-12-08T01:00:00Z', 60)`, [held, shopA, customerA, staff1]);
     const key = randomUUID();
     const body = { customerId: customerA, staffId: staff1, startAt: at('08', '10:30'), durationMin: 60 };
     const pending = call('POST', A, { body, key });
-    await waitForLockWait();
+    await waitForLockWait(blockerPid);
     await race.query('COMMIT');
     const res = await pending;
     assert.equal(res.status, 409);
@@ -193,11 +194,16 @@ test('동시 저장: 앱 검사를 통과해도 DB 제약이 409 STAFF_OVERLAP �
   assert.ok(results.every((r) => r.status === 201 || r.body.code === 'STAFF_OVERLAP'));
 });
 
-async function waitForLockWait() {
+async function waitForLockWait(blockerPid) {
   for (let i = 0; i < 100; i++) {
     const { rows: [{ waiting }] } = await admin.query(
-      "SELECT count(*)::int AS waiting FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'");
-    if (waiting > 0) return;
+      `SELECT EXISTS (
+         SELECT 1 FROM pg_stat_activity
+          WHERE datname = current_database() AND wait_event_type = 'Lock'
+            AND $1::int = ANY(pg_blocking_pids(pid))
+       ) AS waiting`,
+      [blockerPid]);
+    if (waiting) return;
     await new Promise((r) => setTimeout(r, 20));
   }
   throw new Error('API 요청이 DB 제약 대기에 들어가지 않았다');
