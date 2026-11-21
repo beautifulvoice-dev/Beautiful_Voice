@@ -138,13 +138,13 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, p
           key={key}
           data-kind="block"
           className={cn(
-            'absolute grid content-start gap-px overflow-hidden rounded-lg px-[7px] py-[5px] text-[13px] leading-[1.3]',
+            'absolute grid content-start gap-px overflow-hidden rounded-lg px-[7px] py-[5px] text-sm leading-[1.3]',
             KIND_CLASS.block,
           )}
           style={pos}
         >
-          <b className="font-bold text-ink">관리 불가{b.allStaff && lanes.length > 1 ? ' · 전체' : ''}</b>
-          {b.memo && <span>{b.memo}</span>}
+          <b className="truncate font-bold text-ink">관리 불가{b.allStaff && lanes.length > 1 ? ' · 전체' : ''}</b>
+          {b.memo && <span className="truncate">{b.memo}</span>}
         </div>
       );
     }
@@ -164,35 +164,35 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, p
         data-overlap={overlap || undefined}
         onClick={() => onOpen(a)}
         className={cn(
-          'absolute z-[1] grid content-start justify-items-start gap-px overflow-hidden rounded-lg px-[7px] py-[5px] text-left text-[13px] leading-[1.3]',
+          'absolute z-[1] grid content-start justify-items-stretch gap-px overflow-hidden rounded-lg px-[7px] py-[5px] text-left text-sm leading-[1.3]',
           STATUS_CLASS[a.status] ?? KIND_CLASS.care,
           overlap && OVERLAP_CLASS,
         )}
         style={pos}
       >
         {lanes.length > 1 && staffName && <span className="sr-only">{staffName(a.staffId)} · </span>}
-        <b className="text-sm font-bold text-ink">
+        <b className="truncate text-sm font-bold text-ink">
           {a.customerName}
           {phone && overlap && a.menuName ? ` · ${a.menuName}` : ''}
         </b>
         {phone ? (
           <>
-            {!overlap && a.status !== 'no_show' && <span>{a.menuName ?? '메뉴 없음'}</span>}
+            {!overlap && a.status !== 'no_show' && <span className="truncate">{a.menuName ?? '메뉴 없음'}</span>}
             {!tone && !overlap && <span>{`${shopTime(start)}–${shopTime(start + a.durationMin * MIN)}`}</span>}
             {tone && (
-              <Badge.Root tone={tone} variant="weak" size="large" className="mt-0.5">
+              <Badge.Root tone={tone} variant="weak" size="large" className="mt-0.5 justify-self-start">
                 <Badge.Label>{STATUS_TEXT[a.status]}</Badge.Label>
               </Badge.Root>
             )}
             {overlap && (
-              <Badge.Root tone="critical" variant="weak" size="large" className="mt-0.5">
+              <Badge.Root tone="critical" variant="weak" size="large" className="mt-0.5 justify-self-start">
                 <Badge.Label>겹침</Badge.Label>
               </Badge.Root>
             )}
           </>
         ) : (
-          // 웹 칸은 좁아 이름 + 시작 시각(완료·노쇼면 상태 낱말)만. 메뉴·담당자는 누르면 패널에서.
-          <span>
+          // 웹 칸은 좁아 이름 + 시작 시각(완료·노쇼면 상태 낱말)만. 메뉴·담당자는 누르면 패널에서. 글자는 14px 아래로 줄이지 않고 넘치면 말줄임(설계서 §9.1).
+          <span className="truncate">
             {tone ? STATUS_TEXT[a.status] : shopTime(start)}
             {overlap && <span className="sr-only"> · 겹침</span>}
             <span className="sr-only"> · {a.menuName ?? '메뉴 없음'}</span>
@@ -209,7 +209,7 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, p
         {lanes.length > 1 && (
           <div
             role="row"
-            className="grid gap-1.5 border-b border-line pt-1.5 pr-3.5 pb-1.5 pl-3 text-[13px] font-bold text-ink-soft"
+            className="grid gap-1.5 border-b border-line pt-1.5 pr-3.5 pb-1.5 pl-3 text-sm font-bold text-ink-soft"
             style={{ gridTemplateColumns: `40px repeat(${lanes.length}, minmax(0, 1fr))` }}
           >
             <span />
@@ -225,7 +225,7 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, p
             <span
               key={k}
               aria-hidden
-              className="absolute left-0 w-[34px] -translate-y-1/2 text-right text-xs text-ink-subtle tabular-nums"
+              className="absolute left-0 w-9 -translate-y-1/2 text-right text-sm text-ink-subtle tabular-nums"
               style={{ top: px(k * 60) }}
             >
               {String(h0 + k).padStart(2, '0')}:00
@@ -249,7 +249,7 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, p
             key={d}
             role="columnheader"
             aria-current={d === today ? 'date' : undefined}
-            className={cn('grid border-b border-l border-line px-2 py-2.5 text-[13px] text-ink-soft', closed[i] && 'bg-cal-closed')}
+            className={cn('grid border-b border-l border-line px-2 py-2.5 text-sm text-ink-soft', closed[i] && 'bg-cal-closed')}
           >
             <span>
               {WEEKDAY[weekdayOf(d)]}
@@ -264,7 +264,7 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, p
           {Array.from({ length: h1 - h0 }, (_, k) => (
             <span
               key={k}
-              className="absolute right-2 -translate-y-1/2 text-xs text-ink-subtle tabular-nums"
+              className="absolute right-2 -translate-y-1/2 text-sm text-ink-subtle tabular-nums"
               style={{ top: k === 0 ? 8 : px(k * 60) }}
             >
               {String(h0 + k).padStart(2, '0')}
