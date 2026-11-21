@@ -64,7 +64,22 @@ curl -fsS http://127.0.0.1:8080/login >/dev/null
 
 팀 dev 도메인을 EC2 주소에 연결하고 인바운드는 웹 포트 80·443을 대상으로 설정한다. RDS와 NestJS는 내부에서 접근한다. 아래 예시의 주소를 팀 도메인으로 바꾸고 카카오 앱의 리다이렉트 URI와 `.env.dev-server`의 `KAKAO_REDIRECT_URI`를 모두 `https://dev.example.com/api/auth/kakao/callback`으로 맞춘다.
 
-같은 카카오 개발 앱의 로그인 확인에서 얻은 시연 원장의 서비스 사용자 ID를 사용해 합성 매장과 설정을 dev DB에 만든다. 동일 계정으로 재실행할 수 있으며 이미 연결된 다른 원장을 교체하지 않는다. ID와 마이그레이션 URL은 프롬프트로 입력한다.
+### 시연 원장 ID 확인
+
+로컬 PC에서 [로컬 카카오 로그인](../README.md#로컬-카카오-로그인) 절차에 따라 로컬 DB를 마이그레이션하고, `pnpm --filter @bv/server db:register-local-owner`로 시연에 쓸 카카오 계정을 등록한다. 로컬과 dev의 `KAKAO_CLIENT_ID`는 같은 카카오 앱의 REST API 키를 사용하고, 콜백은 각각의 주소를 사용한다.
+
+브라우저에서 원장 등록 성공을 확인한 후, 로컬 레포 루트에서 등록 스크립트가 연결한 합성 매장의 서비스 사용자 ID를 조회한다. 아래 명령은 로컬 Compose DB 기본 설정 기준이다.
+
+```bash
+docker compose exec -T db psql -U bv_local -d beautifulvoice -Atc \
+  "SELECT kakao_user_id FROM crm.user_membership WHERE shop_id = 'ee3fe317-c214-446f-82c2-c209cc4eafa1' AND kakao_user_id IS NOT NULL"
+```
+
+숫자 한 줄이 나오면 아래 `Verified Kakao user ID` 프롬프트에 입력한다. 결과가 비어 있으면 로컬 원장 등록이 성공했는지 확인한다. ID는 터미널에서만 확인한다.
+
+### dev DB에 시연 원장 등록
+
+확인한 서비스 사용자 ID로 dev DB에 합성 매장과 설정을 만든다. 동일 계정으로 재실행할 수 있으며 이미 연결된 다른 원장을 교체하지 않는다. ID와 마이그레이션 URL은 프롬프트로 입력한다.
 
 ```bash
 read -rsp 'Migration DB URL: ' migration_url
@@ -84,3 +99,5 @@ curl -fsS https://dev.example.com/api/health
 ```
 
 브라우저에서 로그인 성공 후 시연 매장 조회와 다른 매장 조회 거부를 확인한다. 재배포에도 같은 공개 주소·포트 설정을 사용한다. 장애 시 `"${compose[@]}" ps`와 `"${compose[@]}" logs --tail=100 api web`으로 어느 서비스에서 실패했는지 확인한다.
+
+Caddy 접근 로그를 켜는 경우 고객 목록 요청의 `q`와 `cursor` 쿼리 값을 로그에서 가린다. 검색어와 페이지 커서에는 고객 이름이나 전화번호가 포함될 수 있다.
