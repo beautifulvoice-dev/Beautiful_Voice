@@ -20,15 +20,15 @@ export function AppShell() {
   const shopName = useShopName();
   return (
     <div className="min-h-dvh bg-paper text-ink">
-      <header className="sticky top-0 z-10 border-b border-line bg-paper">
-        <div className="mx-auto flex h-14 max-w-[1200px] items-center gap-4 px-4">
+      <header className="sticky top-0 z-30 border-b border-line bg-paper">
+        <div className="mx-auto flex h-14 max-w-[1280px] items-center gap-4 px-4">
           <BrandLockup />
           <p className="truncate text-sm text-ink-soft" aria-label="매장">
             {shopName}
           </p>
           <nav
             aria-label="주 메뉴"
-            className="fixed inset-x-0 bottom-0 z-10 border-t border-line bg-paper pb-[env(safe-area-inset-bottom)] md:static md:mx-auto md:border-t-0 md:pb-0"
+            className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-paper pb-[env(safe-area-inset-bottom)] md:static md:mx-auto md:border-t-0 md:pb-0"
           >
             <ul className="grid grid-cols-3 md:flex md:gap-2">
               {NAV_ITEMS.map(({ to, label }) => (
@@ -50,7 +50,7 @@ export function AppShell() {
           </nav>
         </div>
       </header>
-      <main className="mx-auto max-w-[1200px] pb-20 md:pb-0">
+      <main className="mx-auto max-w-[1280px] pb-20 md:pb-0">
         <Outlet />
       </main>
     </div>

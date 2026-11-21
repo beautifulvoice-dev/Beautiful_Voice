@@ -22,7 +22,9 @@ export async function fetchSession(): Promise<Session | null> {
  * ASSUMPTION: 로컬에 카카오 설정이 없는 팀원도 화면 작업을 계속할 수 있어야 한다.
  */
 const devSession: SessionLoader = async () => ({ shopId: 'dev-shop' });
-const defaultLoader: SessionLoader = import.meta.env.DEV && import.meta.env.VITE_DEV_SKIP_LOGIN === '1' ? devSession : fetchSession;
+/** 개발용 로그인 건너뛰기 중인가(서버 없이 화면만 볼 때). 배포 빌드에서는 항상 false. */
+export const DEV_SKIP_LOGIN = import.meta.env.DEV && import.meta.env.VITE_DEV_SKIP_LOGIN === '1';
+const defaultLoader: SessionLoader = DEV_SKIP_LOGIN ? devSession : fetchSession;
 
 const SessionLoaderContext = createContext<SessionLoader>(defaultLoader);
 /** 테스트에서 로그인 상태를 바꿔 끼울 때 쓴다. */

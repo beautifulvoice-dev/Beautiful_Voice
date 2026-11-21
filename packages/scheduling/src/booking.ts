@@ -191,12 +191,24 @@ function checkHours(session: Interval, hours: ShopHours): BookingReject | null {
   const windows = hours.businessHours[local.weekday] ?? [];
   if (windows.length === 0) return "CLOSED_DAY";
   // 관리 구간 전체가 시작일(서울)의 영업 구간 하나 안에 있어야 한다. 자정을 넘는 관리는 영업시간 밖이다.
-  const inside = windows.some((w) => {
-    const open = seoulTimeToInstant(local.date, w.open);
-    const close = seoulTimeToInstant(local.date, w.close);
-    return session.start.getTime() >= open && session.end.getTime() <= close;
-  });
+  // 맞닿은 구간(10:00–13:00, 13:00–18:00)은 쉬는 틈이 없으므로 이어 붙여 한 구간으로 본다(#55 리뷰).
+  // 실제 휴게 공백이 있으면 따로 남아, 공백에 걸친 관리는 계속 거부된다.
+  const inside = mergeTouching(windows.map((w) => ({
+    open: seoulTimeToInstant(local.date, w.open),
+    close: seoulTimeToInstant(local.date, w.close),
+  }))).some((w) => session.start.getTime() >= w.open && session.end.getTime() <= w.close);
   return inside ? null : "OUTSIDE_BUSINESS_HOURS";
+}
+
+/** 시작 순으로 정렬해 끝 = 다음 시작(또는 겹침)인 구간을 하나로 합친다. */
+function mergeTouching(windows: { open: number; close: number }[]): { open: number; close: number }[] {
+  const merged: { open: number; close: number }[] = [];
+  for (const w of [...windows].sort((a, b) => a.open - b.open)) {
+    const last = merged[merged.length - 1];
+    if (last && w.open <= last.close) last.close = Math.max(last.close, w.close);
+    else merged.push({ ...w });
+  }
+  return merged;
 }
 
 type SeoulDay = { date: string; weekday: number };

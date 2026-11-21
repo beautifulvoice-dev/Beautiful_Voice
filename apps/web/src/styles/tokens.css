@@ -61,4 +61,10 @@
   --cal-block: var(--seed-color-bg-neutral-weak);
   --cal-closed: var(--seed-color-bg-disabled);
   --cal-overlap: var(--seed-color-stroke-critical-solid);
+  --cal-block-stripe: var(--seed-color-stroke-neutral-muted);
+  --cal-done: var(--seed-color-bg-neutral-weak); /* 완료: 옅게 */
+  --cal-done-text: var(--seed-color-fg-neutral-muted);
+  --cal-noshow: var(--seed-color-bg-critical-weak); /* 노쇼 */
+  --cal-noshow-text: var(--seed-color-fg-critical-contrast);
+  --cal-now: var(--seed-color-stroke-critical-solid); /* 지금 시각 줄 */
 }
