@@ -43,10 +43,14 @@ describe('담당자 화면', () => {
     expect(router.state.location.pathname).toBe('/settings/staff');
   });
 
-  it('담당자를 보이고, 원장도 담당자로 넣을 수 있다는 안내를 보인다', async () => {
+  it('담당자를 보이고, 추가 시트에서 원장도 담당자로 넣을 수 있다고 한 번 안내한다', async () => {
     renderAt('/settings/staff');
     expect(await names()).toEqual(['원장']);
-    expect(screen.getByText(STAFF_HELP_TEXT)).toBeInTheDocument();
+    expect(screen.queryByText(STAFF_HELP_TEXT)).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: '담당자 추가' }));
+    const input = within(await sheet()).getByLabelText('이름'); // 칸 이름은 "이름"만
+    expect(input).toHaveAccessibleDescription(STAFF_HELP_TEXT);
+    expect(screen.getAllByText(STAFF_HELP_TEXT)).toHaveLength(1);
   });
 
   it('담당자를 추가하고, 다시 "담당자 추가"를 열면 칸이 비어 있다', async () => {
@@ -54,7 +58,7 @@ describe('담당자 화면', () => {
     renderAt('/settings/staff', api);
     await userEvent.click(await screen.findByRole('button', { name: '담당자 추가' }));
     let d = await sheet();
-    await userEvent.type(within(d).getByLabelText(/이름/), '이실장');
+    await userEvent.type(within(d).getByLabelText('이름'), '이실장');
     await save(d);
     await closed();
     expect(await names()).toEqual(['원장', '이실장']);
@@ -62,7 +66,7 @@ describe('담당자 화면', () => {
 
     await userEvent.click(screen.getByRole('button', { name: '담당자 추가' }));
     d = await sheet();
-    expect(within(d).getByLabelText(/이름/)).toHaveValue('');
+    expect(within(d).getByLabelText('이름')).toHaveValue('');
   });
 
   it('이름이 비면 이유를 보이고 저장하지 않는다', async () => {
@@ -70,9 +74,10 @@ describe('담당자 화면', () => {
     renderAt('/settings/staff', api);
     await userEvent.click(await screen.findByRole('button', { name: '담당자 추가' }));
     const d = await sheet();
-    await userEvent.type(within(d).getByLabelText(/이름/), '   ');
+    await userEvent.type(within(d).getByLabelText('이름'), '   ');
     await save(d);
     expect(await within(d).findByText('이름을 입력해 주세요.')).toBeInTheDocument();
+    expect(within(d).getByLabelText('이름')).toHaveAccessibleDescription(`이름을 입력해 주세요. ${STAFF_HELP_TEXT}`);
     expect(await api.listStaff()).toHaveLength(1);
   });
 
@@ -80,7 +85,7 @@ describe('담당자 화면', () => {
     const api = createMemorySettingsApi();
     renderAt('/settings/staff', api);
     await userEvent.click(await screen.findByRole('button', { name: /원장/ }));
-    const input = within(await sheet()).getByLabelText(/이름/);
+    const input = within(await sheet()).getByLabelText('이름');
     await userEvent.clear(input);
     await userEvent.type(input, '박원장');
     await save(await sheet());
@@ -116,9 +121,9 @@ describe('담당자 화면', () => {
     const d = await sheet();
     const [first] = await api.listStaff();
     await api.updateStaff(first!.id, { version: first!.version, name: '대표 원장' });
-    await userEvent.type(within(d).getByLabelText(/이름/), '님');
+    await userEvent.type(within(d).getByLabelText('이름'), '님');
     await save(d);
     expect(await screen.findByText(STAFF_CONFLICT_TEXT)).toBeInTheDocument();
-    expect(within(await sheet()).getByLabelText(/이름/)).toHaveValue('대표 원장');
+    expect(within(await sheet()).getByLabelText('이름')).toHaveValue('대표 원장');
   });
 });

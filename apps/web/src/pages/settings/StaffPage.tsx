@@ -84,12 +84,9 @@ function StaffList({ staff, reload, onAdd, onEdit }: { staff: Staff[]; reload: (
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-col gap-1">
-        <ActionButton variant="neutralWeak" onClick={onAdd}>
-          담당자 추가
-        </ActionButton>
-        <p className="text-sm text-ink-soft">{STAFF_HELP_TEXT}</p>
-      </div>
+      <ActionButton variant="neutralWeak" onClick={onAdd}>
+        담당자 추가
+      </ActionButton>
       {show.problem && 'message' in show.problem && (
         <p role="alert" className="text-sm text-critical-text">
           {showing}: {show.problem.message}
@@ -209,9 +206,15 @@ function StaffSheet({
                     {STAFF_CONFLICT_TEXT}
                   </p>
                 )}
-                <label className="flex flex-col gap-1 text-sm font-medium text-ink">
-                  이름
+                {/* 안내·오류는 label 밖에 두고 aria-describedby로 잇는다 — 칸 이름은 "이름"만(#65 리뷰). */}
+                <div className="flex flex-col gap-1 text-sm">
+                  <label htmlFor="staff-name" className="font-medium text-ink">
+                    이름
+                  </label>
                   <input
+                    id="staff-name"
+                    aria-describedby={[nameError ? 'staff-name-error' : '', target ? '' : 'staff-name-help'].filter(Boolean).join(' ') || undefined}
+                    aria-invalid={nameError ? true : undefined}
                     value={name}
                     onChange={(e) => {
                       setName(e.target.value);
@@ -221,9 +224,18 @@ function StaffSheet({
                     autoComplete="off"
                     className="min-h-10 w-full rounded-md border border-control-line bg-surface px-3 text-base text-ink"
                   />
-                  {nameError && <span className="font-normal text-critical-text">{nameError}</span>}
-                  {!target && <span className="font-normal text-ink-soft">{STAFF_HELP_TEXT}</span>}
-                </label>
+                  {nameError && (
+                    <p id="staff-name-error" className="text-critical-text">
+                      {nameError}
+                    </p>
+                  )}
+                  {/* W13 디자인 문구. 담당자를 넣는 자리에 한 번만 보인다(#65 리뷰). */}
+                  {!target && (
+                    <p id="staff-name-help" className="text-ink-soft">
+                      {STAFF_HELP_TEXT}
+                    </p>
+                  )}
+                </div>
                 {message && (
                   <p role="alert" className="text-sm text-critical-text">
                     {message}
