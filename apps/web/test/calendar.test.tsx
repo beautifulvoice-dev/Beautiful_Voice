@@ -134,6 +134,12 @@ describe('W1 디자인 규칙(SEED 옮기기)', () => {
     expect(hoursBase(['2026-11-18'], null)).toEqual([9, 21]);
   });
 
+  it('영업이 24:00까지면 뒤쪽 회색이 없고 세로 범위는 24시를 넘지 않는다(자정을 넘는 구간은 설정 검사 #39가 거부)', () => {
+    const late = { 3: [{ open: '18:00', close: '24:00' }] };
+    expect(outsideHours('2026-11-18', late)).toEqual([[0, 1080]]);
+    expect(hoursBase(['2026-11-18'], late)).toEqual([17, 24]);
+  });
+
   it('겹침: 그 담당자(또는 매장 전체) 관리 불가와 점유 구간이 겹칠 때만 — 준비 시간도 점유', () => {
     const block = (over: Partial<CalendarBlock>): CalendarBlock => ({
       id: 'b', startAt: '2026-11-18T04:30:00Z', endAt: '2026-11-18T04:50:00Z', allStaff: false, staffIds: ['s1'], memo: null, ...over,

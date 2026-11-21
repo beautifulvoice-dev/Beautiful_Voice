@@ -1,7 +1,7 @@
 // 캘린더 보기(BEA-175, 기능 2A-3.1)의 데이터 모양과 화면 배치 규칙. 저장·검사는 하지 않는다(그건 예약 쓰기 BEA-160·177).
 // 시간은 UTC로 받고 매장 시간대로 그린다(절대 규칙 7).
 // ASSUMPTION: 매장 시간대는 Asia/Seoul 고정(ADR-0007). 서울은 일광절약시간이 없어 +9시간으로 계산한다.
-// 다른 시간대 매장이 생기면 여기만 바꾼다.
+// 다른 시간대 매장이 생기면 SHOP_OFFSET과 함께 날짜를 다루는 weekTitle·isClosedDay·outsideHours도 점검한다.
 
 import type { BusinessHours, Closure } from '@bv/contracts';
 
@@ -233,7 +233,8 @@ export function hoursBase(days: readonly string[], hours: BusinessHours | null):
 /**
  * 관리 불가 시간과 겹치는 예약인가(결정 R50: 기존 예약은 그대로 두고 캘린더에서 겹침으로 보인다).
  * 점유 [시작−준비, 시작+관리)가 그 담당자에게 걸린 차단(매장 전체 포함)과 겹치면 true.
- * 표시용이다 — 저장 거부는 서버(#36 checkBooking)·DB가 한다. API를 붙이면 서버가 주는 blockedBy로 바꾼다.
+ * 표시용이다 — 저장 거부는 서버(#36 checkBooking)·DB가 한다.
+ * 후속: "캘린더 연결" PR에서 서버가 주는 blockedBy(#42)를 쓰고 이 함수와 그 테스트를 지운다.
  */
 export function overlapsBlock(a: CalendarAppointment, blocks: readonly CalendarBlock[]): boolean {
   const start = Date.parse(a.startAt);
