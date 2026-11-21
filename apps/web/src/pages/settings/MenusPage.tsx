@@ -4,7 +4,7 @@
 import type { Menu } from '@bv/contracts';
 import type { ResourceField } from '@bv/scheduling/shop-settings';
 import { ActionButton, Chip, ResponsiveDialog } from '@seed-design/react';
-import { useCallback, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { EmptyState, ErrorState } from '@/components/states/DataState';
 import { useSettingsApi, VersionConflictError } from '@/features/settings/api';
@@ -28,9 +28,19 @@ export function MenusPage() {
   const target = editing?.kind === 'edit' ? menus?.find((m) => m.id === editing.id) : undefined;
   // 고치는 메뉴를 아직(다시) 불러오는 중이면 시트를 잠깐 닫아 둔다 — 빈 "추가" 시트로 바뀌지 않게.
   const sheetOpen = editing !== null && (editing.kind === 'new' || target !== undefined);
+  // 시트를 열 때마다 새로 만든다(번호를 올림) — 바로 전에 추가·고치던 입력이 남지 않게(#61 리뷰 🔴).
+  // 예외: 결과를 모르는 저장(응답 끊김)으로 닫은 시트를 같은 대상으로 다시 열면, 입력과 재시도 키를 그대로 둔다(#59 리뷰).
+  const [session, setSession] = useState(0);
+  const unknownResult = useRef<Editing | null>(null);
   const openSheet = (next: Editing) => {
+    if (!sameEditing(unknownResult.current, next)) setSession((n) => n + 1);
+    unknownResult.current = null;
     setConflict(false);
     setEditing(next);
+  };
+  const closeSheet = (resultUnknown: boolean) => {
+    unknownResult.current = resultUnknown ? editing : null;
+    setEditing(null);
   };
 
   return (
@@ -44,26 +54,31 @@ export function MenusPage() {
       {menus && <MenuList menus={menus} reload={reload} onAdd={() => openSheet({ kind: 'new' })} onEdit={(id) => openSheet({ kind: 'edit', id })} />}
       <MenuSheet
         // 고치는 메뉴가 바뀌거나 다시 불러와 version이 바뀌면 입력을 새 값으로 다시 채운다(#60 리뷰 🟡1).
-        key={target ? `${target.id}:${target.version}` : 'new'}
+        key={`${target ? `${target.id}:${target.version}` : 'new'}:${session}`}
         open={sheetOpen}
         target={target}
         conflict={conflict}
         onConflict={() => setConflict(true)}
-        onClose={() => setEditing(null)}
+        onClose={closeSheet}
         reload={reload}
       />
     </div>
   );
 }
 
+const sameEditing = (a: Editing | null, b: Editing) =>
+  a !== null && a.kind === b.kind && (a.kind === 'new' || (b.kind === 'edit' && a.id === b.id));
+
 function MenuList({ menus, reload, onAdd, onEdit }: { menus: Menu[]; reload: () => void; onAdd: () => void; onEdit: (id: string) => void }) {
   const api = useSettingsApi();
   const show = useSaveAction(reload);
+  const [showing, setShowing] = useState('');
   const active = menus.filter((m) => m.active);
   const hidden = menus.filter((m) => !m.active);
 
   async function showAgain(m: Menu) {
     show.clear(); // 다른 메뉴일 수 있다 — 새 키로.
+    setShowing(m.name);
     const done = await show.run((idempotencyKey) => api.updateMenu(m.id, { version: m.version, active: true }, { idempotencyKey }));
     if (done) reload();
   }
@@ -75,7 +90,7 @@ function MenuList({ menus, reload, onAdd, onEdit }: { menus: Menu[]; reload: () 
       </ActionButton>
       {show.problem && 'message' in show.problem && (
         <p role="alert" className="text-sm text-critical-text">
-          {show.problem.message}
+          {showing}: {show.problem.message}
         </p>
       )}
 
@@ -135,7 +150,8 @@ function MenuSheet({
   target: Menu | undefined;
   conflict: boolean;
   onConflict: () => void;
-  onClose: () => void;
+  /** resultUnknown: 결과를 모르는 저장(응답 끊김) 뒤에 닫았는가. */
+  onClose: (resultUnknown: boolean) => void;
   reload: () => void;
 }) {
   const api = useSettingsApi();
@@ -162,7 +178,7 @@ function MenuSheet({
       }
     });
     if (done) {
-      onClose();
+      onClose(false);
       reload();
     }
   }
@@ -184,8 +200,9 @@ function MenuSheet({
   // 결과를 모르는 저장(응답 끊김)은 닫아도 입력과 키를 그대로 두고 목록을 다시 읽는다(#59 리뷰와 같은 이유).
   function close(next: boolean) {
     if (next) return;
-    onClose();
-    if (save.problem?.kind === 'failed') reload();
+    const unknown = save.problem?.kind === 'failed';
+    onClose(unknown);
+    if (unknown) reload();
   }
 
   const title = target ? '메뉴 고치기' : '메뉴 추가';

@@ -126,6 +126,66 @@ describe('메뉴 화면', () => {
     expect((await api.listMenus()).map((m) => m.name)).toEqual(['수분 관리', '등 관리']);
   });
 
+  it('추가한 뒤 다시 "메뉴 추가"를 열면 칸이 비어 있다(#61 리뷰)', async () => {
+    renderAt('/settings/menus');
+    await userEvent.click(await screen.findByRole('button', { name: '메뉴 추가' }));
+    let d = await sheet();
+    await userEvent.type(within(d).getByLabelText('이름'), '얼굴 관리');
+    await userEvent.click(chip(d, '관리 시간 (분)', '60분'));
+    await save(d);
+    await closed();
+    await userEvent.click(await screen.findByRole('button', { name: '메뉴 추가' }));
+    d = await sheet();
+    expect(within(d).getByLabelText('이름')).toHaveValue('');
+    expect(within(d).getByLabelText('관리 시간 (분)')).toHaveValue('');
+  });
+
+  it('저장하지 않고 닫았다 다시 열면 저장된 값으로 돌아간다', async () => {
+    renderAt('/settings/menus');
+    await userEvent.click(await screen.findByRole('button', { name: /수분 관리/ }));
+    const name = within(await sheet()).getByLabelText('이름');
+    await userEvent.clear(name);
+    await userEvent.type(name, '고치던 이름');
+    await userEvent.keyboard('{Escape}');
+    await closed();
+    await userEvent.click(await screen.findByRole('button', { name: /수분 관리/ }));
+    expect(within(await sheet()).getByLabelText('이름')).toHaveValue('수분 관리');
+  });
+
+  it('응답만 끊긴 추가는 닫았다 다시 열어도 입력과 키가 남아 한 번만 저장된다(#59 리뷰와 같은 경우)', async () => {
+    const api = createMemorySettingsApi();
+    const keys: (string | undefined)[] = [];
+    let dropResponse = true;
+    const flaky: SettingsApi = {
+      ...api,
+      addMenu: async (input, o) => {
+        keys.push(o?.idempotencyKey);
+        const created = await api.addMenu(input, o); // 서버에는 저장된다
+        if (dropResponse) throw new Error('response lost');
+        return created;
+      },
+    };
+    renderAt('/settings/menus', flaky);
+    await userEvent.click(await screen.findByRole('button', { name: '메뉴 추가' }));
+    let d = await sheet();
+    await userEvent.type(within(d).getByLabelText('이름'), '얼굴 관리');
+    await save(d);
+    expect(await within(d).findByRole('alert')).toHaveTextContent('저장하지 못했어요');
+    await userEvent.keyboard('{Escape}');
+    await closed();
+    expect(await rows()).toContain('얼굴 관리시간 안 정함›'); // 닫을 때 목록을 다시 읽음
+
+    dropResponse = false;
+    await userEvent.click(screen.getByRole('button', { name: '메뉴 추가' }));
+    d = await sheet();
+    expect(within(d).getByLabelText('이름')).toHaveValue('얼굴 관리');
+    await save(d);
+    await closed();
+    expect(keys).toHaveLength(2);
+    expect(keys[1]).toBe(keys[0]);
+    expect((await api.listMenus()).filter((m) => m.name === '얼굴 관리')).toHaveLength(1);
+  });
+
   it('다른 곳에서 먼저 고쳤으면 안내하고 새 내용으로 다시 채운다', async () => {
     const api = createMemorySettingsApi();
     renderAt('/settings/menus', api);
