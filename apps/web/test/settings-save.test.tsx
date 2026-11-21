@@ -9,7 +9,7 @@ import {
   VersionConflictError,
 } from '@/features/settings/api';
 import { FAILED_TEXT, GONE_TEXT, toSaveProblem } from '@/features/settings/problems';
-import { useSaveAction } from '@/features/settings/useSaveAction';
+import { randomKey, useSaveAction } from '@/features/settings/useSaveAction';
 
 const empty = () => createMemorySettingsApi({ businessHours: null, closures: [], menus: [], staff: [] });
 
@@ -131,5 +131,20 @@ describe('Idempotency-Key', () => {
       await result.current.run(fail);
     });
     expect(keys).toEqual(['key-1', 'key-2']);
+  });
+});
+
+describe('키 만들기', () => {
+  const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+
+  it('randomUUID가 없는 곳(http 개발 서버에 폰으로 접속)에서도 UUID v4 모양 키를 만든다', () => {
+    const noUuid = { getRandomValues: globalThis.crypto.getRandomValues.bind(globalThis.crypto) };
+    const a = randomKey(noUuid);
+    expect(a).toMatch(UUID_V4);
+    expect(randomKey(noUuid)).not.toBe(a);
+  });
+
+  it('randomUUID가 있으면 그것을 쓴다', () => {
+    expect(randomKey()).toMatch(UUID_V4);
   });
 });

@@ -11,7 +11,18 @@ export interface SaveAction {
   clear(): void;
 }
 
-const randomKey = () => crypto.randomUUID();
+/**
+ * 저장 한 번에 붙일 키(UUID v4). crypto.randomUUID는 https·localhost에서만 있어서,
+ * 폰으로 같은 와이파이의 개발 서버(http://192.168.x.x)에 접속하면 없다 → getRandomValues로 같은 모양을 만든다.
+ */
+export function randomKey(c: Pick<Crypto, 'getRandomValues'> & Partial<Pick<Crypto, 'randomUUID'>> = globalThis.crypto): string {
+  if (typeof c.randomUUID === 'function') return c.randomUUID();
+  const b = c.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6]! & 0x0f) | 0x40; // 버전 4
+  b[8] = (b[8]! & 0x3f) | 0x80; // 변형 10xx
+  const hex = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 /**
  * @param reload 충돌·이미 지워짐일 때 화면 데이터를 다시 불러오는 함수(useLoad의 reload).
