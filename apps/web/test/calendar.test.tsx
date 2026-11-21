@@ -193,10 +193,10 @@ describe('캘린더 화면', () => {
     renderAt('/calendar?date=2026-11-18');
     const monday = await screen.findByRole('region', { name: '11월 16일' });
     expect(monday.querySelectorAll('[data-kind="closed"]').length).toBeGreaterThan(0); // 10시 전
+    // 휴무일(웹)은 칸 전체가 회색 + 가운데 "정기 휴무"(디자인 .day.off)
     const sunday = screen.getByRole('region', { name: '11월 22일' });
-    const cover = sunday.querySelector<HTMLElement>('[data-kind="closed"]')!;
-    expect(cover.style.top).toBe('0px');
-    expect(cover.style.height).toBe(sunday.style.height); // 하루 전체
+    expect(sunday).toHaveClass('bg-cal-closed');
+    expect(sunday.querySelector('[data-kind="closed"]')).toHaveTextContent('정기 휴무');
   });
 
   it('담당자가 1명이면 칩이 없다', async () => {
@@ -221,7 +221,7 @@ describe('캘린더 화면', () => {
     expect(within(wed).getByRole('button', { name: /손님가/ })).toHaveTextContent('원장');
     await userEvent.click(within(chips).getByRole('radio', { name: '보조' }));
     expect(within(wed).queryByRole('button', { name: /손님가/ })).not.toBeInTheDocument();
-    expect(within(wed).getByRole('button', { name: /손님나/ }).style.width).toBe('100%');
+    expect(within(wed).getByRole('button', { name: /손님나/ }).style.width).toBe('calc(100% - 6px)'); // 한 줄이면 좌우 3px만 띄운다
   });
 
   it('오늘 칸에 지금 시각 빨간 줄이 있다', async () => {
@@ -238,7 +238,11 @@ describe('캘린더 화면', () => {
     renderAt('/calendar?date=2026-11-18');
     expect(await screen.findByRole('heading', { level: 2, name: '11월 셋째 주' })).toBeInTheDocument();
     await screen.findByRole('region', { name: '11월 16일' });
-    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['월 16', '화 17', '수 18', '목 19', '금 20', '토 21', '일 22 · 휴무']);
+    // 날 머리 두 줄(요일 / 날짜), 휴무는 "일 · 정기 휴무"(디자인 .dh)
+    const heads = screen.getAllByRole('columnheader').map((h) => h.textContent);
+    expect(heads).toHaveLength(7);
+    expect(heads[0]).toBe('월16');
+    expect(heads[6]).toBe('일 · 정기 휴무22');
     expect(screen.getByRole('radio', { name: '주' })).toBeChecked();
     const kinds = new Set(Array.from(document.querySelectorAll('[data-kind]')).map((e) => e.getAttribute('data-kind')));
     for (const k of ['care', 'prep', 'block', 'closed']) expect(kinds).toContain(k);
@@ -248,7 +252,9 @@ describe('캘린더 화면', () => {
     renderAt('/calendar?date=2026-11-18');
     const monday = await screen.findByRole('region', { name: '11월 16일' });
     const card = within(monday).getByRole('button', { name: /이서윤/ });
-    expect(card).toHaveTextContent('이서윤등 관리'); // 담당자가 1명이면 담당자 이름은 숨긴다(W1)
+    // 웹 칸은 이름 + 시작 시각(디자인), 메뉴는 화면 읽기용으로 함께. 담당자가 1명이면 담당자 이름은 없다(W1)
+    expect(card).toHaveTextContent('이서윤14:00');
+    expect(card).toHaveTextContent('등 관리');
     expect(card).not.toHaveTextContent('원장');
     await userEvent.click(card);
     const dialog = await screen.findByRole('dialog', { name: '이서윤' });
@@ -283,14 +289,15 @@ describe('캘린더 화면', () => {
     renderAt('/calendar?date=2026-11-18');
     const monday = await screen.findByRole('region', { name: '11월 16일' });
     const card = within(monday).getByRole('button', { name: /이서윤/ });
-    expect(card.style.width).toBe('100%');
+    expect(card.style.width).toBe('calc(100% - 6px)');
   });
 
   it('취소된 예약은 캘린더에 없다', async () => {
     renderAt('/calendar?date=2026-11-18');
     const thursday = await screen.findByRole('region', { name: '11월 19일' });
     expect(within(thursday).queryByRole('button')).not.toBeInTheDocument();
-    expect(within(thursday).getByText('관리 불가 · 점심')).toBeInTheDocument();
+    expect(within(thursday).getByText('관리 불가')).toBeInTheDocument();
+    expect(within(thursday).getByText('점심')).toBeInTheDocument();
   });
 
   it('주 ↔ 월 전환과 이전·다음 이동은 주소에 남는다', async () => {
@@ -385,7 +392,7 @@ describe('폰·웹 배치(캘린더 PR 2a) — 너비 기준 SEED md 768', () =>
       }),
     );
     const wed = await screen.findByRole('region', { name: '11월 18일' });
-    expect(screen.getByRole('columnheader')).toHaveTextContent('원장보조');
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['원장', '보조']);
     const a = within(wed).getByRole('button', { name: /손님가/ });
     const b = within(wed).getByRole('button', { name: /손님나/ });
     expect(a.style.left).not.toBe(b.style.left);
@@ -478,7 +485,7 @@ describe('예약 보기 W2 — 웹 오른쪽 패널 / 폰 아래 시트 (캘린�
     setTestWidth(390);
     renderAt('/calendar?date=2026-11-16');
     const monday = await screen.findByRole('region', { name: '11월 16일' });
-    expect(screen.getByRole('button', { name: '+ 예약' })).toBeDisabled(); // 시트가 열리면 뒤 화면은 가려지므로 먼저 확인
+    expect(screen.getByRole('button', { name: '예약' })).toBeDisabled(); // 떠 있는 + 예약(W3 전까지 꺼짐) — 시트가 열리면 뒤 화면은 가려지므로 먼저 확인
     await userEvent.click(within(monday).getByRole('button', { name: /이서윤/ }));
     const sheet = await screen.findByRole('dialog', { name: '이서윤' });
     expect(sheet).toHaveTextContent('준비 20분 · 13:40부터 일정이 잡혀요');
