@@ -66,6 +66,9 @@ importers:
       '@bv/customers':
         specifier: workspace:*
         version: link:../../packages/customers
+      '@bv/scheduling':
+        specifier: workspace:*
+        version: link:../../packages/scheduling
       '@tailwindcss/vite':
         specifier: ^4.3.5
         version: 4.3.5(vite@7.3.8(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.51.2))
