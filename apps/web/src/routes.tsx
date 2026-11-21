@@ -11,7 +11,7 @@ import { ClosuresPage } from '@/pages/settings/ClosuresPage';
 import { HoursPage } from '@/pages/settings/HoursPage';
 import { MenusPage } from '@/pages/settings/MenusPage';
 import { StaffPage } from '@/pages/settings/StaffPage';
-import { SettingsPage } from '@/pages/settings/SettingsPage';
+import { SettingsLayout, SettingsPage } from '@/pages/settings/SettingsPage';
 
 export const routes: RouteObject[] = [
   { path: 'login', element: <LoginPage /> },
@@ -30,11 +30,18 @@ export const routes: RouteObject[] = [
       { path: 'customers/new', element: <CustomerFormPage /> },
       { path: 'customers/:id', element: <CustomerDetailPage /> },
       { path: 'customers/:id/edit', element: <CustomerFormPage /> },
-      { path: 'settings', element: <SettingsPage /> },
-      { path: 'settings/hours', element: <HoursPage /> },
-      { path: 'settings/closures', element: <ClosuresPage /> },
-      { path: 'settings/menus', element: <MenusPage /> },
-      { path: 'settings/staff', element: <StaffPage /> },
+      {
+        // 설정 틀: 웹은 왼쪽 메뉴 + 오른쪽 내용, 폰은 목록 → 하위 화면(W13 디자인).
+        path: 'settings',
+        element: <SettingsLayout />,
+        children: [
+          { index: true, element: <SettingsPage /> },
+          { path: 'hours', element: <HoursPage /> },
+          { path: 'closures', element: <ClosuresPage /> },
+          { path: 'menus', element: <MenusPage /> },
+          { path: 'staff', element: <StaffPage /> },
+        ],
+      },
       { path: '*', element: <EmptyState title="없는 화면이에요" /> },
     ],
   },
