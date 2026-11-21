@@ -1,6 +1,5 @@
 // 고객 화면(C-03)이 쓰는 데이터 모양과 표시 규칙.
-// 고객 필드는 지금 C-02(@bv/customers)와 같은 이름·전화·메모만 쓴다. 메모는 화면에서 "특이사항"으로 보여 준다.
-// 생년월일·거주지(명세 1 §2.3)는 명세 2 데이터 스키마의 형식을 확인한 뒤 추가한다.
+// 고객 필드는 @bv/customers와 같다: 이름(필수)·전화·메모·생년월일·거주지(BEA-172, 명세 1 §2.3). 메모는 화면에서 "특이사항"으로 보여 준다.
 import type { CustomerValues } from '@bv/customers';
 
 export interface Customer extends CustomerValues {
@@ -58,3 +57,13 @@ export function formatPhone(digits: string): string {
   if (digits.startsWith('02')) return digits.replace(/^(02)(\d{3,4})(\d{4})$/, '$1-$2-$3');
   return digits.replace(/^(\d{3})(\d{3,4})(\d{4})$/, '$1-$2-$3');
 }
+
+/** 생년월일 "1990-02-28" → "1990년 2월 28일". 날짜 문자열을 그대로 읽어 시간대에 흔들리지 않게 한다. */
+export function formatBirthdate(ymd: string): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return `${y}년 ${m}월 ${d}일`;
+}
+
+const seoulYmd = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' });
+/** 매장 날짜 기준 오늘 "YYYY-MM-DD"(절대 규칙 7, 서울 고정). 생년월일 달력의 끝 날짜로 쓴다. */
+export const shopToday = (now: Date = new Date()) => seoulYmd.format(now);
