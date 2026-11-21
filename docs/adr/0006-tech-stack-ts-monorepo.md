@@ -38,7 +38,7 @@ Phase 1은 PM이 별도 저장소(Next.js+Supabase)로 만들지만 이 결정�
 | 영역 | 선택 | 메모 |
 |---|---|---|
 | 언어·저장소 | TypeScript, pnpm 워크스페이스 + Turborepo | `apps/web`, `apps/server`(API·워커 진입점 2개), `packages/contracts`(OpenAPI·타입) |
-| 웹 (옵마) | React + Vite, PWA, TanStack Query, shadcn/ui + Tailwind | 라우터·폼·캘린더 컴포넌트는 작은 선택 — 담당자가 PR로 결정 |
+| 웹 (옵마) | React + Vite, PWA, TanStack Query, ~~shadcn/ui~~ + Tailwind → UI 부품은 [ADR-0008](0008-web-ui-seed-design.md) SEED Design(2026-11-21), Tailwind는 배치 전용 | 라우터·폼·캘린더 컴포넌트는 작은 선택 — 담당자가 PR로 결정 |
 | API·워커 (주드·해나) | NestJS, 같은 코드베이스를 API·워커 두 프로세스로 실행 | ADR-0001의 배포 단위 2개 |
 | DB | PostgreSQL | 범위 타입·`EXCLUDE`·강제 RLS (ADR-0003) |
 | DB 접근 | **순수 SQL 마이그레이션(`apps/server/db/migrations/NNN-*.sql`) + `pg`** (11/18 확정) | 처음 후보였던 Drizzle·Kysely 대신 택함. `tstzrange`·배타 제약·강제 RLS를 SQL 그대로 쓰고 테스트도 SQL로. 쿼리 빌더가 필요해지면 재검토 |
