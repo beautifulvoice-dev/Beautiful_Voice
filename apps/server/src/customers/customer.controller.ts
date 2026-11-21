@@ -1,11 +1,11 @@
 import type { Customer, Page, SameNameCheckResponse } from '@bv/contracts';
-import { Body, Controller, Get, Header, HttpCode, Param, Patch, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, HttpCode, Param, Patch, Post, Put, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { idempotentWrite, type WriteRequest, type WriteResponse } from '../common/idempotent-write';
 import { OwnerShopGuard } from '../common/owner-shop.guard';
 import { DatabaseService } from '../database.service';
 import { CustomerService } from './customer.service';
 
-// 계약 #42 "고객" 묶음 중 BEA-172(등록·검색·수정·동명이인). 비활성화(BEA-173)는 다음 PR.
+// 계약 #42 "고객" 묶음: BEA-172(등록·검색·수정·동명이인) + BEA-173(비활성화·재활성화).
 // 검색어 q에 전화번호가 들어갈 수 있다 — 이 경로의 URL을 로그에 남기지 않는다(절대 규칙 8, 설계 D4).
 @Controller('api/shops/:shopId/customers')
 @UseGuards(OwnerShopGuard)
@@ -50,5 +50,15 @@ export class CustomerController {
   ): Promise<Customer> {
     return idempotentWrite(this.database, shopId, request, response, 200,
       (client) => this.customers.update(client, shopId, customerId, body));
+  }
+
+  // 삭제 대신 비활성화, 다시 살리기. 예약은 자동 취소하지 않는다(결정 R30·S4).
+  @Put(':customerId/active')
+  setActive(
+    @Param('shopId') shopId: string, @Param('customerId') customerId: string, @Body() body: unknown,
+    @Req() request: WriteRequest, @Res({ passthrough: true }) response: WriteResponse,
+  ): Promise<Customer> {
+    return idempotentWrite(this.database, shopId, request, response, 200,
+      (client) => this.customers.setActive(client, shopId, customerId, body));
   }
 }

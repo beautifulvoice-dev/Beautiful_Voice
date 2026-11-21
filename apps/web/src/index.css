@@ -42,10 +42,24 @@
     --color-ink: var(--ink);
     --color-ink-soft: var(--ink-soft);
     --color-line: var(--line);
+    --color-surface: var(--surface);
+    --color-control-line: var(--control-line);
+    --color-critical-text: var(--critical-text);
     --color-brand: var(--brand);
     --color-brand-weak: var(--brand-weak);
     --color-brand-text: var(--brand-text);
     --color-on-brand: var(--on-brand);
+    --color-cal-appt: var(--cal-appt);
+    --color-cal-appt-text: var(--cal-appt-text);
+    --color-cal-prep: var(--cal-prep);
+    --color-cal-block: var(--cal-block);
+    --color-cal-closed: var(--cal-closed);
+    --color-cal-overlap: var(--cal-overlap);
+    --color-cal-done: var(--cal-done);
+    --color-cal-done-text: var(--cal-done-text);
+    --color-cal-noshow: var(--cal-noshow);
+    --color-cal-noshow-text: var(--cal-noshow-text);
+    --color-cal-now: var(--cal-now);
 }
 
 :root {
