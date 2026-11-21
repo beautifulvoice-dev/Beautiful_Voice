@@ -18,8 +18,8 @@ export const STATUS_CLASS: Partial<Record<AppointmentStatus, string>> = {
 /** 관리 불가와 겹친 예약(결정 R50): 흰 바탕 + 빨강 2px 안쪽 테두리. */
 export const OVERLAP_CLASS = 'z-[2] bg-paper shadow-[inset_0_0_0_2px_var(--cal-overlap)]';
 
-/** 상태 배지 톤(설계서 §7, 완료는 캡처를 따라 neutral — 카본 확인 대기). */
-export const STATUS_TONE: Partial<Record<AppointmentStatus, 'neutral' | 'critical'>> = {
-  completed: 'neutral',
+/** 상태 배지 톤(설계서 §7·§9.3: positive = 됐다 → 완료, critical = 노쇼). 캡처의 회색과 다르면 설계서를 따른다(11/21 옵마). 칸 바탕의 옅은 완료 색은 캡처대로. */
+export const STATUS_TONE: Partial<Record<AppointmentStatus, 'positive' | 'critical'>> = {
+  completed: 'positive',
   no_show: 'critical',
 };

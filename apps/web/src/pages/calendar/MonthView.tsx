@@ -48,7 +48,7 @@ export function MonthView({ days, month, data, today, onOpen, phone = false, sel
       <>
         <div className="grid grid-cols-7 px-3" {...swipe}>
           {WEEKDAY.map((w) => (
-            <div key={w} role="columnheader" className="py-1 text-center text-xs text-ink-subtle">
+            <div key={w} role="columnheader" className="py-1 text-center text-sm text-ink-subtle">
               {w}
             </div>
           ))}
@@ -79,10 +79,10 @@ export function MonthView({ days, month, data, today, onOpen, phone = false, sel
                   </span>
                   {!out &&
                     (closed ? (
-                      <span className="text-[11px] text-ink-subtle">휴무</span>
+                      <span className="text-sm text-ink-subtle">휴무</span>
                     ) : (
                       appts.length > 0 && (
-                        <span className="rounded-md bg-brand-weak px-[5px] text-xs font-bold text-cal-appt-text">{appts.length}</span>
+                        <span className="rounded-md bg-brand-weak px-[5px] text-sm font-bold text-cal-appt-text">{appts.length}</span>
                       )
                     ))}
                 </button>
@@ -107,7 +107,7 @@ export function MonthView({ days, month, data, today, onOpen, phone = false, sel
     <div className="overflow-hidden rounded-2xl border border-line">
       <div className="grid grid-cols-7">
         {WEEKDAY.map((w) => (
-          <div key={w} role="columnheader" className="border-b border-line px-2 py-2.5 text-[13px] text-ink-soft">
+          <div key={w} role="columnheader" className="border-b border-line px-2 py-2.5 text-sm text-ink-soft">
             {w}
           </div>
         ))}
@@ -122,7 +122,7 @@ export function MonthView({ days, month, data, today, onOpen, phone = false, sel
               key={d}
               aria-label={`${Number(d.slice(5, 7))}월 ${Number(d.slice(8, 10))}일`}
               className={cn(
-                'min-h-28 border-b border-l border-line p-1.5 text-[13px] [&:nth-child(7n+8)]:border-l-0',
+                'min-h-28 border-b border-l border-line p-1.5 text-sm [&:nth-child(7n+8)]:border-l-0',
                 closed && 'bg-cal-closed',
               )}
             >
@@ -135,7 +135,7 @@ export function MonthView({ days, month, data, today, onOpen, phone = false, sel
                 aria-current={d === today ? 'date' : undefined}
               >
                 {Number(d.slice(8, 10))}
-                {closed && <span className="ml-1 text-xs font-semibold text-ink-subtle">휴무</span>}
+                {closed && <span className="ml-1 text-sm font-semibold text-ink-subtle">휴무</span>}
               </p>
               <ul className="flex flex-col gap-0.5">
                 {blocks.map((id) => {
