@@ -1,5 +1,5 @@
 // 설정 틀(W13 디자인 11/20): 폰은 목록(제목 아래 요약) → 하위 화면, 웹은 왼쪽 메뉴 + 오른쪽 내용. 데이터는 합성(절대 규칙 8).
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
@@ -55,7 +55,8 @@ describe('설정 — 웹(1280px)', () => {
   it('/settings는 첫 항목을 열고, 왼쪽 메뉴에 지금 화면을 표시한다', async () => {
     setTestWidth(1280);
     const router = renderAt('/settings');
-    expect(await screen.findByRole('heading', { name: '매장 정보' })).toBeInTheDocument();
+    // 넘어가는 동안 화면이 한 번 다시 그려질 수 있어 찾은 뒤 다시 확인한다.
+    await waitFor(() => expect(screen.getByRole('heading', { name: '매장 정보' })).toBeInTheDocument());
     expect(router.state.location.pathname).toBe('/settings/shop');
     const nav = screen.getByRole('navigation', { name: '설정 메뉴' });
     expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['매장 정보', '휴무·휴가', '메뉴', '담당자']);
