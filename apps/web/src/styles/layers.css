@@ -1,0 +1,4 @@
+/* CSS 층 순서 선언(ADR-0008). 앱에서 가장 먼저 불러와야 한다 — 층 순서는 "처음 나온 선언"이 정한다.
+   SEED 부품(@seed-design/react)이 자기 레시피 CSS(@layer seed-components)를 먼저 끼워 넣으면
+   seed-components가 맨 아래 층이 되어 Tailwind 기본 스타일에 덮인다. */
+@layer theme, base, seed-base, components, seed-components, utilities;

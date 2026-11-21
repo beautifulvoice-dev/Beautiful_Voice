@@ -84,7 +84,9 @@ export function CalendarPage() {
             ›
           </ActionButton>
         </div>
-        <SegmentedControl.Root aria-label="보기" value={view} onValueChange={(v) => go({ view: v as View })} className="w-32">
+        {/* 세그먼트는 기본으로 줄 전체 폭 — 내용만큼만 쓰도록 감싼다(폭을 고정하면 표시 막대 위치가 어긋난다). */}
+        <div className="w-fit">
+        <SegmentedControl.Root aria-label="보기" value={view} onValueChange={(v) => go({ view: v as View })}>
           <SegmentedControl.Indicator />
           {(['week', 'month'] as const).map((v) => (
             <SegmentedControl.Item key={v} value={v}>
@@ -93,6 +95,7 @@ export function CalendarPage() {
             </SegmentedControl.Item>
           ))}
         </SegmentedControl.Root>
+        </div>
       </div>
 
       {shown && state.status === 'ok' && <StaffFilter staff={state.data.staff} value={staffId} onChange={setStaffId} />}

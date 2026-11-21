@@ -57,7 +57,8 @@ export function WeekView({ days, data, today, now, onOpen, staffName }: Props) {
   };
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-line">
+    // isolate: 칸 안의 z-index(예약·지금 줄)가 머리줄·아래 탭과 겨루지 않게 이 표 안에 가둔다.
+    <div className="isolate overflow-x-auto rounded-lg border border-line">
       <div className="grid min-w-[640px] grid-cols-[3rem_repeat(7,minmax(0,1fr))]">
         <div className="border-b border-line" />
         {days.map((d, i) => (
