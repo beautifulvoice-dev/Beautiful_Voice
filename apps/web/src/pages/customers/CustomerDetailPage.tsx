@@ -6,7 +6,7 @@ import { Link, useParams } from 'react-router';
 import { EmptyState, ErrorState } from '@/components/states/DataState';
 import { Button } from '@/components/ui/button';
 import { useCustomerApi } from '@/features/customers/api';
-import { formatDateTime, formatPhone, visitHistory, VISIT_STATUS_TEXT, type CustomerDetail } from '@/features/customers/model';
+import { formatBirthdate, formatDateTime, formatPhone, visitHistory, VISIT_STATUS_TEXT, type CustomerDetail } from '@/features/customers/model';
 import { useLoad } from '@/lib/useLoad';
 
 export function CustomerDetailPage() {
@@ -48,6 +48,11 @@ function CustomerCard({ customer: c }: { customer: CustomerDetail }) {
           <dl className="grid grid-cols-[6rem_1fr] gap-y-2 text-sm">
             <dt className="text-muted-foreground">전화번호</dt>
             <dd>{c.phone ? formatPhone(c.phone) : '없음'}</dd>
+            {/* 생년월일·거주지는 개인정보라 상세에서만 보인다(목록 카드에는 없음). */}
+            <dt className="text-muted-foreground">생년월일</dt>
+            <dd>{c.birthdate ? formatBirthdate(c.birthdate) : '없음'}</dd>
+            <dt className="text-muted-foreground">거주지</dt>
+            <dd>{c.address ?? '없음'}</dd>
             <dt className="text-muted-foreground">특이사항</dt>
             <dd className="whitespace-pre-line">{c.memo ?? '없음'}</dd>
           </dl>
