@@ -46,7 +46,7 @@ describe('설정 — 예전 주소', () => {
   it('/settings/hours는 매장 정보로 간다(영업시간이 매장 정보 안으로 들어감)', async () => {
     setTestWidth(390);
     const router = renderAt('/settings/hours');
-    expect(await screen.findByRole('heading', { name: '매장 정보' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('heading', { name: '매장 정보' })).toBeInTheDocument());
     expect(router.state.location.pathname).toBe('/settings/shop');
   });
 });
