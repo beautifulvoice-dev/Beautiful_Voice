@@ -25,6 +25,7 @@ import {
 } from '@/features/calendar/model';
 import { validDate } from '@/pages/calendar/CalendarPage';
 import { routes } from '@/routes';
+import { setTestWidth } from './setup';
 
 // 2026-11-16(월) ~ 22(일) 주. 시드는 이 주 월요일 기준.
 const API = () => createMemoryCalendarApi(seedCalendar('2026-11-18'));
@@ -340,5 +341,77 @@ describe('캘린더 화면', () => {
     fail = false;
     await userEvent.click(screen.getByRole('button', { name: '다시 시도' }));
     expect(await screen.findByRole('region', { name: '11월 16일' })).toBeInTheDocument();
+  });
+});
+
+describe('폰·웹 배치(캘린더 PR 2a) — 너비 기준 SEED md 768', () => {
+  it('폰 주 보기: 위 7일 띠와 고른 날 하루 시간표, 띠에서 날을 누르면 시간표와 ?date가 바뀐다', async () => {
+    setTestWidth(390);
+    const router = renderAt('/calendar?date=2026-11-18');
+    const strip = await screen.findByRole('group', { name: '날짜 고르기' });
+    expect(within(strip).getAllByRole('button')).toHaveLength(7);
+    expect(within(strip).getByRole('button', { name: /11월 18일 수요일/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(strip).getByRole('button', { name: /11월 16일 월요일 · 예약 3건/ })).toBeInTheDocument();
+    expect(within(strip).getByRole('button', { name: /11월 22일 일요일 · 휴무/ })).toBeInTheDocument();
+    // 하루 시간표 = 그날 칸 하나
+    expect(screen.getAllByRole('region', { name: /^11월 \d+일$/ })).toHaveLength(1);
+    expect(screen.getByRole('region', { name: '11월 18일' })).toBeInTheDocument();
+
+    await userEvent.click(within(strip).getByRole('button', { name: /11월 16일 월요일/ }));
+    expect(router.state.location.search).toBe('?view=week&date=2026-11-16');
+    const monday = await screen.findByRole('region', { name: '11월 16일' });
+    expect(within(monday).getByRole('button', { name: /이서윤/ })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '11월 18일' })).not.toBeInTheDocument();
+  });
+
+  it('폰 주 보기에서 담당자가 2명이면 하루 시간표 머리에 담당자별 칸 이름', async () => {
+    setTestWidth(390);
+    renderAt(
+      '/calendar?date=2026-11-18',
+      createMemoryCalendarApi({
+        staff: [{ id: 's1', name: '원장' }, { id: 's2', name: '보조' }],
+        appointments: [appt({ id: 'p1', customerName: '손님가', staffId: 's1' }), appt({ id: 'p2', customerName: '손님나', staffId: 's2' })],
+        blocks: [],
+      }),
+    );
+    const wed = await screen.findByRole('region', { name: '11월 18일' });
+    expect(screen.getByRole('columnheader')).toHaveTextContent('원장보조');
+    const a = within(wed).getByRole('button', { name: /손님가/ });
+    const b = within(wed).getByRole('button', { name: /손님나/ });
+    expect(a.style.left).not.toBe(b.style.left);
+  });
+
+  it('폰 월 보기: 칸엔 예약 수만, 날을 누르면 아래에 그날 목록, 누르면 예약 보기', async () => {
+    setTestWidth(390);
+    const router = renderAt('/calendar?view=month&date=2026-11-18');
+    const monday = await screen.findByRole('region', { name: '11월 16일' });
+    const cell = within(monday).getByRole('button', { name: '16일 · 예약 3건' });
+    expect(cell).toHaveTextContent('3');
+    expect(within(monday).queryByText(/이서윤/)).not.toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: '11월 22일' })).getByRole('button', { name: '22일 · 휴무' })).toBeInTheDocument();
+
+    await userEvent.click(cell);
+    expect(router.state.location.search).toBe('?view=month&date=2026-11-16');
+    const list = await screen.findByRole('region', { name: '11/16(월) 예약' });
+    expect(within(list).getByText('예약 03')).toBeInTheDocument();
+    expect(within(list).getAllByRole('button').map((b) => b.textContent)).toEqual([
+      expect.stringContaining('10:00김하늘'),
+      expect.stringContaining('14:00이서윤'),
+      expect.stringContaining('16:00박지민'),
+    ]);
+    expect(within(list).getAllByRole('button')[0]).toHaveTextContent('완료');
+    await userEvent.click(within(list).getByRole('button', { name: /이서윤/ }));
+    expect(await screen.findByRole('dialog', { name: '이서윤' })).toBeInTheDocument();
+  });
+
+  it('웹 월 보기: 날마다 3건까지 이름, 넘치면 "+N"', async () => {
+    const many = Array.from({ length: 5 }, (_, i) =>
+      appt({ id: `m${i}`, customerName: `손님${i}`, startAt: `2026-11-18T0${i}:00:00Z`, prepMin: 0, durationMin: 30 }),
+    );
+    renderAt('/calendar?view=month&date=2026-11-18', createMemoryCalendarApi({ staff: [{ id: 's1', name: '원장' }], appointments: many, blocks: [] }));
+    const wed = await screen.findByRole('region', { name: '11월 18일' });
+    expect(within(wed).getAllByRole('button')).toHaveLength(3);
+    expect(within(wed).getByText('+2')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: '날짜 고르기' })).not.toBeInTheDocument();
   });
 });
