@@ -3,8 +3,8 @@ import type { Closure, ClosureInput } from '@bv/contracts';
 
 export type ClosureKind = Closure['kind'];
 
-/** 원장에게 보이는 종류 이름. 저장 값 이름(weekly 등)은 보이지 않는다(디자인 정책). */
-export const KIND_TEXT: Record<ClosureKind, string> = { weekly: '매주 쉬는 요일', holiday: '공휴일', vacation: '휴가' };
+/** 날짜 휴무의 종류 이름(배지). 저장 값 이름(holiday 등)은 보이지 않는다(디자인 정책). 매주 휴무는 영업시간의 "정기 휴무". */
+export const KIND_TEXT: Record<'holiday' | 'vacation', string> = { holiday: '공휴일', vacation: '휴가' };
 
 export interface ClosureGroups {
   weekly: Closure[];

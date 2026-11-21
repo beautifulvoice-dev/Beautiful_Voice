@@ -72,10 +72,13 @@ export function fromDraft(draft: HoursDraft): BusinessHours {
   return out;
 }
 
-/** 설정 목록에 보일 한 줄. 예: "화~일", "월·수·금", "아직 안 넣음". */
-export function hoursSummary(hours: BusinessHours | null): string {
+/**
+ * 설정 목록에 보일 한 줄. 예: "화~일", "월·수·금", "아직 안 넣음".
+ * @param weeklyDays 매주 휴무 요일 — 영업시간에 남아 있어도 영업하는 날로 세지 않는다(#63 리뷰).
+ */
+export function hoursSummary(hours: BusinessHours | null, weeklyDays: readonly Weekday[] = []): string {
   if (hours === null) return '아직 안 넣음';
-  const open = WEEKDAYS.filter((d) => (hours[String(d) as keyof BusinessHours]?.length ?? 0) > 0);
+  const open = WEEKDAYS.filter((d) => (hours[String(d) as keyof BusinessHours]?.length ?? 0) > 0 && !weeklyDays.includes(d));
   if (open.length === 0) return '모두 쉬는 날';
   const first = open[0]!;
   const last = open[open.length - 1]!;

@@ -6,7 +6,7 @@ import { ActionButton, Callout, Switch } from '@seed-design/react';
 import { useCallback, useState } from 'react';
 import { Link } from 'react-router';
 import { ErrorState } from '@/components/states/DataState';
-import { useSettingsApi } from '@/features/settings/api';
+import { SettingsNotFoundError, useSettingsApi } from '@/features/settings/api';
 import {
   CLOSE_TIMES,
   fromDraft,
@@ -62,6 +62,15 @@ function HoursForm({ initial, closures, reload }: { initial: BusinessHours | nul
     save.clear();
   }
 
+  /** 이미 지워졌으면(다른 기기에서 먼저 지움, 404) 원하는 상태라 성공으로 본다(#63 리뷰). */
+  async function removeIfThere(id: string, idempotencyKey: string) {
+    try {
+      await api.removeClosure(id, { idempotencyKey });
+    } catch (err) {
+      if (!(err instanceof SettingsNotFoundError)) throw err;
+    }
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     // 저장 한 번 = 요청 여러 개(영업시간 1 + 매주 휴무 더하기·지우기). 키는 저장 시도 하나에서 요청마다 꼬리를 붙여 나눈다.
@@ -71,7 +80,7 @@ function HoursForm({ initial, closures, reload }: { initial: BusinessHours | nul
       const hours = await api.putBusinessHours(fromDraft(draft), { idempotencyKey: `${key}:hours` });
       const { add, remove } = weeklyChanges(draft, await api.listClosures());
       for (const weekday of add) await api.addClosure({ kind: 'weekly', weekday, note: null }, { idempotencyKey: `${key}:weekly-add:${weekday}` });
-      for (const c of remove) await api.removeClosure(c.id, { idempotencyKey: `${key}:weekly-remove:${c.id}` });
+      for (const c of remove) await removeIfThere(c.id, `${key}:weekly-remove:${c.id}`);
       return hours;
     });
     if (result !== undefined) {

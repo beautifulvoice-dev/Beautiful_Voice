@@ -5,7 +5,7 @@ import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
 import { describe, expect, it } from 'vitest';
 import { SessionLoaderProvider } from '@/features/auth/session';
-import { createMemorySettingsApi, SettingsApiProvider, type SettingsApi } from '@/features/settings/api';
+import { createMemorySettingsApi, SettingsApiProvider, SettingsNotFoundError, type SettingsApi } from '@/features/settings/api';
 import { fromDraft, hoursSummary, timeOptions, toDraft, weekdayAt, weeklyChanges } from '@/features/settings/hours';
 import { seedSettings } from '@/features/settings/mockData';
 import { HOURS_RULE_TEXT, HOURS_SAVED_TEXT, HOURS_UNSET_TEXT } from '@/pages/settings/HoursPage';
@@ -65,6 +65,8 @@ describe('영업시간 값 바꾸기', () => {
     const w = [{ open: '10:00', close: '18:00' }];
     expect(hoursSummary({ '1': w, '3': w, '5': w })).toBe('월·수·금');
     expect(hoursSummary({ '6': w, '7': w })).toBe('토·일');
+    // 영업시간에 남아 있어도 매주 휴무 요일은 빼고 센다(#63 리뷰).
+    expect(hoursSummary({ '1': w, '2': w, '3': w, '4': w }, [2])).toBe('월·수·목');
   });
 
   it('30분 단위가 아닌 저장 값도 목록에 남긴다 · 오류 위치에서 요일을 꺼낸다', () => {
@@ -214,6 +216,23 @@ describe('영업시간 화면', () => {
     expect(keys).toHaveLength(2);
     expect(keys[0]).toBe(keys[1]);
     expect(keys[0]).toMatch(/:hours$/u);
+  });
+
+  it('지우려던 매주 휴무가 이미 지워졌으면(404) 저장은 성공으로 본다(#63 리뷰)', async () => {
+    const api = createMemorySettingsApi();
+    const flaky: SettingsApi = {
+      ...api,
+      removeClosure: async (id, o) => {
+        await api.removeClosure(id, o); // 다른 기기가 먼저 지운 셈
+        throw new SettingsNotFoundError();
+      },
+    };
+    renderAt('/settings/hours', flaky);
+    await userEvent.click(await findHoliday('월'));
+    await userEvent.click(screen.getByRole('button', { name: '저장' }));
+    expect(await screen.findByRole('status')).toHaveTextContent(HOURS_SAVED_TEXT);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(await weeklyDays(api)).toEqual([]);
   });
 
   it('영업시간 규칙 안내를 보인다', async () => {
