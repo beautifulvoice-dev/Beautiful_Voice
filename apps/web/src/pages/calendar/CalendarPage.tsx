@@ -2,7 +2,7 @@
 // 완료 조건: 주·월 전환 / 관리·준비·차단을 다르게 표시 / 예약 카드에 고객·메뉴·담당자, 누르면 메모.
 // 보기와 날짜는 주소(?view=week|month&date=YYYY-MM-DD)에 둔다 — 개인정보가 아니고, 새로고침·뒤로 가기에도 유지된다.
 import { ActionButton, Chip, RadioGroupItemHiddenInput, SegmentedControl, SegmentedControlItemHiddenInput } from '@seed-design/react';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { ErrorState } from '@/components/states/DataState';
 import { useCalendarApi } from '@/features/calendar/api';
@@ -21,7 +21,7 @@ import {
 import { useIsPhone } from '@/lib/useLayout';
 import { useLoad } from '@/lib/useLoad';
 import { cn } from '@/lib/utils';
-import { AppointmentDetail } from './AppointmentDetail';
+import { AppointmentPanel, PANEL_WIDTH } from './AppointmentPanel';
 import { MonthView } from './MonthView';
 import { KIND_CLASS } from './styles';
 import { WeekStrip } from './WeekStrip';
@@ -59,7 +59,14 @@ export function CalendarPage() {
 
   const load = useCallback(() => api.range(from, to), [api, from, to]);
   const { state, reload } = useLoad<CalendarData>(load);
-  const [open, setOpen] = useState<CalendarAppointment | null>(null);
+  const [open, setOpenState] = useState<CalendarAppointment | null>(null);
+  // 닫히면 누른 예약 칸으로 초점을 돌려준다(키보드 사용자, 설계 §6).
+  const opener = useRef<HTMLElement | null>(null);
+  const setOpen = (a: CalendarAppointment | null) => {
+    if (a) opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setOpenState(a);
+    if (!a) requestAnimationFrame(() => opener.current?.focus());
+  };
   // 담당자 거르기(W1). 주소에 두지 않는다 — 화면 안 보기 상태.
   const [staffId, setStaffId] = useState<string>(ALL);
   const shown = state.status === 'ok' ? forStaff(state.data, staffId === ALL ? null : staffId) : null;
@@ -71,7 +78,8 @@ export function CalendarPage() {
   const staffName = (id: string) => (state.status === 'ok' ? state.data.staff.find((s) => s.id === id)?.name : undefined) ?? '담당자 미상';
 
   return (
-    <div className="flex flex-col gap-3 px-4 pt-6">
+    // 웹 패널은 모달이 아니라 격자 위에 뜨므로, 열려 있는 동안 패널 폭만큼 오른쪽을 비워 격자를 좁힌다(설계 §6).
+    <div className="flex flex-col gap-3 px-4 pt-6 md:px-6" style={open && !phone ? { paddingRight: PANEL_WIDTH + 24 } : undefined}>
       <h1 className="sr-only">캘린더</h1>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1">
@@ -88,17 +96,24 @@ export function CalendarPage() {
             ›
           </ActionButton>
         </div>
-        {/* 세그먼트는 기본으로 줄 전체 폭 — 내용만큼만 쓰도록 감싼다(폭을 고정하면 표시 막대 위치가 어긋난다). */}
-        <div className="w-fit">
-        <SegmentedControl.Root aria-label="보기" value={view} onValueChange={(v) => go({ view: v as View })}>
-          <SegmentedControl.Indicator />
-          {(['week', 'month'] as const).map((v) => (
-            <SegmentedControl.Item key={v} value={v}>
-              <SegmentedControlItemHiddenInput />
-              {v === 'week' ? '주' : '월'}
-            </SegmentedControl.Item>
-          ))}
-        </SegmentedControl.Root>
+        <div className="flex items-center gap-2">
+          {/* 세그먼트는 기본으로 줄 전체 폭 — 내용만큼만 쓰도록 감싼다(폭을 고정하면 표시 막대 위치가 어긋난다). */}
+          <div className="w-fit">
+            <SegmentedControl.Root aria-label="보기" value={view} onValueChange={(v) => go({ view: v as View })}>
+              <SegmentedControl.Indicator />
+              {(['week', 'month'] as const).map((v) => (
+                <SegmentedControl.Item key={v} value={v}>
+                  <SegmentedControlItemHiddenInput />
+                  {v === 'week' ? '주' : '월'}
+                </SegmentedControl.Item>
+              ))}
+            </SegmentedControl.Root>
+          </div>
+          {!phone && (
+            <ActionButton variant="brandSolid" size="medium" disabled aria-describedby="new-appointment-note">
+              + 예약
+            </ActionButton>
+          )}
         </div>
       </div>
 
@@ -110,7 +125,14 @@ export function CalendarPage() {
       {shown && view === 'week' && (
         <>
           {phone && <WeekStrip days={days} data={shown} selected={date} today={shopDate(Date.now())} onPick={(d) => go({ date: d })} />}
-          <WeekView days={phone ? [date] : days} data={shown} today={shopDate(Date.now())} now={Date.now()} onOpen={setOpen} staffName={staffName} />
+          <WeekView
+            days={phone ? [date] : days}
+            data={shown}
+            today={shopDate(Date.now())}
+            now={Date.now()}
+            onOpen={setOpen}
+            staffName={staffName}
+          />
         </>
       )}
       {shown && view === 'month' && (
@@ -126,7 +148,29 @@ export function CalendarPage() {
         />
       )}
 
-      <AppointmentDetail appointment={open} staffName={open ? staffName(open.staffId) : ''} onClose={() => setOpen(null)} />
+      <AppointmentPanel
+        appointment={open}
+        staffName={open ? staffName(open.staffId) : ''}
+        blocks={state.status === 'ok' ? state.data.blocks : []}
+        onClose={() => setOpen(null)}
+      />
+      {/* + 예약: 폰은 오른쪽 아래 떠 있는 버튼, 웹은 제목 줄 오른쪽(설계서 W1). 예약 넣기(W3)가 생기면 연결한다. */}
+      {phone && (
+        <div className="fixed right-4 bottom-20 z-20">
+          <ActionButton
+            variant="brandSolid"
+            size="large"
+            disabled
+            aria-describedby="new-appointment-note"
+            className="rounded-full shadow-lg"
+          >
+            + 예약
+          </ActionButton>
+        </div>
+      )}
+      <p id="new-appointment-note" className="sr-only">
+        예약 넣기는 다음 단계에서 열려요.
+      </p>
     </div>
   );
 }
@@ -150,7 +194,13 @@ function StaffFilter({ staff, value, onChange }: { staff: Staff[]; value: string
 function Legend() {
   return (
     <ul aria-label="표시 안내" className="flex flex-wrap gap-3 text-sm text-ink-soft">
-      {([['care', '관리'], ['prep', '준비'], ['block', '관리 불가']] as const).map(([kind, label]) => (
+      {(
+        [
+          ['care', '관리'],
+          ['prep', '준비'],
+          ['block', '관리 불가'],
+        ] as const
+      ).map(([kind, label]) => (
         <li key={kind} className="flex items-center gap-1">
           <span aria-hidden className={cn('size-3 rounded-sm', KIND_CLASS[kind])} />
           {label}

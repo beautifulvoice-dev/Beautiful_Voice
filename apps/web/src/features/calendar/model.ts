@@ -237,12 +237,27 @@ export function hoursBase(days: readonly string[], hours: BusinessHours | null):
  * 후속: "캘린더 연결" PR에서 서버가 주는 blockedBy(#42)를 쓰고 이 함수와 그 테스트를 지운다.
  */
 export function overlapsBlock(a: CalendarAppointment, blocks: readonly CalendarBlock[]): boolean {
+  return overlappingBlocks(a, blocks).length > 0;
+}
+
+/** 이 예약과 겹치는 관리 불가 시간들(예약 패널의 겹침 알림 문구에 쓴다). */
+export function overlappingBlocks(a: CalendarAppointment, blocks: readonly CalendarBlock[]): CalendarBlock[] {
   const start = Date.parse(a.startAt);
   const from = start - a.prepMin * MIN;
   const to = start + a.durationMin * MIN;
-  return blocks.some(
-    (b) => (b.allStaff || b.staffIds.includes(a.staffId)) && Date.parse(b.startAt) < to && Date.parse(b.endAt) > from,
-  );
+  return blocks.filter((b) => (b.allStaff || b.staffIds.includes(a.staffId)) && Date.parse(b.startAt) < to && Date.parse(b.endAt) > from);
+}
+
+const DAY_NAME = ['일', '월', '화', '수', '목', '금', '토'];
+
+/** 예약 패널 시각 두 줄(설계서 W2): "11/24(화) 14:00–15:00 · 60분", "준비 10분 · 13:50부터 일정이 잡혀요"(준비가 있을 때). */
+export function appointmentPanelTime(a: CalendarAppointment): [string, string | null] {
+  const start = Date.parse(a.startAt);
+  const d = shopDate(start);
+  const dow = DAY_NAME[new Date(`${d}T00:00:00Z`).getUTCDay()];
+  const main = `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}(${dow}) ${shopTime(start)}–${shopTime(start + a.durationMin * MIN)} · ${a.durationMin}분`;
+  const prep = a.prepMin > 0 ? `준비 ${a.prepMin}분 · ${shopTime(start - a.prepMin * MIN)}부터 일정이 잡혀요` : null;
+  return [main, prep];
 }
 
 /** 담당자 거르기. null = 전체. 매장 전체 차단은 누구를 골라도 보인다. */

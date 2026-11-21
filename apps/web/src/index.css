@@ -104,3 +104,16 @@
     font-family: var(--font-body);
     }
 }
+/* 웹 오른쪽 패널(SEED SidePanel, 예약 보기 W2)은 머리줄(h-14 = 56px) 아래부터 — 위쪽 탭을 가리지 않게.
+   SEED Positioner가 className을 받지 않아 레시피 클래스에 직접 건다(층 밖이라 seed-components보다 우선). */
+@media (min-width: 768px) {
+  .seed-side-panel__positioner {
+    top: 3.5rem;
+  }
+}
+
+/* 폰 아래 시트(SEED BottomSheet, 예약 보기 W2)는 아래 탭·+ 예약 버튼(z-30)보다 위에. SEED 기본 z-index는 2. */
+.seed-bottom-sheet__positioner,
+.seed-bottom-sheet__backdrop {
+  z-index: 40;
+}
