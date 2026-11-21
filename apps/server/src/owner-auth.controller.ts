@@ -5,6 +5,7 @@ import {
 import { randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { ApiError } from './common/api-error';
+import { requireOwnerShop, shopNotFound } from './common/owner-shop.guard';
 import { DatabaseService } from './database.service';
 import { authenticateKakaoOwner, KakaoLoginError, kakaoAuthorizationUrl } from './kakao-login';
 import {
@@ -74,15 +75,8 @@ export class OwnerAuthController {
     return shop;
   }
 
-  private async requireShop(request: IncomingMessage): Promise<string> {
-    const cookie = readCookie(request.headers.cookie, SESSION_COOKIE);
-    if (!cookie) throw unauthorized();
-    const { key } = requireConfig();
-    const session = verifyCookie(key, 'owner-session', cookie);
-    if (!session) throw unauthorized();
-    const [userId, shopId] = session.split(':');
-    if (!userId || !shopId || await this.database.findOwnerShop(userId) !== shopId) throw unauthorized();
-    return shopId;
+  private requireShop(request: IncomingMessage): Promise<string> {
+    return requireOwnerShop(this.database, request);
   }
 }
 
@@ -94,8 +88,4 @@ function requireConfig() {
 
 function unauthorized(): ApiError<'UNAUTHENTICATED'> {
   return new ApiError(401, 'UNAUTHENTICATED', '다시 로그인해 주세요.');
-}
-
-function shopNotFound(): ApiError<'SHOP_NOT_FOUND'> {
-  return new ApiError(404, 'SHOP_NOT_FOUND', '매장을 찾을 수 없습니다.');
 }
