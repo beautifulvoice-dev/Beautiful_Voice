@@ -14,7 +14,7 @@ export function seedCustomers(): MemorySeed {
     customers: [
       { id: 'c1', name: '김하늘', phone: '01000000001', memo: '민감성 피부' },
       { id: 'c2', name: '김하늘', phone: '01000000002', memo: null },
-      { id: 'c3', name: '이서윤', phone: '01000000003', memo: '임산부 — 복부 관리 제외' },
+      { id: 'c3', name: '이서윤', phone: '01000000003', memo: '임산부 — 복부 관리 제외', birthdate: '1992-07-15', address: '합성시 가상구' },
       { id: 'c4', name: '박지민', phone: null, memo: null },
     ],
     visits: {
