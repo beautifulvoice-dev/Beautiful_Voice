@@ -69,6 +69,12 @@ importers:
       '@bv/scheduling':
         specifier: workspace:*
         version: link:../../packages/scheduling
+      '@seed-design/css':
+        specifier: 3.4.0
+        version: 3.4.0
+      '@seed-design/react':
+        specifier: 3.4.0
+        version: 3.4.0(@seed-design/css@3.4.0)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(embla-carousel@8.6.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@tailwindcss/vite':
         specifier: ^4.3.5
         version: 4.3.5(vite@7.3.8(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.51.2))
@@ -81,6 +87,9 @@ importers:
       lucide-react:
         specifier: ^1.75.0
         version: 1.75.0(@types/react@19.3.0)(react@19.3.1)
+      pretendard:
+        specifier: 1.3.9
+        version: 1.3.9
       radix-ui:
         specifier: ^1.8.1
         version: 1.8.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -560,6 +569,12 @@ packages:
       react: '>=16.8.0'
       react-dom: '>=16.8.0'
 
+  '@floating-ui/react@0.27.20':
+    resolution: {integrity: sha512-CMqMy7OaXl9W0eq1Uy7L7i2Y/anPvHmFmESd2CEw0t5YvZhcVCeo4MBevAmswRllX7Y2dEidA4ozGPunLSTQpw==}
+    peerDependencies:
+      react: '>=17.0.0'
+      react-dom: '>=17.0.0'
+
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
 
@@ -725,6 +740,9 @@ packages:
     peerDependenciesMeta:
       '@types/node':
         optional: true
+
+  '@internationalized/date@3.12.4':
+    resolution: {integrity: sha512-M1dEn4c1U1HsSlaVR8upZtSqvXrTkHDfv18H01uCSJyjVLDxnBR38v/fMxecmlwXKR4i9HeZcmgQAPE6A+aGJQ==}
 
   '@isaacs/nonrecursive-glob-match@1.1.0':
     resolution: {integrity: sha512-GPm/Dbvk5RLmhRnxXIa7nTpK0xtl4E0wj0MslsuNiJ1FIROU+2+9lgUC/dgF7Ey4QCWhfEsgxilMRMCdHPfDfw==}
@@ -1682,6 +1700,281 @@ packages:
   '@sec-ant/readable-stream@0.4.1':
     resolution: {integrity: sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg==}
 
+  '@seed-design/css@3.4.0':
+    resolution: {integrity: sha512-BaymJh14Z59HEgumt5H/SmIVdeMnI/tIOFjcSDolCkt02KPu+ea+9whDWPpKuprEJYuJ3oH/hyzsrJ6eMHUnfQ==}
+
+  '@seed-design/dom-utils@2.1.0':
+    resolution: {integrity: sha512-nbghUGIT02bKMD4JsTSjU8RamUlOVSZkWy/iK7I56B/zQu8ZN4aLtQCxmg51e/oog2p1aTikNww1WUJMTYstJA==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-accordion@1.0.2':
+    resolution: {integrity: sha512-OEJUR41tuKpYaF3w7zA2BHYEs8ScmAXpv4VRgELn8OZfwvrZUfe/hASj7omZoLJhh+Ry3e9ddMCmUcMH6isLYQ==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-attachment-display@1.0.3':
+    resolution: {integrity: sha512-B6lb/t1gJP4j0b2HwfeYcc+pD2raZ7c2YlxP37Nrew7N0JgrNdllF0Ev+T7HJJGOaI6tgTvxXfuHQ/p2jCMtUA==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-checkbox@2.0.3':
+    resolution: {integrity: sha512-8IEHLaCE0OQNefJLBC7NYmuH9/VR1Qw/r4NlXumuGjPmhedcsiLfPvOByxEXzfX7GwWTNWnW6crUMBWgSoK19A==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-collapsible@1.0.2':
+    resolution: {integrity: sha512-hzaT9MM3gQxqvJZ7qq+VOX8O+v8o21EBkGr43wR0hYZ/5P7rE8MFU508WSUloJsFN+qN3vRRZR33dMXmZi0N5w==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-date-picker@1.4.0':
+    resolution: {integrity: sha512-PpSo2GtApthhutjFuTmFSnL/FT11qCbBA+AD7BhlXrK/QAY2WMFyoK8t8L7jGLyvxptKMP7f7SmucZeypcOJ/g==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-dialog@2.0.3':
+    resolution: {integrity: sha512-UW+rTu782RBHd8Tw00Wr6uVy1L+mCOzFT1TuIpD3Ff7oYxQ1BQjF8XJbtgq8naxB5VcHtz8yaBSedONO+d8LrQ==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-dismissible-layer@1.0.2':
+    resolution: {integrity: sha512-ti5b4A9OD1kNmeOIR/tLniRUk6w6YFc7ST6uUQwK3EK7044JypUo8JALZnJlCl3u6Uwulyh17AAF/9nLZJW0sA==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-drawer@3.0.0':
+    resolution: {integrity: sha512-fg8skAQmIJAEckD5fS6pfk/z89jCg/A2kSkKwvAAn/mU3GnwDFmXxrEbYCTQvaORHFI2gIJaUYNOWNZaMQoh9g==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-field-button@2.0.1':
+    resolution: {integrity: sha512-B6l6QwdcLYQfoxivnB9QkJo7uaIhyskID0f9EG0KrzrFHsXghgIZPpa8Ldv6GRSLk2sPz1Nyah5sW244F5trUA==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-field@2.0.1':
+    resolution: {integrity: sha512-GX5e2sYDixQrqc/Ixp7BbmIH7G/adU2L4GLajGUJsJWIBuLcXsGLg1IGTUxoKDpywcWeRLOGoLNgExy7Z3Zpkg==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-fieldset@1.0.1':
+    resolution: {integrity: sha512-LUacB622+0cqEKZLlmihpnE/f5eLfGLO7Z+Av8z4+KgMuAMURp5NFsdlPmfvuD/EBf/ytmX9x6tCMuNSyoQ3pw==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-file-upload@1.0.3':
+    resolution: {integrity: sha512-ix9p7P34Rd+wGODLs2XXwxqwtvcB09OH9JLhIPmOz6d54hYRPYl8oj18q4fAb8IiPcI51kwlS43+rQrbSN1ubA==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-floating@1.1.1':
+    resolution: {integrity: sha512-3ccpE4Ryw91JiO6n5aKJ8Od3sGNKeH4u8h2bVg89JfLz2UNewzUTRcglqU27t6jrIBWO/J7ksBEp+c95viuZGw==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-image@1.1.0':
+    resolution: {integrity: sha512-ZJBr0rW/xIzCcgkSpdGMv9uNEgnaYIfsOrp4YWOtj/ZSK+FSE6o5JPiC5FO0kbpPMVske91AOK92z9a6tAeSWg==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-menu@2.0.4':
+    resolution: {integrity: sha512-jQRYu7Uml4sYiMqugkNttYuBds4Ph2eH9avFioxJTmsghuuOcx6gHTHAXNSglW+TMCp3oM52kPVxNhA9rVGsew==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-middle-truncate@1.0.1':
+    resolution: {integrity: sha512-6jQFqpEpQkyG3sWgeIKxNPrV8vkbfzUPPF4Rv7ngqWeV7LthEqaZAcusPf1NeO8MJPyPQD7A2X2IZej8HY4wMg==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-navigation-menu@2.0.3':
+    resolution: {integrity: sha512-e3vPneNfLXAyPgrXpwpBHf9ZSVrhJ70tQqfYieB9ZQzzK/VqwZg9j3ZDRoWMXW//VyCfMtcRmSwwH/0sCfxD2A==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-pagination@1.0.0':
+    resolution: {integrity: sha512-uhgO10kwSzOmae/74nSWurHNCPEHOhkkzopOFnEf0hRW/mbIb5SGzGCO6rCLEnhwt5r8KESmO9LXgbcnZmAAkQ==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-popover@3.0.0':
+    resolution: {integrity: sha512-hkw+VKh2MPQmyzGcdr7t6RzMvB5SHC27ZiLar1tetjDw1hBdUPwNAXDi6OEImISESQ1FmCcsdn3dde+RLbjQGQ==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-portal@2.0.1':
+    resolution: {integrity: sha512-27Uz1XDI8zWHvIk4xPbBP1iBJfqQ1d4FVzMKS8f1ZAK7rHoAKhwbrtu5hiT0Ja4NidkFERFmVG6mrQ+D3+Ktpw==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-presence@1.0.1':
+    resolution: {integrity: sha512-09TH8Lh7+QM0mXnt+2/JV9UUzPjEkBdvvQof9WOUW3aKWZU9Mx4Pj2DUa7mWkjYm+MoariX6JTubmxoxqazI0w==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-prevent-scroll@1.0.1':
+    resolution: {integrity: sha512-Jf+QA9tS7qZAT22ykYbXcm8iQICc++zz6jLbQCmWgpvdF5Qv5PPkYD/Bx+ieUSUbMJHTQhNAIVIQXxhAJ0SIhw==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-primitive@2.0.2':
+    resolution: {integrity: sha512-EPUogt8zik+oyP2lhmMKohydOSZH1xZbwrQoWQi0rN1pGV7agMFhOZP/XouFDBqey/q4VyizTYqHh4hioNROVg==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-progress@2.0.1':
+    resolution: {integrity: sha512-JpAflQSQ9FX9w2lIhn7FaU/q4Px4Ktc3Ea8iLd3xSMFrQuJLrH/8ha8SYXDBgZyN3MLj6A9bH9cHSSrXVJTTEw==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-pull-to-refresh@2.1.0':
+    resolution: {integrity: sha512-/HE3xQAApNkOyNUoh9soc1UjKrZRIn2kqst7wYw966AbAe1n466h41ZrOG6h2/IwpMEjxMZPBo4fVvton2+mCw==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-quantity-picker@1.0.1':
+    resolution: {integrity: sha512-F6TdmHzUXrqyLBPmUPU0GfDKIvovEDYhkjo9gVbHVDusyVdOwQhWWygnKYpdIa+6XjiMhhqCX/KfF8sHVAyISA==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-radio-group@2.0.2':
+    resolution: {integrity: sha512-F1KDm1qpb8n0NLHpk0Xhwg4gRNyT+UV7dF9/ti/zH6npcUZfvGZkTa/K5zbBbkzw9RkfANwcQWVMQQVnIm+xJA==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-scale-feedback@2.0.0':
+    resolution: {integrity: sha512-FVbjveGZh8TrfEnj0mmkEuQs+tU7/yhM6dNcvPAIPI4CWPf2SQQ6phznTnCxAjbmydhyC265X57kjNwrZ8uvIQ==}
+    peerDependencies:
+      '@seed-design/css': ^3.0.0
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-segmented-control@2.0.3':
+    resolution: {integrity: sha512-3yOFZAuVJAvhfpmHXhhf5Qb3ngsoOHynNgaZN/G3PriWbCn+Z8tde2Arc2e4xRiFGB8qhbWzylNDE1DIkIUK7w==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-segmented-text-input@1.0.0':
+    resolution: {integrity: sha512-FI0rL59uFoESv29cuK1R4g08HJP0UsfeLISX7MGnCch3N31PmYe9WMd0HOaZClmrwkUsNKgds0WT7GiGBLwM7A==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-select@1.0.3':
+    resolution: {integrity: sha512-Sypf4f2D3TMedbz3OHcNMK9rjcce+yCLneJRNTQgCinudt14XOhOag5wyc/kuMaN1cYUSW7+jtRwNlACm7WFDA==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-side-navigation@1.0.2':
+    resolution: {integrity: sha512-lvSPwQvFbQGhvtVhPGj2FHG3V8Ag4Pdoi7nZxyb4bMNZGfiUe9d8+ektP9+4vSAz/pfRr1RrJ7wQh8UjLJhl/w==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-slider@2.0.2':
+    resolution: {integrity: sha512-mZjAc8g+QGwrqsy1BNlfAaOVXBHU20qYXI6vh1MkO2KAtPAeDuHKgHUlngwnYTSvvyLd7DdQ5u58w0QYnOtu2Q==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-snackbar@2.0.2':
+    resolution: {integrity: sha512-c5QJ839iZrxBJZJ0sDFiTXMMY3gOB0+RD6+vU+F+FO2cX+VMQ4zRQm/QrEDOWb3dWt7PR3oLJDvemdM3pTRvPg==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-supports@1.0.1':
+    resolution: {integrity: sha512-T7BIikF/wt0Yt4sRWBLcDSuRoE5mZ+CiPbPZa7YJMJHSGF9KdBupXvp0SDDPDCytm5qe/bDnUEEZillxxFwxIQ==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-switch@2.0.3':
+    resolution: {integrity: sha512-gLIztwE2Cx6rmFPLDxTm1l6V1DsNoOiOlT+I/q14qpk/ZzEoUgVjKPnlo4/c1Wr1dZ3VAFIpKk4fFcm/bZ8sfQ==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-tabs@3.0.2':
+    resolution: {integrity: sha512-ROtahPPIbTkz/sDXrjkxz3lyX2RljXZ0NOuzGIfY5ucjNNk6ueUf5+BrGTp4Ers7IleCXgJnnTplG1NeDHN01g==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-text-field@2.1.1':
+    resolution: {integrity: sha512-uPIiHOHVVy6crAoLejJcZz87wy6yXZl9jLyOuP/zMHUIK0DR8KbzWXmVuAnsFZgHHk6Bxqtr+inSwGj1GFVDZA==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-time-picker@1.0.0':
+    resolution: {integrity: sha512-3Y/GKbaQQowRqiQv3Jg1h44V/n0QXTB8Ax06gdz1c4ARLUcvof4toijC0KUos1IYVq50diz1Ywv58QX7j64T3w==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-toggle@2.0.3':
+    resolution: {integrity: sha512-bEG2cvVI9p9qud7/+MIxOOL0m/E0blNI7FLAxtDUpUFpjFQjHElJ0GQ+NYvGUy+VRs8FgX9siJT3l6q6WbG05w==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-tooltip@1.0.1':
+    resolution: {integrity: sha512-6JbRUDLLVLKXSrnt6eFzgtsF+KPa+BDJdxZWgky1JpMpO2VieSNABOOeVVGwaPzJ/rALbuzUFUkKpq9qkIHjgg==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-use-controllable-state@2.0.2':
+    resolution: {integrity: sha512-tEcIvSWG1MXg6NjP+BPOi8S1OWnHiuMRxyh7KcnZjHUS33uo5TWMJWUwe433R2PmMYxP3yvPAS4CZxpIfymj5w==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react-wheel-picker@1.1.1':
+    resolution: {integrity: sha512-PhJNext1b76lxH1Vu/H+pBSHfGyRnJGqyu9FySy4ifDYjF/mXlDWe8jf1h6gOZr3wzY3weA2ftRlvKdlCgav2Q==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@seed-design/react@3.4.0':
+    resolution: {integrity: sha512-w1kped2IBsc3lHjX8pVLGigEYG4fkksBmzSyFl1affZNsGUF0/J1rmqS7Ada+syAZqMaulIX1BmIDZCNNL/LdA==}
+    peerDependencies:
+      '@seed-design/css': ^3.4.0
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
   '@shadcn/registry@0.2.1':
     resolution: {integrity: sha512-wMvZ3DGdnhCwtpeFbwKybSGfCcP52bZX77jMKgZvupmirgyA5KRLlkeQXkI2RGHIaD8TX2iWe2wcIEjjqzg2FQ==}
     engines: {node: '>=20.18.1'}
@@ -1689,6 +1982,9 @@ packages:
   '@sindresorhus/merge-streams@4.0.0':
     resolution: {integrity: sha512-tlqY9xq5ukxTUZBmoOp+m61cqwQD5pHJtFY3Mn8CA8ps6yghLH/Hw8UPdqg4OLmFW3IFlcXnQNmo/dh8HzXYIQ==}
     engines: {node: '>=18'}
+
+  '@swc/helpers@0.5.24':
+    resolution: {integrity: sha512-6tcXo4kA8HgGO7AVmawB57RYi/piBPYVHVcO6dXjX+SZw8GoHmi262sp4v2Ha2kNP9Cx84qei27yT+fjS1lxgg==}
 
   '@tailwindcss/node@4.3.5':
     resolution: {integrity: sha512-yT53FzV4ke0cr/BguDxhWMpm5MJu1O2muzk+tKw6lKHjODAsYArBbWwFbJiaksfzFv1tpkO9QHGzmfs1hJT66g==}
@@ -2481,6 +2777,24 @@ packages:
 
   electron-to-chromium@1.5.486:
     resolution: {integrity: sha512-rpybw4Ac4ak/An6G1Me2+61xzwobowDGyuJe71QHHOVpkZv4fPVobsLl7WH6zHSKusAMpaHxGKTpOvpy7+r3dQ==}
+
+  embla-carousel-auto-height@8.6.0:
+    resolution: {integrity: sha512-/HrJQOEM6aol/oF33gd2QlINcXy3e19fJWvHDuHWp2bpyTa+2dm9tVVJak30m2Qy6QyQ6Fc8DkImtv7pxWOJUQ==}
+    peerDependencies:
+      embla-carousel: 8.6.0
+
+  embla-carousel-react@8.6.0:
+    resolution: {integrity: sha512-0/PjqU7geVmo6F734pmPqpyHqiM99olvyecY7zdweCw+6tKEXnrE90pBiBbMMU8s5tICemzpQ3hi5EpxzGW+JA==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.1 || ^18.0.0 || ^19.0.0 || ^19.0.0-rc
+
+  embla-carousel-reactive-utils@8.6.0:
+    resolution: {integrity: sha512-fMVUDUEx0/uIEDM0Mz3dHznDhfX+znCCDCeIophYb1QGVM7YThSWX+wz11zlYwWFOr74b4QLGg0hrGPJeG2s4A==}
+    peerDependencies:
+      embla-carousel: 8.6.0
+
+  embla-carousel@8.6.0:
+    resolution: {integrity: sha512-SjWyZBHJPbqxHOzckOfo8lHisEaJWmwd23XppYFYVh10bU66/Pn5tkVkbkCMZVdbUE5eTCI2nD8OyIP4Z+uwkA==}
 
   emoji-regex@10.6.0:
     resolution: {integrity: sha512-toUI84YS5YmxW219erniWD0CIVOo46xGKColeNQRgOzDorgBi1v4D71/OFzgD9GO2UGKIv1C3Sp8DAn0+j5w7A==}
@@ -3509,6 +3823,9 @@ packages:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
     engines: {node: '>= 0.8.0'}
 
+  pretendard@1.3.9:
+    resolution: {integrity: sha512-PaQAADyLY5v4kYFwkpSJHbSSYIkiriY/1xXw75TKoZ9UQQqeU+tvP05yTdZAWibiIYoo8ZKtRv8PM7w0IaywSw==}
+
   pretty-format@27.5.1:
     resolution: {integrity: sha512-Qb1gy5OrP5+zDf2Bvnzdl3jsTf1qXVMazbvCoKhtKqVs4/YK4ozX4gKQJJVyNe+cajNPn0KoC0MC3FUmaHWEmQ==}
     engines: {node: ^10.13.0 || ^12.13.0 || ^14.15.0 || >=15.0.0}
@@ -3873,6 +4190,9 @@ packages:
     os: [darwin, linux, win32, freebsd, openbsd, netbsd, sunos, android]
     hasBin: true
 
+  tabbable@6.5.2:
+    resolution: {integrity: sha512-XgdnB1nGU6KU4VgMnZPaZCx7M1hBrLyEiZYau2G2gq9UT0d7d4FUBlNX7vvPlm/B1vk1PjrzJBx9Lbv4fsqS9g==}
+
   tailwindcss@4.3.5:
     resolution: {integrity: sha512-FcQk9BuffmEHJP2G0XmB2SplU1aLTI7j07Kunk+U74Ny+XiWOtzXz9aujFZ/avntw1e2cOv/3PkgzflQ7gX2vQ==}
 
@@ -4046,6 +4366,9 @@ packages:
   undici@8.12.4:
     resolution: {integrity: sha512-8Mx+uNKKER2bA4AdtedkqRbwUCIJFr2nJckXRe5yrDqzePqwLP7VNcctN8/XdmDSbF7mS+jJKIszlL+vbam1VA==}
     engines: {node: '>=22.19.0'}
+
+  unicode-segmenter@0.17.3:
+    resolution: {integrity: sha512-hKZwqBjJDmqNrq1+LjDxck1qLzJFcLLJM2Xq92ORRHOuau6GSHeELmn+uyk6zNH1CK9mogrUJGP9WJCJUQXMAw==}
 
   unicorn-magic@0.3.0:
     resolution: {integrity: sha512-+QBBXBCvifc56fsbuxZQ6Sic3wqqc3WWaqxs58gvJrcOuN83HGTCwz3oS5phzU9LthRNE9VrJCFCLUgHeeFnfA==}
@@ -4708,6 +5031,14 @@ snapshots:
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
 
+  '@floating-ui/react@0.27.20(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@floating-ui/react-dom': 2.1.9(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@floating-ui/utils': 0.2.12
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+      tabbable: 6.5.2
+
   '@floating-ui/utils@0.2.12': {}
 
   '@humanfs/core@0.19.2':
@@ -4865,6 +5196,10 @@ snapshots:
   '@inquirer/type@3.0.10(@types/node@24.19.2)':
     optionalDependencies:
       '@types/node': 24.19.2
+
+  '@internationalized/date@3.12.4':
+    dependencies:
+      '@swc/helpers': 0.5.24
 
   '@isaacs/nonrecursive-glob-match@1.1.0': {}
 
@@ -5843,6 +6178,552 @@ snapshots:
 
   '@sec-ant/readable-stream@0.4.1': {}
 
+  '@seed-design/css@3.4.0': {}
+
+  '@seed-design/dom-utils@2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      clsx: 2.1.1
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+
+  '@seed-design/react-accordion@1.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-controllable-state': 1.3.0(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-collapsible': 1.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-attachment-display@1.0.3(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-controllable-state': 1.3.0(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-checkbox@2.0.3(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-controllable-state': 1.3.0(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-supports': 1.0.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-collapsible@1.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-controllable-state': 1.3.0(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-layout-effect': 1.1.4(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-date-picker@1.4.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@internationalized/date': 3.12.4
+      '@radix-ui/react-use-controllable-state': 1.3.0(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-layout-effect': 1.1.4(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-dialog@2.0.3(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-focus-scope': 1.3.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-dismissible-layer': 1.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-presence': 1.0.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-prevent-scroll': 1.0.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-use-controllable-state': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      aria-hidden: 1.2.6
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+      - '@types/react-dom'
+
+  '@seed-design/react-dismissible-layer@1.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-slot': 1.5.0(@types/react@19.3.0)(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-drawer@3.0.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-focus-scope': 1.3.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@radix-ui/react-use-callback-ref': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-dismissible-layer': 1.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-presence': 1.0.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-prevent-scroll': 1.0.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-use-controllable-state': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      aria-hidden: 1.2.6
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+      - '@types/react-dom'
+
+  '@seed-design/react-field-button@2.0.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-controllable-state': 1.3.0(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-supports': 1.0.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-field@2.0.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-supports': 1.0.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-fieldset@1.0.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-file-upload@1.0.3(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-controllable-state': 1.3.0(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-floating@1.1.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@floating-ui/react': 0.27.20(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-use-controllable-state': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-image@1.1.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-callback-ref': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-layout-effect': 1.1.4(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-menu@2.0.4(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@floating-ui/react': 0.27.20(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-focus-scope': 1.3.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-dismissible-layer': 1.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-use-controllable-state': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+      - '@types/react-dom'
+
+  '@seed-design/react-middle-truncate@1.0.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-navigation-menu@2.0.3(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@floating-ui/react': 0.27.20(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-focus-scope': 1.3.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-use-controllable-state': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+      - '@types/react-dom'
+
+  '@seed-design/react-pagination@1.0.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-use-controllable-state': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-popover@3.0.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@floating-ui/react': 0.27.20(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-focus-scope': 1.3.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-dismissible-layer': 1.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-floating': 1.1.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-presence': 1.0.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+      - '@types/react-dom'
+
+  '@seed-design/react-portal@2.0.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+
+  '@seed-design/react-presence@1.0.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-use-layout-effect': 1.1.4(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-prevent-scroll@1.0.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+
+  '@seed-design/react-primitive@2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-slot': 1.5.0(@types/react@19.3.0)(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-progress@2.0.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-pull-to-refresh@2.1.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-callback-ref': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-quantity-picker@1.0.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-use-controllable-state': 1.3.0(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-radio-group@2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-controllable-state': 1.3.0(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-fieldset': 1.0.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-supports': 1.0.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-scale-feedback@2.0.0(@seed-design/css@3.4.0)(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-slot': 1.5.0(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/css': 3.4.0
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-segmented-control@2.0.3(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-controllable-state': 1.3.0(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-supports': 1.0.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-segmented-text-input@1.0.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-layout-effect': 1.1.4(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-use-controllable-state': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-select@1.0.3(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@floating-ui/react': 0.27.20(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-focus-scope': 1.3.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@radix-ui/react-use-controllable-state': 1.3.0(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-layout-effect': 1.1.4(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-dismissible-layer': 1.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-use-controllable-state': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+      - '@types/react-dom'
+
+  '@seed-design/react-side-navigation@1.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-use-controllable-state': 1.3.0(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-collapsible': 1.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-slider@2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-controllable-state': 1.3.0(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-layout-effect': 1.1.4(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-size': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-supports': 1.0.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-snackbar@2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-supports': 1.0.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-supports@1.0.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+
+  '@seed-design/react-switch@2.0.3(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-use-controllable-state': 1.3.0(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-supports': 1.0.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-tabs@3.0.2(@types/react@19.3.0)(embla-carousel@8.6.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-callback-ref': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-controllable-state': 1.3.0(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-size': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-supports': 1.0.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      embla-carousel-auto-height: 8.6.0(embla-carousel@8.6.0)
+      embla-carousel-react: 8.6.0(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+      - embla-carousel
+
+  '@seed-design/react-text-field@2.1.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-controllable-state': 1.3.0(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-supports': 1.0.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-time-picker@1.0.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-use-controllable-state': 1.3.0(@types/react@19.3.0)(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-toggle@2.0.3(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-use-controllable-state': 1.3.0(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-tooltip@1.0.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@floating-ui/react': 0.27.20(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-floating': 1.1.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-use-controllable-state@2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-use-effect-event': 0.0.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-layout-effect': 1.1.4(@types/react@19.3.0)(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react-wheel-picker@1.1.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-controllable-state': 1.3.0(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-layout-effect': 1.1.4(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+    transitivePeerDependencies:
+      - '@types/react'
+
+  '@seed-design/react@3.4.0(@seed-design/css@3.4.0)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(embla-carousel@8.6.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+    dependencies:
+      '@radix-ui/react-compose-refs': 1.1.5(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-slot': 1.5.0(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-controllable-state': 1.3.0(@types/react@19.3.0)(react@19.3.1)
+      '@radix-ui/react-use-layout-effect': 1.1.4(@types/react@19.3.0)(react@19.3.1)
+      '@seed-design/css': 3.4.0
+      '@seed-design/dom-utils': 2.1.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-accordion': 1.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-attachment-display': 1.0.3(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-checkbox': 2.0.3(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-collapsible': 1.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-date-picker': 1.4.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-dialog': 2.0.3(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-drawer': 3.0.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-field': 2.0.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-field-button': 2.0.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-fieldset': 1.0.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-file-upload': 1.0.3(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-image': 1.1.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-menu': 2.0.4(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-middle-truncate': 1.0.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-navigation-menu': 2.0.3(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-pagination': 1.0.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-popover': 3.0.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-portal': 2.0.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-primitive': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-progress': 2.0.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-pull-to-refresh': 2.1.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-quantity-picker': 1.0.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-radio-group': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-scale-feedback': 2.0.0(@seed-design/css@3.4.0)(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-segmented-control': 2.0.3(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-segmented-text-input': 1.0.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-select': 1.0.3(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-side-navigation': 1.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-slider': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-snackbar': 2.0.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-switch': 2.0.3(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-tabs': 3.0.2(@types/react@19.3.0)(embla-carousel@8.6.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-text-field': 2.1.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-time-picker': 1.0.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-toggle': 2.0.3(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-tooltip': 1.0.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@seed-design/react-wheel-picker': 1.1.1(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      clsx: 2.1.1
+      react: 19.3.1
+      react-dom: 19.3.1(react@19.3.1)
+      unicode-segmenter: 0.17.3
+    transitivePeerDependencies:
+      - '@types/react'
+      - '@types/react-dom'
+      - embla-carousel
+
   '@shadcn/registry@0.2.1':
     dependencies:
       '@babel/core': 7.29.13
@@ -5872,6 +6753,8 @@ snapshots:
       - supports-color
 
   '@sindresorhus/merge-streams@4.0.0': {}
+
+  '@swc/helpers@0.5.24': {}
 
   '@tailwindcss/node@4.3.5':
     dependencies:
@@ -6654,6 +7537,22 @@ snapshots:
   ee-first@1.1.1: {}
 
   electron-to-chromium@1.5.486: {}
+
+  embla-carousel-auto-height@8.6.0(embla-carousel@8.6.0):
+    dependencies:
+      embla-carousel: 8.6.0
+
+  embla-carousel-react@8.6.0(react@19.3.1):
+    dependencies:
+      embla-carousel: 8.6.0
+      embla-carousel-reactive-utils: 8.6.0(embla-carousel@8.6.0)
+      react: 19.3.1
+
+  embla-carousel-reactive-utils@8.6.0(embla-carousel@8.6.0):
+    dependencies:
+      embla-carousel: 8.6.0
+
+  embla-carousel@8.6.0: {}
 
   emoji-regex@10.6.0: {}
 
@@ -7639,6 +8538,8 @@ snapshots:
 
   prelude-ls@1.2.1: {}
 
+  pretendard@1.3.9: {}
+
   pretty-format@27.5.1:
     dependencies:
       ansi-regex: 5.0.1
@@ -8105,6 +9006,8 @@ snapshots:
 
   systeminformation@5.33.23: {}
 
+  tabbable@6.5.2: {}
+
   tailwindcss@4.3.5: {}
 
   tapable@2.3.4: {}
@@ -8240,6 +9143,8 @@ snapshots:
   undici@7.30.2: {}
 
   undici@8.12.4: {}
+
+  unicode-segmenter@0.17.3: {}
 
   unicorn-magic@0.3.0: {}
 
