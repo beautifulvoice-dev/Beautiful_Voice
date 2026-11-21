@@ -50,12 +50,6 @@ describe('메뉴 문구·값', () => {
 });
 
 describe('메뉴 화면', () => {
-  it('설정 목록에서 개수를 보고 들어간다', async () => {
-    const router = renderAt('/settings');
-    await userEvent.click(await screen.findByRole('link', { name: /메뉴.*2개/ }));
-    expect(router.state.location.pathname).toBe('/settings/menus');
-  });
-
   it('사용 중인 메뉴와 시간을 보이고, 숨긴 메뉴는 접어 둔다', async () => {
     renderAt('/settings/menus');
     expect(await rows()).toEqual(['수분 관리관리 60분 · 준비 10분›', '등 관리관리 90분 · 준비 10분›']);

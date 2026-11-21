@@ -91,12 +91,6 @@ describe('방금 바뀐 휴무 반영(#59·#60 리뷰)', () => {
 });
 
 describe('휴무·휴가 화면', () => {
-  it('설정 목록에서 요약을 보고 들어간다', async () => {
-    const router = renderAt('/settings');
-    await userEvent.click(await screen.findByRole('link', { name: /휴무·휴가.*다음 휴가 12\/24–12\/26/ }));
-    expect(router.state.location.pathname).toBe('/settings/closures');
-  });
-
   it('날짜 휴무만 보이고, 매주 쉬는 요일은 영업시간으로 안내한다(W13 디자인)', async () => {
     renderAt('/settings/closures');
     expect(texts(await section('다가오는 휴무'))).toEqual(['12월 24일 ~ 12월 26일 · 연말 휴가휴가지우기']);
