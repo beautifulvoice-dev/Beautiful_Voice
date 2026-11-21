@@ -5,14 +5,17 @@ import { RouterProvider } from 'react-router/dom';
 import { describe, expect, it, vi } from 'vitest';
 import { EmptyState, ErrorState } from '@/components/states/DataState';
 import { SessionLoaderProvider } from '@/features/auth/session';
+import { FALLBACK_SHOP_NAME, ShopNameLoaderProvider, type ShopNameLoader } from '@/features/shop/shopName';
 import { routes } from '@/routes';
 
 // 웹셸은 로그인한 뒤의 화면이다 — 로그인 상태는 합성 매장으로 채운다(로그인 자체는 auth.test.tsx).
-async function renderAt(path: string) {
+async function renderAt(path: string, shopName: ShopNameLoader = async () => '합성 매장') {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
   render(
     <SessionLoaderProvider value={async () => ({ shopId: 'shop-1' })}>
-      <RouterProvider router={router} />
+      <ShopNameLoaderProvider value={shopName}>
+        <RouterProvider router={router} />
+      </ShopNameLoaderProvider>
     </SessionLoaderProvider>,
   );
   await screen.findByRole('navigation', { name: '주 메뉴' });
@@ -39,6 +42,24 @@ describe('웹셸 내비게이션', () => {
     expect(router.state.location.pathname).toBe('/customers');
     expect(screen.getByRole('heading', { level: 1, name: '고객' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '고객' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('머리줄에 NABI·나만의 AI 비서와 로그인한 매장 이름이 보인다(설계서 §3.1)', async () => {
+    const loader = vi.fn(async (shopId: string) => (shopId === 'shop-1' ? '합성 매장' : '다른 매장'));
+    await renderAt('/calendar', loader);
+    const header = screen.getByRole('banner');
+    expect(header).toHaveTextContent('NABI');
+    expect(header).toHaveTextContent('나만의 AI 비서');
+    expect(await screen.findByLabelText('매장')).toHaveTextContent('합성 매장');
+    expect(loader).toHaveBeenCalledWith('shop-1');
+  });
+
+  it('매장 이름을 못 받아도 화면은 그대로, 자리 글자를 보인다', async () => {
+    await renderAt('/calendar', async () => {
+      throw new Error('SHOP_503');
+    });
+    expect(screen.getByLabelText('매장')).toHaveTextContent(FALLBACK_SHOP_NAME);
+    expect(await screen.findByRole('heading', { level: 1, name: '캘린더' })).toBeInTheDocument();
   });
 
   it('없는 주소는 안내를 보여 준다', async () => {
