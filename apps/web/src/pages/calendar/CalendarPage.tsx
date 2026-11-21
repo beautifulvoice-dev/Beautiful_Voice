@@ -18,6 +18,7 @@ import { useSearchParams } from 'react-router';
 import { useShopName } from '@/components/layout/AppShell';
 import { ErrorState } from '@/components/states/DataState';
 import { useCalendarApi } from '@/features/calendar/api';
+import { rejectText } from '@/features/calendar/bookingText';
 import {
   addDays,
   addMonths,
@@ -26,6 +27,7 @@ import {
   shopDate,
   weekDays,
   weekTitle,
+  type AppointmentStatus,
   type CalendarAppointment,
   type CalendarData,
   type Staff,
@@ -72,24 +74,34 @@ export function CalendarPage() {
 
   const load = useCallback(() => api.range(from, to), [api, from, to]);
   const { state, reload } = useLoad<CalendarData>(load);
-  const [open, setOpenState] = useState<CalendarAppointment | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
   // 닫히면 누른 예약 칸으로 초점을 돌려준다(키보드 사용자, 설계 §6).
   const opener = useRef<HTMLElement | null>(null);
   const setOpen = (a: CalendarAppointment | null) => {
     if (a) opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setOpenState(a);
+    setOpenId(a?.id ?? null);
     if (!a) requestAnimationFrame(() => opener.current?.focus());
   };
   // 담당자 거르기(W1). 주소에 두지 않는다 — 화면 안 보기 상태.
   const [staffId, setStaffId] = useState<string>(ALL);
   const data = state.status === 'ok' ? state.data : null;
   const shown = data ? forStaff(data, staffId === ALL ? null : staffId) : null;
+  const open = data?.appointments.find((a) => a.id === openId) ?? null;
 
   const go = (next: Partial<{ view: View; date: string }>) =>
     setParams({ view: next.view ?? view, date: next.date ?? date }, { replace: true });
   const step = (n: number) => go({ date: view === 'week' ? addDays(date, 7 * n) : addMonths(date, n) });
 
   const staffName = (id: string) => data?.staff.find((s) => s.id === id)?.name ?? '담당자 미상';
+
+  const changeStatus = async (a: CalendarAppointment, to: AppointmentStatus) => {
+    const r = await api.setStatus(a.id, to);
+    if (!r.ok) return data ? rejectText(r.reason, r.conflictingIds, { data, staffId: a.staffId, startAt: a.startAt }) : '바꾸지 못했어요.';
+    // 취소하면 캘린더에서 빠지므로 패널을 닫는다(원칙: 취소 예약은 그리지 않음).
+    if (to === 'cancelled') setOpen(null);
+    reload();
+    return null;
+  };
   const segment = (
     // 세그먼트는 기본으로 줄 전체 폭 — 내용만큼만 쓰도록 감싼다(폭을 고정하면 표시 막대 위치가 어긋난다).
     <div className="w-fit">
@@ -200,6 +212,7 @@ export function CalendarPage() {
         staffName={open ? staffName(open.staffId) : ''}
         blocks={data?.blocks ?? []}
         onClose={() => setOpen(null)}
+        onStatus={changeStatus}
       />
       {/* + 예약: 폰은 오른쪽 아래 떠 있는 버튼(디자인 .fab — 탭 바 위 오른쪽 18px), 웹은 제목 줄 오른쪽(설계서 W1). */}
       {phone && (

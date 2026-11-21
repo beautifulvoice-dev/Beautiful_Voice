@@ -474,25 +474,41 @@ describe('예약 보기 W2 — 웹 오른쪽 패널 / 폰 아래 시트 (캘린�
     await waitFor(() => expect(card).toHaveFocus());
   });
 
-  it('예정 예약: 완료·노쇼·문자 보내기·더보기 자리, 꺼짐 + 설명 / 겹친 예약은 빨간 알림', async () => {
+  it('예정 예약: 완료·노쇼는 켜져 있고 문자 보내기·더보기는 아직 꺼짐 / 겹친 예약은 빨간 알림', async () => {
     renderAt('/calendar?date=2026-11-18');
     const friday = await screen.findByRole('region', { name: '11월 20일' });
     await userEvent.click(within(friday).getByRole('button', { name: /한예린/ }));
     const panel = await screen.findByRole('dialog', { name: '한예린' });
-    for (const name of ['완료', '노쇼', '문자 보내기', '더보기']) {
-      expect(within(panel).getByRole('button', { name })).toBeDisabled();
-    }
-    expect(panel).toHaveTextContent('예약 상태 바꾸기는 예약 저장 기능과 함께 열려요.');
+    expect(within(panel).getByRole('button', { name: '완료' })).toBeEnabled();
+    expect(within(panel).getByRole('button', { name: '노쇼' })).toBeEnabled();
+    for (const name of ['문자 보내기', '더보기']) expect(within(panel).getByRole('button', { name })).toBeDisabled();
     expect(panel).toHaveTextContent('관리 불가 시간(14:00–16:00 원장 외출)과 겹쳐요. 예약은 그대로 있어요.');
   });
 
-  it('완료된 예약은 "상태 고치기" 하나', async () => {
+  it('완료를 누르면 완료가 되고 버튼은 "상태 고치기" 하나 → 예정으로 되돌릴 수 있다(결정 S5)', async () => {
     renderAt('/calendar?date=2026-11-18');
-    const monday = await screen.findByRole('region', { name: '11월 16일' });
-    await userEvent.click(within(monday).getByRole('button', { name: /김하늘/ }));
-    const panel = await screen.findByRole('dialog', { name: '김하늘' });
-    expect(within(panel).getByRole('button', { name: '상태 고치기' })).toBeDisabled();
+    const tuesday = await screen.findByRole('region', { name: '11월 17일' });
+    await userEvent.click(within(tuesday).getByRole('button', { name: /최유나/ }));
+    let panel = await screen.findByRole('dialog', { name: '최유나' });
+    await userEvent.click(within(panel).getByRole('button', { name: '완료' }));
+    const card = () => within(screen.getByRole('region', { name: '11월 17일' })).getByRole('button', { name: /최유나/ });
+    await waitFor(() => expect(card()).toHaveAttribute('data-status', 'completed'));
+    panel = screen.getByRole('dialog', { name: '최유나' });
     expect(within(panel).queryByRole('button', { name: '완료' })).not.toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole('button', { name: '상태 고치기' }));
+    await userEvent.click(within(panel).getByRole('button', { name: '예정' }));
+    await waitFor(() => expect(card()).toHaveAttribute('data-status', 'scheduled'));
+  });
+
+  it('취소를 예정으로 되살릴 때 같은 담당자 예약과 겹치면 거부하고 이유를 알린다(가짜 저장소, @bv/scheduling 규칙)', async () => {
+    const api = createMemoryCalendarApi({
+      staff: [{ id: 's1', name: '원장' }],
+      appointments: [appt({ id: 'live', customerName: '손님가' }), appt({ id: 'gone', customerName: '손님나', status: 'cancelled' })],
+      blocks: [],
+    });
+    const r = await api.setStatus('gone', 'scheduled');
+    expect(r).toEqual({ ok: false, reason: 'STAFF_OVERLAP', conflictingIds: ['live'] });
+    expect(await api.setStatus('live', 'completed')).toMatchObject({ ok: true, value: { status: 'completed' } });
   });
 
   it('폰: 같은 내용이 아래 시트로 열리고, "+ 예약"은 떠 있는 버튼 자리', async () => {
