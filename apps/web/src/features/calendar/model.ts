@@ -252,6 +252,9 @@ export function forStaff(data: CalendarData, staffId: string | null): CalendarDa
     ...data,
     staff: data.staff.filter((s) => s.id === staffId),
     appointments: data.appointments.filter((a) => a.staffId === staffId),
-    blocks: data.blocks.filter((b) => b.allStaff || b.staffIds.includes(staffId)),
+    // 여러 담당자에게 걸린 차단은 고른 담당자 조각만 남긴다 — 안 보이는 담당자 조각이 전체 폭으로 겹쳐 그려지지 않게(#50 리뷰).
+    blocks: data.blocks
+      .filter((b) => b.allStaff || b.staffIds.includes(staffId))
+      .map((b) => (b.allStaff ? b : { ...b, staffIds: [staffId] })),
   };
 }

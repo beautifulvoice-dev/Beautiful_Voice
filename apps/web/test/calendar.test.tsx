@@ -162,6 +162,11 @@ describe('W1 디자인 규칙(SEED 옮기기)', () => {
       closures: [],
     };
     const s1 = forStaff(data, 's1');
+    // A·B 둘에게 걸린 차단을 A로 거르면 A 조각만 — B 조각이 전체 폭으로 겹쳐 그려지지 않게(#50 리뷰)
+    const both = { ...data, blocks: [{ id: 'ab', startAt: '2026-11-18T01:00:00Z', endAt: '2026-11-18T02:00:00Z', allStaff: false, staffIds: ['s1', 's2'], memo: null }] };
+    const onlyA = forStaff(both, 's1');
+    expect(onlyA.blocks[0]!.staffIds).toEqual(['s1']);
+    expect(segmentsForDay('2026-11-18', onlyA).filter((g) => g.kind === 'block').map((g) => g.staffId)).toEqual(['s1']);
     expect([s1.staff.map((s) => s.id), s1.appointments.map((a) => a.id), s1.blocks.map((b) => b.id)]).toEqual([['s1'], ['a1'], ['all']]);
     expect(forStaff(data, null)).toBe(data);
   });
@@ -295,6 +300,10 @@ describe('캘린더 화면', () => {
     const day = await screen.findByRole('region', { name: '11월 20일' });
     expect(within(day).getByRole('button', { name: /15:00 한예린/ })).toBeInTheDocument();
     expect(within(day).getByText('관리 불가 · 원장 외출')).toBeInTheDocument();
+    // 월로 바꿔도 관리 불가와 겹친 예약은 "겹침"으로 보인다(R50, #50 리뷰)
+    const overlapped = within(day).getByRole('button', { name: /15:00 한예린/ });
+    expect(overlapped).toHaveAttribute('data-overlap', 'true');
+    expect(overlapped).toHaveTextContent('겹침');
 
     await userEvent.click(screen.getByRole('button', { name: '다음 달' }));
     expect(await screen.findByRole('heading', { level: 2, name: '2026년 12월' })).toBeInTheDocument();
