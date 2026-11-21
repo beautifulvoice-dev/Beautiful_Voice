@@ -19,17 +19,17 @@ interface Entry {
 
 export function SettingsPage() {
   const api = useSettingsApi();
-  const load = useCallback(() => Promise.all([api.getBusinessHours(), api.listClosures()]), [api]);
+  const load = useCallback(() => Promise.all([api.getBusinessHours(), api.listClosures(), api.listMenus()]), [api]);
   const { state } = useLoad(load);
   // 요약을 못 불러와도 목록은 보인다 — 들어가서 다시 불러올 수 있다.
-  const [hours, closures] = state.status === 'ok' ? state.data : [];
+  const [hours, closures, menus] = state.status === 'ok' ? state.data : [];
   const hoursDetail = state.status === 'ok' ? hoursSummary(hours ?? null) : undefined;
   const closuresDetail = closures ? closuresSummary(closures, shopToday()) : undefined;
 
   const entries: Entry[] = [
     { title: '영업시간', to: '/settings/hours', detail: hoursDetail },
     { title: '휴무·휴가', to: '/settings/closures', detail: closuresDetail },
-    { title: '메뉴' },
+    { title: '메뉴', to: '/settings/menus', detail: menus ? (menus.length ? `${menus.length}개` : '없음') : undefined },
     { title: '담당자' },
   ];
 
