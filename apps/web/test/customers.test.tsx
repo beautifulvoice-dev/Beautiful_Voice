@@ -83,6 +83,34 @@ describe('고객 목록·검색', () => {
   });
 });
 
+describe('고객 등록 시트 (W5 디자인 "+ 고객: 시트")', () => {
+  it('"+ 고객"을 누르면 목록 위에 등록 시트가 열리고, 취소하면 목록으로 돌아가며 검색어는 남는다', async () => {
+    const router = renderAt('/customers');
+    await search('김');
+    await userEvent.click(screen.getByRole('link', { name: '+ 고객' }));
+    const sheet = await screen.findByRole('dialog', { name: '고객 등록' });
+    expect(router.state.location.pathname).toBe('/customers/new');
+    // 목록은 시트 뒤에 그대로 있다(시트가 열리면 화면 읽기에서는 뒤를 가린다).
+    expect(document.querySelector('ul[aria-label="고객 목록"]')).toHaveTextContent('김하늘');
+    expect(within(sheet).getByLabelText('이름 (필수)')).toHaveValue('');
+
+    await userEvent.click(within(sheet).getByRole('button', { name: '취소' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(router.state.location.pathname).toBe('/customers');
+    expect(screen.getByRole('searchbox', { name: '고객 검색' })).toHaveValue('김');
+  });
+
+  it('시트에서 저장하면 그 고객 상세로 간다', async () => {
+    const router = renderAt('/customers/new');
+    const sheet = await screen.findByRole('dialog', { name: '고객 등록' });
+    await userEvent.type(within(sheet).getByLabelText('이름 (필수)'), '최가람');
+    await userEvent.click(within(sheet).getByRole('button', { name: '저장' }));
+    expect(await screen.findByRole('heading', { level: 1, name: '최가람' })).toBeInTheDocument();
+    expect(router.state.location.pathname).toMatch(/^\/customers\/c\d+$/u);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
 describe('고객 등록 → 검색 → 수정', () => {
   it('이름이 없으면 저장하지 않는다', async () => {
     renderAt('/customers/new');
