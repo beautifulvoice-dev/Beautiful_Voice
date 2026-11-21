@@ -7,7 +7,7 @@ import { Link, useNavigate, useParams } from 'react-router';
 import { EmptyState, ErrorState } from '@/components/states/DataState';
 import { Button } from '@/components/ui/button';
 import { CustomerValidationError, useCustomerApi } from '@/features/customers/api';
-import { formatPhone, type Customer } from '@/features/customers/model';
+import { formatPhone, shopToday, type Customer } from '@/features/customers/model';
 import { useLoad } from '@/lib/useLoad';
 
 const ERROR_TEXT: Record<CustomerErrorCode, string> = {
@@ -42,6 +42,8 @@ function CustomerForm({ initial }: { initial: Customer | null }) {
   const [name, setName] = useState(initial?.name ?? '');
   const [phone, setPhone] = useState(initial?.phone ? formatPhone(initial.phone) : '');
   const [memo, setMemo] = useState(initial?.memo ?? '');
+  const [birthdate, setBirthdate] = useState(initial?.birthdate ?? '');
+  const [address, setAddress] = useState(initial?.address ?? '');
   const [errors, setErrors] = useState<FieldError[]>([]);
   // 동명이인 후보는 어떤 입력으로 조회했는지와 묶어 둔다 — 그 입력 그대로일 때만 "다른 고객이에요, 저장"이 통한다(#32 리뷰).
   const [sameName, setSameName] = useState<{ candidates: Candidate[]; name: string; phone: string | null } | null>(null);
@@ -52,7 +54,7 @@ function CustomerForm({ initial }: { initial: Customer | null }) {
   async function submit(e: SyntheticEvent, confirmedSameName = false) {
     e.preventDefault();
     setFailed(false);
-    const checked = validateNewCustomer({ name, phone, memo });
+    const checked = validateNewCustomer({ name, phone, memo, birthdate, address });
     if (!checked.ok) return setErrors(checked.errors);
     setErrors([]);
     setSaving(true);
@@ -64,7 +66,7 @@ function CustomerForm({ initial }: { initial: Customer | null }) {
         const r = await api.checkSameName({ id: initial?.id, name: checkedName, phone: checkedPhone });
         if (r.needsReview) return setSameName({ candidates: r.candidates, name: checkedName, phone: checkedPhone });
       }
-      const saved = initial ? await api.update(initial.id, { name, phone, memo }) : await api.create({ name, phone, memo });
+      const saved = initial ? await api.update(initial.id, { name, phone, memo, birthdate, address }) : await api.create({ name, phone, memo, birthdate, address });
       navigate(`/customers/${saved.id}`, { replace: !!initial });
     } catch (err) {
       if (err instanceof CustomerValidationError) setErrors(err.errors);
@@ -90,6 +92,13 @@ function CustomerForm({ initial }: { initial: Customer | null }) {
               setPhone(e.target.value);
               setSameName(null);
             }} type="tel" inputMode="tel" autoComplete="off" />
+        </Field>
+        {/* ASSUMPTION(설계 메모 6단계): 생년월일은 달력으로 고르고 오늘(매장 날짜)까지만. 미래 날짜 금지는 명세에 없어 화면에서만 막는다. */}
+        <Field label="생년월일" error={errorOf('birthdate')}>
+          <input value={birthdate} onChange={(e) => setBirthdate(e.target.value)} type="date" max={shopToday()} />
+        </Field>
+        <Field label="거주지">
+          <input value={address} onChange={(e) => setAddress(e.target.value)} autoComplete="off" placeholder="예: 동네 이름" />
         </Field>
         <Field label="특이사항">
           <textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={3} />

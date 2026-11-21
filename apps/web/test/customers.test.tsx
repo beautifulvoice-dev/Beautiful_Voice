@@ -6,7 +6,7 @@ import { RouterProvider } from 'react-router/dom';
 import { describe, expect, it } from 'vitest';
 import { SessionLoaderProvider } from '@/features/auth/session';
 import { createMemoryCustomerApi, CustomerApiProvider, type CustomerApi } from '@/features/customers/api';
-import { visitHistory, type Visit } from '@/features/customers/model';
+import { formatBirthdate, shopToday, visitHistory, type Visit } from '@/features/customers/model';
 import { routes } from '@/routes';
 
 function renderAt(path: string, api: CustomerApi = createMemoryCustomerApi()) {
@@ -112,6 +112,46 @@ describe('고객 등록 → 검색 → 수정', () => {
     await userEvent.click(screen.getByRole('button', { name: '다른 고객이에요, 저장' }));
     expect(await screen.findByRole('heading', { level: 1, name: '김하늘' })).toBeInTheDocument();
     expect(await api.list('김하늘')).toHaveLength(3);
+  });
+});
+
+describe('생년월일·거주지 (BEA-172, 명세 1 §2.3)', () => {
+  it('등록할 때 넣으면 상세에 보이고, 목록 카드에는 보이지 않는다', async () => {
+    const router = renderAt('/customers/new');
+    await userEvent.type(await screen.findByLabelText('이름 (필수)'), '최가람');
+    await userEvent.type(screen.getByLabelText('생년월일'), '1990-02-28');
+    await userEvent.type(screen.getByLabelText('거주지'), '합성시 가상구');
+    await userEvent.click(screen.getByRole('button', { name: '저장' }));
+    const info = await screen.findByRole('region', { name: '개인 정보' });
+    expect(info).toHaveTextContent('생년월일1990년 2월 28일');
+    expect(info).toHaveTextContent('거주지합성시 가상구');
+
+    await router.navigate('/customers');
+    await search('가람');
+    expect(names()).toEqual(['최가람전화번호 없음']);
+  });
+
+  it('수정에서 지우면 "없음"으로 돌아간다', async () => {
+    renderAt('/customers/c3/edit');
+    const birthdate = await screen.findByLabelText('생년월일');
+    expect(birthdate).toHaveValue('1992-07-15');
+    await userEvent.clear(birthdate);
+    await userEvent.clear(screen.getByLabelText('거주지'));
+    await userEvent.click(screen.getByRole('button', { name: '저장' }));
+    const info = await screen.findByRole('region', { name: '개인 정보' });
+    expect(info).toHaveTextContent('생년월일없음');
+    expect(info).toHaveTextContent('거주지없음');
+  });
+
+  it('생년월일 달력은 오늘(매장 날짜)까지만 고를 수 있다', async () => {
+    renderAt('/customers/new');
+    expect(await screen.findByLabelText('생년월일')).toHaveAttribute('max', shopToday());
+  });
+
+  it('날짜 표시와 매장 날짜 계산', () => {
+    expect(formatBirthdate('2000-01-05')).toBe('2000년 1월 5일');
+    // 서울 자정 직후(UTC로는 전날 15시)는 서울 날짜로 센다.
+    expect(shopToday(new Date('2026-11-20T15:30:00Z'))).toBe('2026-11-21');
   });
 });
 
