@@ -69,6 +69,9 @@ importers:
       '@bv/customers':
         specifier: workspace:*
         version: link:../../packages/customers
+      '@bv/scheduling':
+        specifier: workspace:*
+        version: link:../../packages/scheduling
       '@seed-design/css':
         specifier: 3.4.0
         version: 3.4.0
