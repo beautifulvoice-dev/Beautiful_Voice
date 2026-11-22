@@ -205,7 +205,7 @@ export function CalendarPage() {
           type="button"
           disabled
           aria-describedby="new-appointment-note"
-          className="fixed right-[18px] bottom-24 z-20 inline-flex h-[52px] items-center gap-1.5 rounded-[26px] bg-brand pr-5 pl-4 text-base font-bold text-on-brand shadow-[0_6px_16px_rgba(0,0,0,0.18)] disabled:bg-disabled disabled:text-ink-disabled disabled:shadow-none"
+          className="fixed right-[18px] bottom-24 z-20 inline-flex h-[52px] items-center gap-1.5 rounded-[26px] bg-brand pr-5 pl-4 text-base font-bold text-on-brand shadow-lg disabled:bg-disabled disabled:text-ink-disabled disabled:shadow-none"
         >
           <Plus aria-hidden size={20} strokeWidth={2.25} />
           예약

@@ -155,6 +155,20 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, p
     const overlap = overlapsBlock(a, data.blocks);
     const start = Date.parse(a.startAt);
     const tone = STATUS_TONE[a.status];
+    const labels = (tone || overlap) && (
+      <span className="flex flex-wrap gap-0.5">
+        {tone && (
+          <Badge.Root tone={tone} variant="weak" size="large">
+            <Badge.Label>{STATUS_TEXT[a.status]}</Badge.Label>
+          </Badge.Root>
+        )}
+        {overlap && (
+          <Badge.Root tone="critical" variant="weak" size="large">
+            <Badge.Label>겹침</Badge.Label>
+          </Badge.Root>
+        )}
+      </span>
+    );
     return (
       <button
         key={key}
@@ -171,30 +185,22 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, p
         style={pos}
       >
         {lanes.length > 1 && staffName && <span className="sr-only">{staffName(a.staffId)} · </span>}
-        <b className="truncate text-sm font-bold text-ink">
-          {a.customerName}
-          {phone && overlap && a.menuName ? ` · ${a.menuName}` : ''}
-        </b>
+        <div className={cn('min-w-0', !phone && 'flex items-center gap-0.5')}>
+          <b className="block min-w-0 truncate text-sm font-bold text-ink">
+            {a.customerName}
+            {phone && overlap && a.menuName ? ` · ${a.menuName}` : ''}
+          </b>
+          {!phone && labels}
+        </div>
         {phone ? (
           <>
+            {labels}
             {!overlap && a.status !== 'no_show' && <span className="truncate">{a.menuName ?? '메뉴 없음'}</span>}
             {!tone && !overlap && <span>{`${shopTime(start)}–${shopTime(start + a.durationMin * MIN)}`}</span>}
-            {tone && (
-              <Badge.Root tone={tone} variant="weak" size="large" className="mt-0.5 justify-self-start">
-                <Badge.Label>{STATUS_TEXT[a.status]}</Badge.Label>
-              </Badge.Root>
-            )}
-            {overlap && (
-              <Badge.Root tone="critical" variant="weak" size="large" className="mt-0.5 justify-self-start">
-                <Badge.Label>겹침</Badge.Label>
-              </Badge.Root>
-            )}
           </>
         ) : (
-          // 웹 칸은 좁아 이름 + 시작 시각(완료·노쇼면 상태 낱말)만. 메뉴·담당자는 누르면 패널에서. 글자는 14px 아래로 줄이지 않고 넘치면 말줄임(설계서 §9.1).
           <span className="truncate">
-            {tone ? STATUS_TEXT[a.status] : shopTime(start)}
-            {overlap && <span className="sr-only"> · 겹침</span>}
+            {!tone && shopTime(start)}
             <span className="sr-only"> · {a.menuName ?? '메뉴 없음'}</span>
           </span>
         )}

@@ -181,12 +181,13 @@ describe('캘린더 화면', () => {
     const friday = await screen.findByRole('region', { name: '11월 20일' });
     const overlapped = within(friday).getByRole('button', { name: /한예린/ });
     expect(overlapped).toHaveAttribute('data-overlap', 'true');
-    expect(overlapped).toHaveTextContent('겹침');
+    expect(within(overlapped).getByText('겹침').closest('.seed-badge__root--size_large')).toHaveClass('seed-badge__root--tone_critical');
     const done = within(screen.getByRole('region', { name: '11월 16일' })).getByRole('button', { name: /김하늘/ });
     expect(done).toHaveAttribute('data-status', 'completed');
-    expect(done).toHaveTextContent('완료');
+    expect(within(done).getByText('완료').closest('.seed-badge__root--size_large')).toHaveClass('seed-badge__root--tone_positive');
     expect(done).not.toHaveTextContent('겹침');
-    expect(within(screen.getByRole('region', { name: '11월 18일' })).getByRole('button', { name: /김하늘/ })).toHaveTextContent('노쇼');
+    const noShow = within(screen.getByRole('region', { name: '11월 18일' })).getByRole('button', { name: /김하늘/ });
+    expect(within(noShow).getByText('노쇼').closest('.seed-badge__root--size_large')).toHaveClass('seed-badge__root--tone_critical');
   });
 
   it('영업시간 밖과 휴무일은 회색으로 덮는다', async () => {
@@ -371,7 +372,7 @@ describe('폰·웹 배치(캘린더 PR 2a) — 너비 기준 SEED md 768', () =>
     const strip = await screen.findByRole('group', { name: '날짜 고르기' });
     expect(within(strip).getAllByRole('button')).toHaveLength(7);
     expect(within(strip).getByRole('button', { name: /11월 18일 수요일/ })).toHaveAttribute('aria-pressed', 'true');
-    expect(within(strip).getByRole('button', { name: /11월 16일 월요일 · 예약 3건/ })).toBeInTheDocument();
+    expect(within(strip).getByRole('button', { name: /11월 16일 월요일 · 예약 03건/ })).toBeInTheDocument();
     expect(within(strip).getByRole('button', { name: /11월 22일 일요일 · 휴무/ })).toBeInTheDocument();
     // 하루 시간표 = 그날 칸 하나
     expect(screen.getAllByRole('region', { name: /^11월 \d+일$/ })).toHaveLength(1);
