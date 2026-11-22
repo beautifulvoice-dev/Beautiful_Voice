@@ -18,7 +18,8 @@ import { seedDesignScene, SCENE_MENUS } from './mockData';
 import { dayStart, type AppointmentStatus, type CalendarAppointment, type CalendarBlock, type CalendarData, type Menu } from './model';
 
 /** 가짜 저장소에 넣는 값. 영업시간·휴무를 빼면 "안 넣은 매장"으로 본다. */
-export type CalendarSeed = Omit<CalendarData, 'businessHours' | 'closures' | 'hoursUnavailable'> & Partial<Pick<CalendarData, 'businessHours' | 'closures'>>;
+export type CalendarSeed = Omit<CalendarData, 'businessHours' | 'closures' | 'hoursUnavailable'> &
+  Partial<Pick<CalendarData, 'businessHours' | 'closures'>>;
 
 /** 예약 넣기(W3) 입력. 시각은 UTC ISO. */
 export interface NewAppointment {
@@ -65,6 +66,8 @@ export interface CalendarWriteOptions {
 export interface CalendarApi {
   /** 실제 예약 저장 API가 연결됐을 때만 true. */
   readonly persistsAppointments?: true;
+  /** 관리 불가 시간(W4)을 넣을 수 있는가. 서버 API는 BEA-179 전까지 없음 — 가짜 저장소만 true. */
+  readonly supportsBlocks?: true;
   /** 매장 날짜 from ~ to(마지막 날 포함). 즉 from 0시 ~ to 다음 날 0시 사이에 점유·차단이 걸치는 것. 예약 API 계약도 같은 뜻으로 둔다. */
   range(from: string, to: string): Promise<CalendarData>;
   menus(): Promise<Menu[]>;
@@ -129,6 +132,7 @@ export function createMemoryCalendarApi(seed: CalendarSeed = seedDesignScene(), 
   };
 
   return {
+    supportsBlocks: true,
     async range(from, to) {
       const f = dayStart(from);
       const t = dayStart(to) + 86_400_000;

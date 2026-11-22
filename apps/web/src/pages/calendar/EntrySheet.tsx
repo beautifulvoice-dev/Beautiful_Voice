@@ -1,24 +1,29 @@
-// 예약 넣기 W3 (화면 설계서 §4 F1·§5 W3, 디자인 w2.png 가운데). 관리 불가 시간(W4)은 다음 PR에서 세그먼트로 붙인다.
+// 예약 넣기 W3 · 관리 불가 시간 W4 (화면 설계서 §4 F1·§5 W3·W4, 디자인 w2.png 가운데·오른쪽). 한 시트를 세그먼트 `예약 · 관리 불가 시간`으로 바꾼다.
+// W4는 서버 API(BEA-179) 전까지 가짜 저장소에서만 켠다(api.supportsBlocks) — 실제 API 모드에선 세그먼트가 꺼져 있고 "곧 열려요".
 // 폰은 큰 아래 시트, 웹은 오른쪽 패널(W2와 같은 틀). 저장 검사는 서버와 같은 @bv/scheduling checkBooking(절대 규칙 4) —
-// 거부되면 저장 버튼 위 빨간 알림(W3 거부 표).
-import { checkBooking } from '@bv/scheduling/booking';
+// 거부되면 저장 버튼 위 빨간 알림(W3 거부 표). 관리 불가 시간은 겹치는 예약을 막지 않고 미리 알린다(결정 R50).
+import { blockedAppointmentIds, checkBooking, occupiedOf } from '@bv/scheduling/booking';
 import type { Candidate } from '@bv/customers/duplicates';
 import {
   ActionButton,
   AlertDialog,
   Icon,
   Callout,
+  CheckboxHiddenInput,
   Chip,
   Field,
   RadioGroupItemHiddenInput,
   ResponsiveSidePanel,
+  SegmentedControl,
+  SegmentedControlItemHiddenInput,
+  Switch,
   TextField,
 } from '@seed-design/react';
 import { CalendarDays, Minus, Plus, Search, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toBookingInputs, useCalendarApi, type NewAppointment } from '@/features/calendar/api';
 import { occupancyText, rejectText, shopIso, shortDate } from '@/features/calendar/bookingText';
-import { addDays, shopDate, startTimes, type CalendarData, type Menu, type Staff } from '@/features/calendar/model';
+import { addDays, shopDate, shopTime, startTimes, type CalendarData, type Menu, type Staff } from '@/features/calendar/model';
 import { CustomerValidationError, useCustomerApi } from '@/features/customers/api';
 import type { Customer } from '@/features/customers/model';
 import { NetworkError } from '@/lib/http';
@@ -46,8 +51,17 @@ interface Props {
   onSaved: (date: string) => void;
 }
 
+type Kind = 'appointment' | 'block';
+
 export function EntrySheet({ start, staff, businessHours = null, onClose, onSaved }: Props) {
   const phone = useIsPhone();
+  const api = useCalendarApi();
+  const blocksOn = api.supportsBlocks === true;
+  const [kind, setKind] = useState<Kind>('appointment');
+  useEffect(() => {
+    // 닫히면 다음에 열 때 예약부터
+    if (!start) setKind('appointment');
+  }, [start]);
   // 입력을 바꿨으면 닫기 전에 묻는다(설계 06 D4). 저장 중에는 닫지 않는다.
   const [dirty, setDirty] = useState(false);
   const [asking, setAsking] = useState(false);
@@ -65,6 +79,7 @@ export function EntrySheet({ start, staff, businessHours = null, onClose, onSave
   const reset = () => {
     setDirty(false);
     setAsking(false);
+    setKind('appointment');
   };
   return (
     <CalendarSheet open={start !== null} onClose={close} full>
@@ -73,26 +88,51 @@ export function EntrySheet({ start, staff, businessHours = null, onClose, onSave
           <ResponsiveSidePanel.Header className={sheetHeadClass(phone)}>
             <div className="flex items-center justify-between gap-2">
               <ResponsiveSidePanel.Title className={cn(titleClass, 'text-xl font-bold tracking-[-0.02em]')}>
-                예약 넣기
+                {kind === 'appointment' ? '예약 넣기' : '관리 불가 시간'}
               </ResponsiveSidePanel.Title>
               <ActionButton variant="ghost" size="small" layout="iconOnly" aria-label="닫기" disabled={busy} onClick={close}>
                 <Icon svg={<X />} />
               </ActionButton>
             </div>
+            <SegmentedControl.Root aria-label="종류" value={kind} onValueChange={(v) => setKind(v as Kind)} className="w-full">
+              <SegmentedControl.Indicator />
+              <SegmentedControl.Item value="appointment">
+                <SegmentedControlItemHiddenInput />
+                예약
+              </SegmentedControl.Item>
+              <SegmentedControl.Item value="block" disabled={!blocksOn}>
+                <SegmentedControlItemHiddenInput />
+                관리 불가 시간
+              </SegmentedControl.Item>
+            </SegmentedControl.Root>
+            {!blocksOn && <p className="text-sm text-ink-soft">관리 불가 시간 넣기는 곧 열려요.</p>}
           </ResponsiveSidePanel.Header>
-          <AppointmentForm
-            start={start}
-            staff={staff}
-            businessHours={businessHours}
-            onDirty={setDirty}
-            busy={busy}
-            saving={saving}
-            setSaving={setSaving}
-            onSaved={(d) => {
-              reset();
-              onSaved(d);
-            }}
-          />
+          {kind === 'block' ? (
+            <BlockForm
+              start={start}
+              staff={staff}
+              businessHours={businessHours}
+              onDirty={setDirty}
+              onSaved={(d) => {
+                reset();
+                onSaved(d);
+              }}
+            />
+          ) : (
+            <AppointmentForm
+              start={start}
+              staff={staff}
+              businessHours={businessHours}
+              onDirty={setDirty}
+              busy={busy}
+              saving={saving}
+              setSaving={setSaving}
+              onSaved={(d) => {
+                reset();
+                onSaved(d);
+              }}
+            />
+          )}
           {/* 확인 창은 시트 안에 둔다 — 밖에 두면 폰 아래 시트 뒤로 가려진다(W2 취소 확인과 같은 자리). */}
           <AlertDialog.Root open={asking} onOpenChange={setAsking}>
             <AlertDialog.Backdrop />
@@ -215,11 +255,13 @@ function AppointmentForm({
   const unsettled = useRef<{ input: NewAppointment; key: string } | null>(null);
   /** 이 화면에서 새로 등록한 고객인가 — 예약이 안 되면 "고객은 등록됐어요"를 붙인다. */
   const createdCustomer = useRef(false);
-  const touched = <T,>(setter: (v: T) => void) => (v: T) => {
-    onDirty(true);
-    setError(null);
-    setter(v);
-  };
+  const touched =
+    <T,>(setter: (v: T) => void) =>
+    (v: T) => {
+      onDirty(true);
+      setError(null);
+      setter(v);
+    };
 
   useEffect(() => {
     api.menus().then(setMenus, () => setMenus([]));
@@ -533,12 +575,7 @@ function AppointmentForm({
             </Field.Label>
           </Field.Header>
           <TextField.Root size="large">
-            <TextField.Textarea
-              autoresize
-              className="min-h-12"
-              value={memo}
-              onChange={(e) => touched(setMemo)(e.target.value)}
-            />
+            <TextField.Textarea autoresize className="min-h-12" value={memo} onChange={(e) => touched(setMemo)(e.target.value)} />
           </TextField.Root>
         </Field.Root>
       </ResponsiveSidePanel.Body>
@@ -609,5 +646,228 @@ function Stepper({
         </button>
       </span>
     </div>
+  );
+}
+
+// ── W4 관리 불가 시간 ─────────────────────────────────────────
+
+const toMinutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+const toHhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+
+/**
+ * 관리 불가 시간(W4): 날짜 + 시작·끝(누르기만 — W3와 같은 달력 팝업·15분 목록), 모든 담당자 / 누구, 메모.
+ * ASSUMPTION: 하루 안의 구간만 넣는다(밤을 넘는 차단은 두 번 넣기). 끝 목록은 시작보다 늦은 15분 단위 + 영업 마감 시각.
+ * ASSUMPTION: 담당자가 1명이면 스위치·칩을 숨기고 그 담당자로 넣는다(앞으로 생길 담당자는 포함하지 않음).
+ */
+function BlockForm({
+  start,
+  staff,
+  businessHours,
+  onDirty,
+  onSaved,
+}: {
+  start: EntryStart;
+  staff: Staff[];
+  businessHours: CalendarData['businessHours'];
+  onDirty: (dirty: boolean) => void;
+  onSaved: (date: string) => void;
+}) {
+  const api = useCalendarApi();
+  const phone = useIsPhone();
+  const [date, setDate] = useState(start.date);
+  const [from, setFrom] = useState(start.time ?? '10:00');
+  const [to, setTo] = useState(toHhmm(Math.min(24 * 60 - 15, toMinutes(start.time ?? '10:00') + 120)));
+  const [allStaff, setAllStaff] = useState(false);
+  const [who, setWho] = useState<string[]>(start.staffId ? [start.staffId] : staff.length === 1 ? [staff[0]!.id] : []);
+  const [memo, setMemo] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [around, setAround] = useState<CalendarData | null>(null);
+  const touch = () => onDirty(true);
+
+  const starts = startTimes(date, businessHours);
+  // 끝: 시작보다 늦은 15분 단위, 마지막은 그날 마지막 시작 + 15분(영업 마감)
+  const ends = [...starts.slice(1), toHhmm(toMinutes(starts.at(-1) ?? '20:45') + 15)].filter((t) => toMinutes(t) > toMinutes(from));
+  const startAt = shopIso(date, from);
+  const endAt = shopIso(date, to);
+  const valid = Date.parse(startAt) < Date.parse(endAt);
+  const ready = valid && (allStaff || who.length > 0);
+
+  useEffect(() => {
+    let alive = true;
+    api.range(date, date).then(
+      (d) => alive && setAround(d),
+      () => alive && setAround(null),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [api, date]);
+
+  // 겹치는 예약 미리 알림(결정 R50) — 서버와 같은 blockedAppointmentIds
+  const overlapping = useMemo(() => {
+    if (!around || !valid) return [];
+    const ids = new Set(
+      blockedAppointmentIds(
+        { id: 'new', start: new Date(startAt), end: new Date(endAt), allStaff, staffIds: who },
+        around.appointments.map((a) => ({
+          id: a.id,
+          staffId: a.staffId,
+          status: a.status,
+          occupied: occupiedOf({ start: new Date(a.startAt), durationMin: a.durationMin, prepMin: a.prepMin }),
+        })),
+      ),
+    );
+    return around.appointments.filter((a) => ids.has(a.id));
+  }, [around, valid, startAt, endAt, allStaff, who]);
+
+  const save = async () => {
+    if (!valid) return setError('끝이 시작보다 늦어야 해요.');
+    setBusy(true);
+    setError(null);
+    try {
+      await api.createBlock({ startAt, endAt, allStaff, staffIds: allStaff ? [] : who, memo: memo.trim() || null });
+      onSaved(date);
+    } catch {
+      setError('저장하지 못했어요. 잠시 뒤 다시 해 주세요.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <ResponsiveSidePanel.Body className={cn(sheetBodyClass(phone), 'gap-3.5')}>
+        <div className="grid gap-1.5">
+          <label htmlFor="block-date" className="text-sm font-bold text-ink">
+            날짜
+          </label>
+          <DateField
+            id="block-date"
+            value={date}
+            onChange={(d) => {
+              setDate(d);
+              touch();
+            }}
+          />
+        </div>
+        <div className="flex gap-2.5">
+          <div className="grid min-w-0 flex-1 gap-1.5">
+            <label htmlFor="block-from" className="text-sm font-bold text-ink">
+              시작
+            </label>
+            <TimeField
+              id="block-from"
+              value={from}
+              options={starts}
+              phone={phone}
+              onChange={(t) => {
+                setFrom(t);
+                if (toMinutes(to) <= toMinutes(t)) setTo(toHhmm(Math.min(24 * 60 - 15, toMinutes(t) + 60)));
+                touch();
+              }}
+            />
+          </div>
+          <div className="grid min-w-0 flex-1 gap-1.5">
+            <label htmlFor="block-to" className="text-sm font-bold text-ink">
+              끝
+            </label>
+            <TimeField
+              id="block-to"
+              value={to}
+              options={ends}
+              phone={phone}
+              onChange={(t) => {
+                setTo(t);
+                touch();
+              }}
+            />
+          </div>
+        </div>
+        {staff.length > 1 && (
+          <>
+            <Switch.Root
+              checked={allStaff}
+              onCheckedChange={(on) => {
+                setAllStaff(on);
+                touch();
+              }}
+              size="32"
+              className="flex items-center justify-between"
+            >
+              <Switch.Label className="text-base">모든 담당자</Switch.Label>
+              <Switch.Control>
+                <Switch.Thumb />
+              </Switch.Control>
+              <Switch.HiddenInput />
+            </Switch.Root>
+            {!allStaff && (
+              <div className="grid gap-2">
+                <span className="pl-0.5 text-sm font-medium" id="who-label">
+                  누구
+                </span>
+                <div role="group" aria-labelledby="who-label" className="flex flex-wrap gap-2">
+                  {staff.map((s) => (
+                    <Chip.Toggle
+                      key={s.id}
+                      variant="outlineStrong"
+                      size="medium"
+                      checked={who.includes(s.id)}
+                      onCheckedChange={(on) => {
+                        setWho((w) => (on ? [...w, s.id] : w.filter((x) => x !== s.id)));
+                        touch();
+                      }}
+                    >
+                      <CheckboxHiddenInput />
+                      <Chip.Label>{s.name}</Chip.Label>
+                    </Chip.Toggle>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+        <Field.Root>
+          <Field.Header>
+            <Field.Label>
+              메모 <Field.IndicatorText>(선택)</Field.IndicatorText>
+            </Field.Label>
+          </Field.Header>
+          <TextField.Root size="large">
+            <TextField.Input
+              value={memo}
+              onChange={(e) => {
+                setMemo(e.target.value);
+                touch();
+              }}
+            />
+          </TextField.Root>
+        </Field.Root>
+        {overlapping.length > 0 && (
+          <Callout.Root tone="warning">
+            <Callout.Content>
+              <Callout.Title>이 시간에 예약 {overlapping.length}건이 있어요</Callout.Title>
+              <Callout.Description>
+                {overlapping.map((a) => `${a.customerName} · ${shopTime(a.startAt)} ${a.menuName ?? ''}`.trim()).join(', ')}. 예약은 그대로
+                두고 캘린더에 겹침으로 표시해요.
+              </Callout.Description>
+            </Callout.Content>
+          </Callout.Root>
+        )}
+        {error && (
+          <Callout.Root tone="critical" role="alert">
+            <Callout.Content>
+              <Callout.Title>저장하지 못했어요</Callout.Title>
+              <Callout.Description>{error}</Callout.Description>
+            </Callout.Content>
+          </Callout.Root>
+        )}
+      </ResponsiveSidePanel.Body>
+      <ResponsiveSidePanel.Footer className={sheetFootClass(phone)}>
+        <ActionButton variant="brandSolid" size="large" flexGrow={1} disabled={!ready} loading={busy} onClick={save}>
+          저장
+        </ActionButton>
+      </ResponsiveSidePanel.Footer>
+    </>
   );
 }
