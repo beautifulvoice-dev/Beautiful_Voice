@@ -29,6 +29,15 @@ const MIN = 60_000;
 /** 칸 안 배지: 글자는 14px 그대로, 위아래 여백·높이만 줄여 1시간 칸(웹 48px)에 이름 + 배지가 들어가게. */
 const CARD_BADGE = '!min-h-0 !py-0 !leading-[18px]';
 
+/**
+ * 설계서 §9.1 "가장 작은 글자 14px"의 예외 하나(카본 11/22 B안 승인): 캘린더 주 보기의 **작은 칸**만 글자 12px.
+ * 작은 칸 = 웹에서 담당자 2명 이상이라 반쪽 폭인 칸, 또는 높이가 maxHeightPx보다 낮은 칸. 그 밖의 칸·화면은 14px.
+ * 판정 기준은 여기 한 곳에 둔다. 12px 클래스는 아래 두 상수에만 쓴다(test/font-size.test.ts가 이 둘만 허용).
+ */
+export const SMALL_CARD = { webMinLanes: 2, maxHeightPx: 48 } as const; // 48px = 웹 1시간 칸 높이. 이보다 낮으면(1시간 미만) 작은 칸
+const SMALL_CARD_TEXT = 'text-xs leading-[15px]';
+const SMALL_CARD_BADGE = '!text-xs !leading-[15px]';
+
 interface Props {
   days: string[];
   data: CalendarData;
@@ -133,16 +142,17 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, p
     if (!box) return null;
     const pos = { ...box, ...horizontal(s.staffId) };
     const key = `${s.kind}-${s.sourceId}-${s.staffId ?? 'all'}`;
+    // 작은 칸(SMALL_CARD): 반쪽 폭(웹·담당자 2명↑·담당자 한 명 칸)이거나 낮은 칸이면 12px
+    const small = (!phone && lanes.length >= SMALL_CARD.webMinLanes && s.staffId !== null) || box.height < SMALL_CARD.maxHeightPx;
+    const fs = small ? SMALL_CARD_TEXT : 'text-sm leading-[1.3]';
+    const badgeClass = cn(CARD_BADGE, small && SMALL_CARD_BADGE);
     if (s.kind === 'block') {
       const b = block.get(s.sourceId)!;
       return (
         <div
           key={key}
           data-kind="block"
-          className={cn(
-            'absolute flex flex-col gap-px overflow-hidden rounded-lg [&>*]:shrink-0 px-[7px] py-[5px] text-sm leading-[1.3]',
-            KIND_CLASS.block,
-          )}
+          className={cn('absolute flex flex-col gap-px overflow-hidden rounded-lg [&>*]:shrink-0 px-[7px] py-[5px]', fs, KIND_CLASS.block)}
           style={pos}
         >
           <b className="truncate font-bold text-ink">관리 불가{b.allStaff && lanes.length > 1 ? ' · 전체' : ''}</b>
@@ -160,12 +170,12 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, p
     const badges = (tone || overlap) && (
       <span className="flex shrink-0 gap-0.5">
         {tone && (
-          <Badge.Root tone={tone} variant="weak" size="large" className={CARD_BADGE}>
+          <Badge.Root tone={tone} variant="weak" size="large" className={badgeClass}>
             <Badge.Label>{STATUS_TEXT[a.status]}</Badge.Label>
           </Badge.Root>
         )}
         {overlap && (
-          <Badge.Root tone="critical" variant="weak" size="large" className={CARD_BADGE}>
+          <Badge.Root tone="critical" variant="weak" size="large" className={badgeClass}>
             <Badge.Label>겹침</Badge.Label>
           </Badge.Root>
         )}
@@ -189,7 +199,8 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, p
         className={cn(
           // 세로로 줄을 쌓고(flex-col), 칸 높이에 다 못 들어가는 줄은 옆 열로 넘겨(flex-wrap + 줄 폭 100%) 칸 밖에서 통째로 숨긴다 —
           // 반쯤 잘린 배지·글자가 보이지 않게. 첫 줄(이름)은 늘 첫 열에 남는다.
-          '@container absolute z-[1] flex flex-col flex-wrap content-start gap-x-4 gap-y-px overflow-hidden [&>*]:w-full [&>*]:shrink-0 rounded-lg px-[7px] py-1 text-left text-sm leading-[1.3]',
+          '@container absolute z-[1] flex flex-col flex-wrap content-start gap-x-4 gap-y-px overflow-hidden [&>*]:w-full [&>*]:shrink-0 rounded-lg px-[7px] py-1 text-left',
+          fs,
           STATUS_CLASS[a.status] ?? KIND_CLASS.care,
           overlap && OVERLAP_CLASS,
         )}
@@ -201,7 +212,7 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, p
             {/* 칸 폭 8rem 이상: 이름 옆에 배지. 그보다 좁으면 배지는 따로 아랫줄 — 이름이 배지에 밀려 잘리지 않고,
                 칸 높이에 못 들어가면 그 줄이 통째로 숨는다(반쯤 잘린 배지 없음). 폰 칸은 늘 8rem보다 넓다. */}
             <span data-part="name" className="flex min-w-0 items-center gap-1 whitespace-nowrap">
-              <b className="min-w-0 truncate text-sm font-bold text-ink">{a.customerName}</b>
+              <b className="min-w-0 truncate font-bold text-ink">{a.customerName}</b>
               {badges && <span className="hidden shrink-0 @[8rem]:flex">{badges}</span>}
             </span>
             {badges && <span className="flex @[8rem]:hidden">{badges}</span>}
@@ -213,7 +224,7 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, p
           </>
         ) : (
           <>
-            <b data-part="name" className="truncate text-sm font-bold whitespace-nowrap text-ink">
+            <b data-part="name" className="truncate font-bold whitespace-nowrap text-ink">
               {a.customerName}
             </b>
             <span className="flex min-w-0 items-center gap-0.5 whitespace-nowrap">

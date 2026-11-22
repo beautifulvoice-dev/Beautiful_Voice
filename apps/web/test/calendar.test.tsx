@@ -597,6 +597,7 @@ describe('예약 보기 W2 — 웹 오른쪽 패널 / 폰 아래 시트 (캘린�
     const done = within(wed).getByRole('button', { name: /남궁서연/ });
     const name = done.querySelector('[data-part="name"]')!;
     expect(name.textContent).toBe('남궁서연'); // 이름 줄엔 배지가 없다
+    expect(done).toHaveClass('text-xs'); // 반쪽 칸은 작은 칸 — 12px(설계서 §9.1 예외, 카본 11/22 B안)
     expect(name.nextElementSibling).toHaveTextContent('완료');
     expect(within(wed).getByRole('button', { name: /손님나/ }).querySelector('[data-part="name"]')!.nextElementSibling).toHaveTextContent(
       '11:30',
@@ -606,6 +607,8 @@ describe('예약 보기 W2 — 웹 오른쪽 패널 / 폰 아래 시트 (캘린�
     const wide = within(screen.getByRole('region', { name: '11월 18일' })).getByRole('button', { name: /남궁서연/ });
     expect(wide.querySelector('[data-part="name"]')).toHaveTextContent('남궁서연완료');
     expect(wide.querySelector('[data-part="menu-time"]')).toHaveTextContent('메뉴 없음 · 14:00–15:00');
+    expect(wide).toHaveClass('text-sm'); // 넓고 1시간 칸은 14px 그대로
+    expect(wide).not.toHaveClass('text-xs');
   });
 
   it('상태 고치기 → 취소는 확인을 한 번 더 묻고, 그만두면 그대로다(설계서 W2, #68 리뷰)', async () => {
