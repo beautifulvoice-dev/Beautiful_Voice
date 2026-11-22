@@ -186,6 +186,29 @@ describe('메뉴 화면', () => {
     expect((await api.listMenus()).filter((m) => m.name === '얼굴 관리')).toHaveLength(1);
   });
 
+  it('저장 중에는 시트를 닫을 수 없고, 응답이 오면 한 번만 저장된다(#61 옵마 리뷰)', async () => {
+    const api = createMemorySettingsApi();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const slow: SettingsApi = {
+      ...api,
+      addMenu: async (input, o) => {
+        await gate; // 응답이 늦다
+        return api.addMenu(input, o);
+      },
+    };
+    renderAt('/settings/menus', slow);
+    await userEvent.click(await screen.findByRole('button', { name: '메뉴 추가' }));
+    const d = await sheet();
+    await userEvent.type(within(d).getByLabelText('이름'), '얼굴 관리');
+    await save(d);
+    await userEvent.keyboard('{Escape}'); // 응답 전에 닫으려 해도
+    expect(screen.getByRole('dialog', { name: '메뉴 추가' })).toBeInTheDocument();
+    release();
+    await closed();
+    expect((await api.listMenus()).filter((m) => m.name === '얼굴 관리')).toHaveLength(1);
+  });
+
   it('다른 곳에서 먼저 고쳤으면 안내하고 새 내용으로 다시 채운다', async () => {
     const api = createMemorySettingsApi();
     renderAt('/settings/menus', api);

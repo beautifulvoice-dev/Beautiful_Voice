@@ -199,7 +199,8 @@ function MenuSheet({
 
   // 결과를 모르는 저장(응답 끊김)은 닫아도 입력과 키를 그대로 두고 목록을 다시 읽는다(#59 리뷰와 같은 이유).
   function close(next: boolean) {
-    if (next) return;
+    // 저장 중에는 닫지 않는다 — 응답 전에 닫으면 결과를 모른 채 입력·키가 초기화돼 같은 메뉴가 두 번 생길 수 있다(#61 옵마 리뷰).
+    if (next || save.saving) return;
     const unknown = save.problem?.kind === 'failed';
     onClose(unknown);
     if (unknown) reload();
