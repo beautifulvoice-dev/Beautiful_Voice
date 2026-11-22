@@ -66,6 +66,10 @@ export function rejectText(reason: SaveReject, conflictingIds: readonly string[]
       return '예약을 찾을 수 없어요. 다시 불러와 주세요.';
     case 'NETWORK':
       return '저장 결과를 확인하지 못했어요. 같은 내용으로 다시 시도해 주세요.';
+    case 'UNAUTHENTICATED':
+      return '로그인이 끝났어요. 다시 로그인한 뒤 시도해 주세요.';
+    case 'FAILED':
+      return '저장하지 못했어요. 잠시 뒤 다시 시도해 주세요.';
   }
 }
 

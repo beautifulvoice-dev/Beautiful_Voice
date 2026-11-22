@@ -15,8 +15,8 @@ import {
   TextField,
 } from '@seed-design/react';
 import { CalendarDays, Minus, Plus, Search, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { toBookingInputs, useCalendarApi } from '@/features/calendar/api';
+import { useEffect, useRef, useState } from 'react';
+import { toBookingInputs, useCalendarApi, type NewAppointment } from '@/features/calendar/api';
 import { occupancyText, rejectText, shopIso } from '@/features/calendar/bookingText';
 import { addDays, shopDate, startTimes, type CalendarData, type Menu, type Staff } from '@/features/calendar/model';
 import { CustomerValidationError, useCustomerApi } from '@/features/customers/api';
@@ -128,6 +128,8 @@ const DEFAULT_PREP = 10;
 const MIN_QUERY = 2;
 
 const CUSTOMER_SAVED_TEXT = '고객은 등록됐어요. 예약은 저장되지 않았어요.';
+/** 예약 응답을 못 받음 — 저장됐을 수도 있다. 단정하지 않고, 다시 저장하면 같은 요청으로 확인한다(#74 리뷰). */
+const APPOINTMENT_UNKNOWN_TEXT = '예약이 저장됐는지 확인하지 못했어요. 다시 저장하면 같은 요청으로 확인해요.';
 const NETWORK_TEXT = '저장 결과를 확인하지 못했어요. 같은 내용으로 다시 시도해 주세요.';
 
 function AppointmentForm({
@@ -168,6 +170,10 @@ function AppointmentForm({
   // 고객·예약은 서로 다른 키. 응답을 못 받으면 같은 내용·같은 키로 다시(설계 05 D5·06 D2).
   const customerKey = useRetryKey();
   const appointmentKey = useRetryKey();
+  /** 결과를 모르는 예약 요청(응답 유실). 다음 저장은 새 검사 없이 이것부터 같은 키로 다시 보낸다(설계 05 D5). */
+  const unsettled = useRef<{ input: NewAppointment; key: string } | null>(null);
+  /** 이 화면에서 새로 등록한 고객인가 — 예약이 안 되면 "고객은 등록됐어요"를 붙인다. */
+  const createdCustomer = useRef(false);
   const touched = <T,>(setter: (v: T) => void) => (v: T) => {
     onDirty(true);
     setError(null);
@@ -210,6 +216,7 @@ function AppointmentForm({
     try {
       const created = await customers.create(input, { idempotencyKey: customerKey.keyFor(JSON.stringify(input)) });
       customerKey.settle();
+      createdCustomer.current = true;
       const saved = { id: created.id, name: created.name, phone: created.phone };
       setPicked(saved);
       return saved;
@@ -227,7 +234,23 @@ function AppointmentForm({
     if (!picked || staffId === '' || !startAt) return;
     setBusy(true);
     setError(null);
+    const customerNote = () => (createdCustomer.current ? '고객은 등록됐어요. ' : '');
     try {
+      // 결과를 모르는 예약이 있으면 먼저 같은 요청·같은 키로 확인한다. 이미 저장됐다면 서버가 처음 응답을 돌려준다 —
+      // 새로 검사하면 방금 저장된 자기 예약과 겹친다고 거부될 수 있다(#74 리뷰).
+      if (unsettled.current) {
+        const { input, key } = unsettled.current;
+        const again = await api.createAppointment(input, { idempotencyKey: key });
+        if (again.ok) {
+          unsettled.current = null;
+          appointmentKey.settle();
+          return onSaved(shopDate(Date.parse(again.value.startAt)));
+        }
+        if (again.reason === 'NETWORK') return setError(`${customerNote()}${APPOINTMENT_UNKNOWN_TEXT}`);
+        // 처음 요청이 확실히 거절됐다 — 저장되지 않았으니 지금 입력으로 새로 저장한다.
+        unsettled.current = null;
+        appointmentKey.settle();
+      }
       // 0) 새 고객이면 같은 이름 고객이 있는지 먼저 묻는다(읽기 — 키 없음).
       if (!picked.id && !confirmedNew) {
         const r = await customers.checkSameName({ name: picked.name, phone: null });
@@ -246,7 +269,7 @@ function AppointmentForm({
       const customer = await ensureCustomer(picked);
       if (!customer?.id) return;
       const menu = menus.find((m) => m.id === menuId);
-      const input = {
+      const input: NewAppointment = {
         customerId: customer.id,
         customerName: customer.name,
         customerPhone: customer.phone,
@@ -258,14 +281,19 @@ function AppointmentForm({
         prepMin: prep,
         memo: memo.trim() || null,
       };
-      const r = await api.createAppointment(input, { idempotencyKey: appointmentKey.keyFor(JSON.stringify(input)) });
+      const key = appointmentKey.keyFor(JSON.stringify(input));
+      const r = await api.createAppointment(input, { idempotencyKey: key });
       if (r.ok) {
         appointmentKey.settle();
         return onSaved(shopDate(Date.parse(r.value.startAt)));
       }
-      if (r.reason !== 'NETWORK') appointmentKey.settle();
+      if (r.reason === 'NETWORK') {
+        unsettled.current = { input, key };
+        return setError(`${customerNote()}${APPOINTMENT_UNKNOWN_TEXT}`);
+      }
+      appointmentKey.settle();
       const why = rejectText(r.reason, r.conflictingIds, ctx);
-      setError(wasNew ? `${CUSTOMER_SAVED_TEXT} ${why}` : why);
+      setError(wasNew || createdCustomer.current ? `${CUSTOMER_SAVED_TEXT} ${why}` : why);
     } catch (err) {
       setError(err instanceof NetworkError ? NETWORK_TEXT : '저장하지 못했어요. 다시 시도해 주세요.');
     } finally {

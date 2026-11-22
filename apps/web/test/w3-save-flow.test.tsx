@@ -98,30 +98,53 @@ describe('W3 저장 흐름(설계 06)', () => {
     expect(within(tuesday).getByRole('button', { name: /합성새손/ })).toBeInTheDocument();
   });
 
-  it('예약 응답을 못 받으면 같은 내용 재시도는 같은 키', async () => {
+  it('예약이 저장된 뒤 응답만 유실 → 다시 저장은 새 검사 없이 같은 요청·같은 키로 확인해 처음 결과를 받는다', async () => {
     const cal = calendarApi();
     const keys: (string | undefined)[] = [];
-    let lost = true;
+    const done = new Map<string, Awaited<ReturnType<CalendarApi['createAppointment']>>>();
+    let lose = true;
     const calendar: CalendarApi = {
       ...cal,
+      // 서버처럼: 같은 키는 처음 결과를 재생한다. 첫 응답은 저장한 뒤 유실된다.
       async createAppointment(input, options) {
-        keys.push(options?.idempotencyKey);
-        if (lost) {
-          lost = false;
+        const key = options?.idempotencyKey ?? '';
+        keys.push(key);
+        const replay = done.get(key);
+        if (replay) return replay;
+        const r = await cal.createAppointment(input, options);
+        done.set(key, r);
+        if (lose) {
+          lose = false;
           return { ok: false, reason: 'NETWORK', conflictingIds: [] };
         }
-        return cal.createAppointment(input, options);
+        return r;
       },
     };
     renderAt(calendar);
     const sheet = await openSheet();
     await fill(sheet, { name: '이서윤' });
     await save(sheet);
-    expect(await within(sheet).findByRole('alert')).toHaveTextContent('저장 결과를 확인하지 못했어요. 같은 내용으로 다시 시도해 주세요.');
+    const alert = await within(sheet).findByRole('alert');
+    expect(alert).toHaveTextContent('예약이 저장됐는지 확인하지 못했어요. 다시 저장하면 같은 요청으로 확인해요.');
+    expect(alert).not.toHaveTextContent('저장되지 않았어요');
     await save(sheet);
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '예약 넣기' })).not.toBeInTheDocument());
     expect(keys).toHaveLength(2);
     expect(keys[1]).toBe(keys[0]);
+    const tuesday = await screen.findByRole('region', { name: '11월 17일' });
+    expect(within(tuesday).getAllByRole('button', { name: /이서윤/ })).toHaveLength(1);
+  });
+
+  it('새 고객 + 예약 응답 유실: "고객은 등록됐어요"는 남기고 예약 미저장은 단정하지 않는다', async () => {
+    const cal = calendarApi();
+    const calendar: CalendarApi = { ...cal, createAppointment: async () => ({ ok: false, reason: 'NETWORK', conflictingIds: [] }) };
+    renderAt(calendar);
+    const sheet = await openSheet();
+    await fill(sheet, { name: '합성유실', newCustomer: true });
+    await save(sheet);
+    const alert = await within(sheet).findByRole('alert');
+    expect(alert).toHaveTextContent('고객은 등록됐어요. 예약이 저장됐는지 확인하지 못했어요.');
+    expect(alert).not.toHaveTextContent('예약은 저장되지 않았어요');
   });
 
   it('새 고객으로 넣을 때 같은 이름이 있으면 먼저 묻고, "새 고객이 맞아요"로 저장한다', async () => {
