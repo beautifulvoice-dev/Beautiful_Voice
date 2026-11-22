@@ -184,7 +184,8 @@ function StaffSheet({
   }
 
   function close(next: boolean) {
-    if (next) return;
+    // 저장 중에는 닫지 않는다 — 응답 전에 닫으면 결과를 모른 채 입력·키가 초기화돼 같은 담당자가 두 번 생길 수 있다(#65 옵마 리뷰).
+    if (next || save.saving) return;
     const unknown = save.problem?.kind === 'failed';
     onClose(unknown);
     if (unknown) reload();

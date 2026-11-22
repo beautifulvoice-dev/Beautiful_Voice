@@ -114,6 +114,29 @@ describe('담당자 화면', () => {
     await waitFor(async () => expect(await names()).toEqual(['원장', '이실장']));
   });
 
+  it('저장 중에는 시트를 닫을 수 없고, 응답이 오면 한 번만 저장된다(#65 옵마 리뷰)', async () => {
+    const api = createMemorySettingsApi();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const slow: SettingsApi = {
+      ...api,
+      addStaff: async (input, o) => {
+        await gate; // 응답이 늦다
+        return api.addStaff(input, o);
+      },
+    };
+    renderAt('/settings/staff', slow);
+    await userEvent.click(await screen.findByRole('button', { name: '담당자 추가' }));
+    const d = await sheet();
+    await userEvent.type(within(d).getByLabelText('이름'), '이실장');
+    await save(d);
+    await userEvent.keyboard('{Escape}'); // 응답 전에 닫으려 해도
+    expect(screen.getByRole('dialog', { name: '담당자 추가' })).toBeInTheDocument();
+    release();
+    await closed();
+    expect((await api.listStaff()).filter((s) => s.name === '이실장')).toHaveLength(1);
+  });
+
   it('다른 곳에서 먼저 고쳤으면 안내하고 새 이름으로 다시 채운다', async () => {
     const api = createMemorySettingsApi();
     renderAt('/settings/staff', api);
