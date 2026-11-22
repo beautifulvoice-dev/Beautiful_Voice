@@ -291,12 +291,25 @@ function CalendarScreen() {
         blocks={data?.blocks ?? []}
         onClose={() => setOpen(null)}
         onStatus={changeStatus}
+        // W2 바꾸기 → 같은 자리에서 W3 편집(설계 06 D4). 닫으면 이 예약 보기로 돌아온다.
+        onEdit={
+          canEnter
+            ? (a) => {
+                setOpenId(null);
+                setEntry({ date: shopDate(Date.parse(a.startAt)), time: null, staffId: a.staffId, editId: a.id });
+              }
+            : undefined
+        }
       />
       <EntrySheet
         start={entry}
         staff={data?.staff ?? []}
         businessHours={data?.businessHours ?? null}
-        onClose={() => setEntry(null)}
+        onClose={() => {
+          // 바꾸기를 닫으면 원래 예약 보기(W2)로 돌아간다(설계 06 D4).
+          if (entry?.editId) setOpenId(entry.editId);
+          setEntry(null);
+        }}
         onSaved={(d) => {
           setEntry(null);
           go({ date: d });
