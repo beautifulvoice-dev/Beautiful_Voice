@@ -8,7 +8,8 @@ import {
   SettingsNotFoundError,
   VersionConflictError,
 } from '@/features/settings/api';
-import { FAILED_TEXT, GONE_TEXT, toSaveProblem } from '@/features/settings/problems';
+import { HttpError, NetworkError } from '@/lib/http';
+import { FAILED_TEXT, GONE_TEXT, REJECTED_TEXT, toSaveProblem } from '@/features/settings/problems';
 import { randomKey, useSaveAction } from '@/features/settings/useSaveAction';
 
 const empty = () => createMemorySettingsApi({ businessHours: null, closures: [], menus: [], staff: [] });
@@ -28,6 +29,10 @@ describe('오류 → 화면 문구', () => {
     expect(toSaveProblem(new VersionConflictError(3)).kind).toBe('conflict');
     expect(toSaveProblem(new SettingsNotFoundError())).toEqual({ kind: 'gone', message: GONE_TEXT });
     expect(toSaveProblem(new TypeError('fetch failed'))).toEqual({ kind: 'failed', message: FAILED_TEXT });
+    expect(toSaveProblem(new NetworkError())).toEqual({ kind: 'failed', message: FAILED_TEXT });
+    // 서버가 답한 그 밖의 실패(500·세션 만료)는 연결 문구가 아니다(#72 리뷰).
+    expect(toSaveProblem(new HttpError(500, 'UNKNOWN'))).toEqual({ kind: 'rejected', message: REJECTED_TEXT });
+    expect(toSaveProblem(new HttpError(401, 'UNAUTHENTICATED')).kind).toBe('rejected');
   });
 });
 
@@ -132,6 +137,23 @@ describe('Idempotency-Key', () => {
     });
     expect(keys).toEqual(['key-1', 'key-2']);
   });
+  it('서버가 500·세션 만료로 답하면 다음 저장은 새 키로 보낸다(#72 리뷰)', async () => {
+    let n = 0;
+    const { result } = renderHook(() => useSaveAction(() => {}, () => `key-${++n}`));
+    const keys: string[] = [];
+    const fail = async (key: string) => {
+      keys.push(key);
+      throw new HttpError(500, 'UNKNOWN');
+    };
+    await act(async () => {
+      await result.current.run(fail);
+    });
+    expect(result.current.problem).toEqual({ kind: 'rejected', message: REJECTED_TEXT });
+    await act(async () => {
+      await result.current.run(fail);
+    });
+    expect(keys).toEqual(['key-1', 'key-2']);
+  });
 });
 
 describe('키 만들기', () => {
@@ -147,4 +169,5 @@ describe('키 만들기', () => {
   it('randomUUID가 있으면 그것을 쓴다', () => {
     expect(randomKey()).toMatch(UUID_V4);
   });
+
 });
