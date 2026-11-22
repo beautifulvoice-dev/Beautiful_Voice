@@ -1,6 +1,6 @@
 // BEA-175 수용 기준: 주·월 전환 / 관리·준비·차단이 다르게 보임 / 예약 카드에 고객·메뉴·담당자, 누르면 메모.
 // 데이터는 합성(절대 규칙 8). 날짜는 주소로 고정해 언제 돌려도 같은 결과가 나오게 한다.
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
@@ -447,6 +447,38 @@ describe('폰·웹 배치(캘린더 PR 2a) — 너비 기준 SEED md 768', () =>
     expect(within(wed).getAllByRole('button')).toHaveLength(3);
     expect(within(wed).getByText('+2')).toBeInTheDocument();
     expect(screen.queryByRole('group', { name: '날짜 고르기' })).not.toBeInTheDocument();
+  });
+  it('폰 월 보기: ‹ ›가 없으니 달력을 왼쪽으로 밀면 다음 달, 오른쪽으로 밀면 이전 달(#66 리뷰)', async () => {
+    setTestWidth(390);
+    const router = renderAt('/calendar?view=month&date=2027-02-10');
+    expect(await screen.findByRole('heading', { level: 2, name: '2027년 2월' })).toBeInTheDocument();
+    const grid = screen.getAllByRole('columnheader')[0]!.parentElement!.parentElement!;
+    fireEvent.touchStart(grid, { touches: [{ clientX: 300, clientY: 100 }] });
+    fireEvent.touchEnd(grid, { changedTouches: [{ clientX: 150, clientY: 110 }] });
+    expect(await screen.findByRole('heading', { level: 2, name: '2027년 3월' })).toBeInTheDocument();
+    expect(router.state.location.search).toBe('?view=month&date=2027-03-01'); // 달 이동은 그달 1일로
+    const grid2 = screen.getAllByRole('columnheader')[0]!.parentElement!.parentElement!;
+    fireEvent.touchStart(grid2, { touches: [{ clientX: 100, clientY: 100 }] });
+    fireEvent.touchEnd(grid2, { changedTouches: [{ clientX: 260, clientY: 90 }] });
+    expect(await screen.findByRole('heading', { level: 2, name: '2027년 2월' })).toBeInTheDocument();
+  });
+
+  it('웹에서 담당자를 거른 뒤 폰 폭으로 바뀌면 칩이 없으니 거르기를 풀어 모든 담당자 예약을 보인다(#66 리뷰)', async () => {
+    renderAt(
+      '/calendar?date=2026-11-18',
+      createMemoryCalendarApi({
+        staff: [{ id: 's1', name: '원장' }, { id: 's2', name: '보조' }],
+        appointments: [appt({ id: 'p1', customerName: '손님가', staffId: 's1' }), appt({ id: 'p2', customerName: '손님나', staffId: 's2' })],
+        blocks: [],
+      }),
+    );
+    const chips = await screen.findByRole('radiogroup', { name: '담당자' });
+    await userEvent.click(within(chips).getByRole('radio', { name: '보조' }));
+    expect(screen.queryByRole('button', { name: /손님가/ })).not.toBeInTheDocument();
+    act(() => setTestWidth(390));
+    await waitFor(() => expect(screen.queryByRole('radiogroup', { name: '담당자' })).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /손님가/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /손님나/ })).toBeInTheDocument();
   });
 });
 

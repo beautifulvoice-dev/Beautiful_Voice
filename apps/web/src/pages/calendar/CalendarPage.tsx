@@ -83,7 +83,8 @@ export function CalendarPage() {
   // 담당자 거르기(W1). 주소에 두지 않는다 — 화면 안 보기 상태.
   const [staffId, setStaffId] = useState<string>(ALL);
   const data = state.status === 'ok' ? state.data : null;
-  const shown = data ? forStaff(data, staffId === ALL ? null : staffId) : null;
+  // 폰 배치엔 담당자 칩이 없으므로 거르기를 쓰지 않는다 — 웹에서 고른 뒤 폭이 좁아져도 다른 담당자 예약이 숨지 않게(#66 리뷰).
+  const shown = data ? forStaff(data, phone || staffId === ALL ? null : staffId) : null;
 
   const go = (next: Partial<{ view: View; date: string }>) =>
     setParams({ view: next.view ?? view, date: next.date ?? date }, { replace: true });
@@ -190,6 +191,7 @@ export function CalendarPage() {
           phone={phone}
           selected={date}
           onPick={(d) => go({ date: d })}
+          onStep={step}
         />
       )}
 

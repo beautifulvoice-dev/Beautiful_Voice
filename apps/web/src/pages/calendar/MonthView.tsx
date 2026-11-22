@@ -12,6 +12,7 @@ import {
   type CalendarAppointment,
   type CalendarData,
 } from '@/features/calendar/model';
+import { useSwipe } from '@/lib/useSwipe';
 import { cn } from '@/lib/utils';
 import { KIND_CLASS, STATUS_TONE } from './styles';
 
@@ -29,17 +30,20 @@ interface Props {
   /** 고른 날(주소 ?date=). 폰에서 아래 목록에 쓴다. */
   selected?: string;
   onPick?: (date: string) => void;
+  /** 폰: 달력을 좌우로 밀면 이전·다음 달(폰엔 ‹ ›가 없다, 11/21 옵마 결정). */
+  onStep?: (n: 1 | -1) => void;
 }
 
 /** 웹 칸에 이름을 몇 건까지 적나 — 넘치면 "+N"(설계서 W1). */
 const NAMES_PER_DAY = 3;
 
-export function MonthView({ days, month, data, today, onOpen, phone = false, selected, onPick }: Props) {
+export function MonthView({ days, month, data, today, onOpen, phone = false, selected, onPick, onStep }: Props) {
   const shown = data.appointments.filter(isShown).sort((a, b) => a.startAt.localeCompare(b.startAt));
   const dayOf = (a: CalendarAppointment) => shopDate(Date.parse(a.startAt));
+  const swipe = useSwipe((n) => onStep?.(n));
   return (
     <>
-      <div className="rounded-md border">
+      <div className="rounded-md border" {...(phone ? swipe : {})}>
         <div className="grid grid-cols-7">
           {WEEKDAY.map((w) => (
             <div key={w} role="columnheader" className="border-b py-1 text-center text-xs text-ink-soft">
