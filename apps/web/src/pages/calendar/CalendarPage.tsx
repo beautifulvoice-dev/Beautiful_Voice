@@ -132,7 +132,11 @@ function CalendarScreen() {
     const reason = (r: { reason: Parameters<typeof rejectText>[0]; conflictingIds: string[] }) =>
       data ? rejectText(r.reason, r.conflictingIds, { data, staffId: a.staffId, startAt: a.startAt }) : '바꾸지 못했어요.';
     const r = await api.setStatus(a.id, to);
-    if (!r.ok) return reason(r);
+    if (!r.ok) {
+      // 그사이 바뀌었거나 없어졌으면 최신으로 다시 읽는다(설계 05 D4).
+      if (r.reason === 'VERSION_CONFLICT' || r.reason === 'NOT_FOUND') reload();
+      return reason(r);
+    }
     // 저장되면 패널을 닫고 스낵바로 알린다 — "되돌리기"는 이전 상태로(설계서 W2, 11/22 옵마).
     const from = a.status;
     setOpen(null);
@@ -241,6 +245,15 @@ function CalendarScreen() {
 
       {state.status === 'loading' && <p className="py-8 text-center text-sm text-ink-soft">불러오는 중…</p>}
       {state.status === 'error' && <ErrorState onRetry={reload} />}
+      {/* 영업시간·휴무만 못 불러왔으면 예약은 그대로 보이고, 열린 날처럼 보이지 않게 따로 알린다(설계 05 D3). */}
+      {data?.hoursUnavailable && (
+        <p role="status" className={cn('text-sm text-ink-soft', phone && 'px-5')}>
+          영업시간·휴무를 불러오지 못해 쉬는 시간 표시를 뺐어요.{' '}
+          <button type="button" className="font-bold underline" onClick={reload}>
+            다시 불러오기
+          </button>
+        </p>
+      )}
       {shown && view === 'week' && (
         <>
           {phone && <WeekStrip days={days} data={shown} selected={date} today={today} onPick={(d) => go({ date: d })} onStep={step} />}

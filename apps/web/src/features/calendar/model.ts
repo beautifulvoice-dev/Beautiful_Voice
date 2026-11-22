@@ -33,6 +33,10 @@ export interface CalendarAppointment {
   prepMin: number;
   memo: string | null;
   status: AppointmentStatus;
+  /** 실제 API의 행 버전 — 상태·내용을 고칠 때 보낸다(계약 #42 동시 수정). 가짜 저장소는 비워 둔다. */
+  version?: number;
+  /** 고른 메뉴(없으면 null). 가짜 저장소는 이름만 둔다. */
+  menuId?: string | null;
 }
 
 /** 캘린더 차단. allStaff면 매장 전체, 아니면 staffIds의 담당자만 막는다(명세 01 §2.2). */
@@ -48,6 +52,8 @@ export interface CalendarBlock {
 export interface Staff {
   id: string;
   name: string;
+  /** false = 숨긴 담당자. 그 담당자의 예약이 화면에 남아 있을 때만 받는다(설계 04 D7). 새 예약에는 못 고른다. */
+  active?: boolean;
 }
 
 /** 메뉴(설정 2A-1). 예약 넣기(W3)에서 칩을 고르면 관리·준비 시간이 채워진다(결정 S3). */
@@ -66,6 +72,8 @@ export interface CalendarData {
   businessHours: BusinessHours | null;
   /** 휴무(계약 #42 closures). 그날은 격자 전체를 회색으로 덮는다(결정 S2). */
   closures: Closure[];
+  /** 영업시간·휴무만 못 불러옴(설계 05 D3). 예약은 보이고, 회색 덮기는 보류하고 따로 다시 시도한다. */
+  hoursUnavailable?: boolean;
 }
 
 // ── 날짜 계산(매장 날짜 'YYYY-MM-DD') ─────────────────────────────
