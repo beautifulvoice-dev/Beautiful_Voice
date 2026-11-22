@@ -20,15 +20,17 @@ shadcn으로 계속 가면 디자인의 부품(ActionButton·Badge·Chip·Segmen
 - **SEED Design 3.4.0**(`@seed-design/react`·`@seed-design/css`, 버전 고정)과 **Pretendard 1.3.9**를 쓴다. 밝은 모드만(`data-seed-color-mode="light-only"`).
 - **색은 `apps/web/src/styles/tokens.css`의 역할 토큰에서만 정한다.** SEED 브랜드(당근 주황)는 SEED 자체 보라 단계로 돌린다(여덟 줄). 화면 코드에 색 값을 직접 쓰지 않는다.
 - **Tailwind는 배치 전용**(flex·grid·간격·크기·위치). 색 클래스는 역할 토큰 이름(`bg-paper`, `text-ink-soft`, `bg-brand-weak` …)만 쓴다.
-- **CSS 층 순서**: `theme, base, seed-base, components, seed-components, utilities`. SEED는 layered 판을 불러 Tailwind 층 안에 넣는다.
-- **SEED 레시피는 쓰는 것만** `styles/seed.css`에 한 줄씩 더한다(앱 크기). 글꼴은 빌드에 함께 싣고 외부에서 받지 않는다.
+- **CSS 층 순서**: `theme, base, seed-base, components, seed-components, utilities`. 이 선언(`styles/layers.css`)을 앱에서 **가장 먼저** 불러온다 — 층 순서는 처음 나온 선언이 정하므로, SEED 부품 CSS가 먼저 들어오면 SEED 부품이 맨 아래 층이 되어 Tailwind 기본 스타일에 덮인다.
+- **SEED는 층 있는 판만**: `@seed-design/react` 부품은 자기 레시피 CSS를 스스로 불러온다. 패키지 기본 판은 층 없는 CSS라 모든 층을 이기므로, Vite `resolve.conditions`에 `seed-layered`를 넣어 층 있는 판(`@layer seed-components`)을 고른다.
+- **레시피는 쓰는 것만 실린다**: 레시피를 우리가 따로 불러오지 않는다. 패키지가 CSS만 부수 효과로 표시(`sideEffects: *.css`)해서, 빌드에는 실제로 쓴 부품의 레시피만 남는다(개발 서버는 전부 내려받음). 글꼴은 빌드에 함께 싣고 외부에서 받지 않는다.
 - **shadcn·radix·lucide는 화면을 옮길 때마다 뺀다.** 그동안은 shadcn 색 변수를 SEED 역할 토큰으로 이어 아직 안 옮긴 화면도 같은 브랜드로 보이게 한다. 마지막 화면을 옮기는 PR에서 `components/ui/button.tsx`·`radix-ui`·`class-variance-authority`·`lucide-react`를 지운다.
+- **화면 너비 기준도 SEED와 같게**: Tailwind 브레이크포인트를 `sm 480 · md 768 · lg 1280 · xl 1440`으로 바꾼다(`@seed-design/css/breakpoints`·디자인 HTML과 같은 값). 본문 최대 폭 1280px. 화면 설계서 §2의 1200px은 [제안]이라 따르지 않는다(2026-11-21 옵마). 폰·웹에서 부품이 다른 곳만 `lib/useLayout`(SEED `useBreakpoint`)으로 가르고, 배치 차이는 CSS로 한다.
 - 새 화면(예약 넣기·설정 등)은 처음부터 SEED로 만든다.
 
 ## 옮기기 체크리스트
 shadcn이 남은 화면을 SEED로 옮길 때마다 체크한다. 모두 끝나면 마지막 PR에서 아래 "정리"를 한다.
 - [x] 웹셸(`AppShell`) — 이 ADR의 기반 PR
-- [ ] 캘린더 W1·W2(`pages/calendar/*`) — 예약 칸 하늘색을 `--cal-*` 토큰으로
+- [x] 캘린더 W1·W2(`pages/calendar/*`) — 토큰 색(#50), 폰·웹 배치(캘린더 PR 2a), 예약 패널·시트(PR 2b)
 - [ ] 로그인 W0(`LoginPage`) — 카카오 버튼 규칙
 - [ ] 설정 W13(`SettingsPage`)
 - [ ] 고객 W5·W6(`pages/customers/*`)

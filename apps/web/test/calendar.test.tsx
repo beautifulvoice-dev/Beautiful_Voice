@@ -1,23 +1,31 @@
 // BEA-175 수용 기준: 주·월 전환 / 관리·준비·차단이 다르게 보임 / 예약 카드에 고객·메뉴·담당자, 누르면 메모.
 // 데이터는 합성(절대 규칙 8). 날짜는 주소로 고정해 언제 돌려도 같은 결과가 나오게 한다.
-import { render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SessionLoaderProvider } from '@/features/auth/session';
 import { CalendarApiProvider, createMemoryCalendarApi, type CalendarApi } from '@/features/calendar/api';
 import { seedCalendar } from '@/features/calendar/mockData';
 import {
   appointmentTimeText,
+  forStaff,
   hourRange,
+  hoursBase,
+  isClosedDay,
   monthGrid,
+  outsideHours,
+  overlapsBlock,
   segmentsForDay,
   weekDays,
+  weekTitle,
   type CalendarAppointment,
+  type CalendarBlock,
 } from '@/features/calendar/model';
 import { validDate } from '@/pages/calendar/CalendarPage';
 import { routes } from '@/routes';
+import { setTestWidth } from './setup';
 
 // 2026-11-16(월) ~ 22(일) 주. 시드는 이 주 월요일 기준.
 const API = () => createMemoryCalendarApi(seedCalendar('2026-11-18'));
@@ -102,26 +110,161 @@ describe('캘린더 배치 규칙', () => {
   });
 });
 
+describe('W1 디자인 규칙(SEED 옮기기)', () => {
+  it('주 제목은 목요일이 든 달의 몇째 주 — 11/23~29는 11월 넷째 주, 10/26~11/1은 10월 다섯째 주', () => {
+    expect(weekTitle('2026-11-24')).toBe('11월 넷째 주');
+    expect(weekTitle('2026-11-18')).toBe('11월 셋째 주');
+    expect(weekTitle('2026-11-01')).toBe('10월 다섯째 주');
+    expect(weekTitle('2026-12-02')).toBe('12월 첫째 주');
+  });
+
+  it('휴무: 매주 요일 휴무와 날짜 구간 휴가', () => {
+    const closures = [
+      { id: 'w', kind: 'weekly' as const, weekday: 7 as const, note: null },
+      { id: 'v', kind: 'vacation' as const, startDate: '2026-11-25', endDate: '2026-11-26', note: null },
+    ];
+    expect(['2026-11-22', '2026-11-24', '2026-11-25', '2026-11-26', '2026-11-27'].map((d) => isClosedDay(d, closures))).toEqual([true, false, true, true, false]);
+  });
+
+  it('영업시간 밖 구간: 점심시간 포함, 안 넣었으면 없음, 그 요일 구간이 없으면 하루 전체', () => {
+    const hours = { 3: [{ open: '14:00', close: '19:00' }, { open: '10:00', close: '13:00' }] };
+    expect(outsideHours('2026-11-18', hours)).toEqual([[0, 600], [780, 840], [1140, 1440]]);
+    expect(outsideHours('2026-11-18', null)).toEqual([]);
+    expect(outsideHours('2026-11-19', hours)).toEqual([[0, 1440]]);
+    expect(hoursBase(['2026-11-18'], hours)).toEqual([9, 20]);
+    expect(hoursBase(['2026-11-18'], null)).toEqual([9, 21]);
+  });
+
+  it('영업이 24:00까지면 뒤쪽 회색이 없고 세로 범위는 24시를 넘지 않는다(자정을 넘는 구간은 설정 검사 #39가 거부)', () => {
+    const late = { 3: [{ open: '18:00', close: '24:00' }] };
+    expect(outsideHours('2026-11-18', late)).toEqual([[0, 1080]]);
+    expect(hoursBase(['2026-11-18'], late)).toEqual([17, 24]);
+  });
+
+  it('겹침: 그 담당자(또는 매장 전체) 관리 불가와 점유 구간이 겹칠 때만 — 준비 시간도 점유', () => {
+    const block = (over: Partial<CalendarBlock>): CalendarBlock => ({
+      id: 'b', startAt: '2026-11-18T04:30:00Z', endAt: '2026-11-18T04:50:00Z', allStaff: false, staffIds: ['s1'], memo: null, ...over,
+    }); // 서울 13:30~13:50 — 14:00 예약의 준비(13:40~)와 겹침
+    expect(overlapsBlock(appt({}), [block({})])).toBe(true);
+    expect(overlapsBlock(appt({ prepMin: 0 }), [block({})])).toBe(false);
+    expect(overlapsBlock(appt({}), [block({ staffIds: ['s2'] })])).toBe(false);
+    expect(overlapsBlock(appt({}), [block({ staffIds: [], allStaff: true })])).toBe(true);
+  });
+
+  it('담당자 거르기: 그 담당자 예약과, 그 담당자에게 걸린 차단·매장 전체 차단만', () => {
+    const data = {
+      staff: [{ id: 's1', name: '원장' }, { id: 's2', name: '보조' }],
+      appointments: [appt({ id: 'a1', staffId: 's1' }), appt({ id: 'a2', staffId: 's2' })],
+      blocks: [
+        { id: 'all', startAt: 'x', endAt: 'y', allStaff: true, staffIds: [], memo: null },
+        { id: 'only2', startAt: 'x', endAt: 'y', allStaff: false, staffIds: ['s2'], memo: null },
+      ],
+      businessHours: null,
+      closures: [],
+    };
+    const s1 = forStaff(data, 's1');
+    // A·B 둘에게 걸린 차단을 A로 거르면 A 조각만 — B 조각이 전체 폭으로 겹쳐 그려지지 않게(#50 리뷰)
+    const both = { ...data, blocks: [{ id: 'ab', startAt: '2026-11-18T01:00:00Z', endAt: '2026-11-18T02:00:00Z', allStaff: false, staffIds: ['s1', 's2'], memo: null }] };
+    const onlyA = forStaff(both, 's1');
+    expect(onlyA.blocks[0]!.staffIds).toEqual(['s1']);
+    expect(segmentsForDay('2026-11-18', onlyA).filter((g) => g.kind === 'block').map((g) => g.staffId)).toEqual(['s1']);
+    expect([s1.staff.map((s) => s.id), s1.appointments.map((a) => a.id), s1.blocks.map((b) => b.id)]).toEqual([['s1'], ['a1'], ['all']]);
+    expect(forStaff(data, null)).toBe(data);
+  });
+});
+
 describe('캘린더 화면', () => {
-  it('주간 보기: 요일 7칸과 관리·준비·차단이 서로 다른 모양으로 보인다', async () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('관리 불가와 겹친 예약은 빨간 테두리와 "겹침", 완료는 옅게 + "완료", 노쇼는 "노쇼"', async () => {
     renderAt('/calendar?date=2026-11-18');
-    expect(await screen.findByRole('heading', { level: 2, name: '11월 16일 – 11월 22일' })).toBeInTheDocument();
+    const friday = await screen.findByRole('region', { name: '11월 20일' });
+    const overlapped = within(friday).getByRole('button', { name: /한예린/ });
+    expect(overlapped).toHaveAttribute('data-overlap', 'true');
+    expect(within(overlapped).getByText('겹침').closest('.seed-badge__root--size_large')).toHaveClass('seed-badge__root--tone_critical');
+    const done = within(screen.getByRole('region', { name: '11월 16일' })).getByRole('button', { name: /김하늘/ });
+    expect(done).toHaveAttribute('data-status', 'completed');
+    expect(within(done).getByText('완료').closest('.seed-badge__root--size_large')).toHaveClass('seed-badge__root--tone_positive');
+    expect(done).not.toHaveTextContent('겹침');
+    const noShow = within(screen.getByRole('region', { name: '11월 18일' })).getByRole('button', { name: /김하늘/ });
+    expect(within(noShow).getByText('노쇼').closest('.seed-badge__root--size_large')).toHaveClass('seed-badge__root--tone_critical');
+  });
+
+  it('영업시간 밖과 휴무일은 회색으로 덮는다', async () => {
+    renderAt('/calendar?date=2026-11-18');
+    const monday = await screen.findByRole('region', { name: '11월 16일' });
+    expect(monday.querySelectorAll('[data-kind="closed"]').length).toBeGreaterThan(0); // 10시 전
+    // 휴무일(웹)은 칸 전체가 회색 + 가운데 "정기 휴무"(디자인 .day.off)
+    const sunday = screen.getByRole('region', { name: '11월 22일' });
+    expect(sunday).toHaveClass('bg-cal-closed');
+    expect(sunday.querySelector('[data-kind="closed"]')).toHaveTextContent('정기 휴무');
+  });
+
+  it('담당자가 1명이면 칩이 없다', async () => {
+    renderAt('/calendar?date=2026-11-18');
     await screen.findByRole('region', { name: '11월 16일' });
-    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['월 16', '화 17', '수 18', '목 19', '금 20', '토 21', '일 22']);
-    expect(screen.getByRole('button', { name: '주', pressed: true })).toBeInTheDocument();
+    expect(screen.queryByRole('radiogroup', { name: '담당자' })).not.toBeInTheDocument();
+  });
+
+  it('담당자가 2명이면 "전체·원장·보조" 칩으로 거르고, 카드에 담당자 이름이 보인다(가짜 담당자는 이 테스트에서만)', async () => {
+    renderAt(
+      '/calendar?date=2026-11-18',
+      createMemoryCalendarApi({
+        staff: [{ id: 's1', name: '원장' }, { id: 's2', name: '보조' }],
+        appointments: [appt({ id: 'p1', customerName: '손님가', staffId: 's1' }), appt({ id: 'p2', customerName: '손님나', staffId: 's2' })],
+        blocks: [],
+      }),
+    );
+    const wed = await screen.findByRole('region', { name: '11월 18일' });
+    const chips = screen.getByRole('radiogroup', { name: '담당자' });
+    expect(within(chips).getAllByRole('radio').map((r) => r.closest('label')!.textContent)).toEqual(['전체', '원장', '보조']);
+    expect(within(chips).getByRole('radio', { name: '전체' })).toBeChecked();
+    expect(within(wed).getByRole('button', { name: /손님가/ })).toHaveTextContent('원장');
+    await userEvent.click(within(chips).getByRole('radio', { name: '보조' }));
+    expect(within(wed).queryByRole('button', { name: /손님가/ })).not.toBeInTheDocument();
+    expect(within(wed).getByRole('button', { name: /손님나/ }).style.width).toBe('calc(100% - 6px)'); // 한 줄이면 좌우 3px만 띄운다
+  });
+
+  it('오늘 칸에 지금 시각 빨간 줄이 있다', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-18T05:30:00Z')); // 서울 수 14:30
+    renderAt('/calendar?date=2026-11-18');
+    const wed = await screen.findByRole('region', { name: '11월 18일' });
+    const line = wed.querySelector<HTMLElement>('[data-kind="now"]')!;
+    expect(line).not.toBeNull();
+    expect(screen.getByRole('region', { name: '11월 17일' }).querySelector('[data-kind="now"]')).toBeNull();
+  });
+
+  it('주간 보기: 요일 7칸과 관리·준비·차단이 서로 다른 모양으로 보인다', async () => {
+    // 오늘이 이 주에 들면 날 머리가 "· 오늘"로 바뀌므로 시계를 수요일로 고정한다
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-18T05:30:00Z')); // 서울 수 14:30
+    renderAt('/calendar?date=2026-11-18');
+    expect(await screen.findByRole('heading', { level: 2, name: '11월 셋째 주' })).toBeInTheDocument();
+    await screen.findByRole('region', { name: '11월 16일' });
+    // 날 머리 두 줄(요일 / 날짜), 휴무는 "일 · 정기 휴무"(디자인 .dh)
+    const heads = screen.getAllByRole('columnheader').map((h) => h.textContent);
+    expect(heads).toHaveLength(7);
+    expect(heads[0]).toBe('월16');
+    expect(heads[6]).toBe('일 · 정기 휴무22');
+    expect(screen.getByRole('radio', { name: '주' })).toBeChecked();
     const kinds = new Set(Array.from(document.querySelectorAll('[data-kind]')).map((e) => e.getAttribute('data-kind')));
-    expect(kinds).toEqual(new Set(['care', 'prep', 'block']));
+    for (const k of ['care', 'prep', 'block', 'closed']) expect(kinds).toContain(k);
   });
 
   it('예약 카드에 고객·메뉴·담당자가 보이고, 누르면 메모가 보인다', async () => {
     renderAt('/calendar?date=2026-11-18');
     const monday = await screen.findByRole('region', { name: '11월 16일' });
     const card = within(monday).getByRole('button', { name: /이서윤/ });
-    expect(card).toHaveTextContent('이서윤등 관리원장');
+    // 웹 칸은 이름 + 시작 시각(디자인), 메뉴는 화면 읽기용으로 함께. 담당자가 1명이면 담당자 이름은 없다(W1)
+    expect(card).toHaveTextContent('이서윤14:00');
+    expect(card).toHaveTextContent('등 관리');
+    expect(card).not.toHaveTextContent('원장');
     await userEvent.click(card);
     const dialog = await screen.findByRole('dialog', { name: '이서윤' });
     expect(dialog).toHaveTextContent('임산부 — 복부 관리 제외');
-    expect(dialog).toHaveTextContent('2026-11-16 13:40 준비 · 14:00–15:00');
+    expect(dialog).toHaveTextContent('11/16(월) 14:00–15:00 · 60분');
+    expect(dialog).toHaveTextContent('준비 20분 · 13:40부터 일정이 잡혀요');
     expect(dialog).toHaveTextContent('예정'); // scheduled 화면 표기
   });
 
@@ -150,32 +293,37 @@ describe('캘린더 화면', () => {
     renderAt('/calendar?date=2026-11-18');
     const monday = await screen.findByRole('region', { name: '11월 16일' });
     const card = within(monday).getByRole('button', { name: /이서윤/ });
-    expect(card.style.width).toBe('100%');
+    expect(card.style.width).toBe('calc(100% - 6px)');
   });
 
   it('취소된 예약은 캘린더에 없다', async () => {
     renderAt('/calendar?date=2026-11-18');
     const thursday = await screen.findByRole('region', { name: '11월 19일' });
     expect(within(thursday).queryByRole('button')).not.toBeInTheDocument();
-    expect(within(thursday).getByText('차단 · 점심')).toBeInTheDocument();
+    expect(within(thursday).getByText('관리 불가')).toBeInTheDocument();
+    expect(within(thursday).getByText('점심')).toBeInTheDocument();
   });
 
   it('주 ↔ 월 전환과 이전·다음 이동은 주소에 남는다', async () => {
     const router = renderAt('/calendar?date=2026-11-18');
     await screen.findByRole('region', { name: '11월 16일' });
-    await userEvent.click(screen.getByRole('button', { name: '월' }));
+    await userEvent.click(screen.getByRole('radio', { name: '월' }));
     expect(await screen.findByRole('heading', { level: 2, name: '2026년 11월' })).toBeInTheDocument();
     expect(router.state.location.search).toBe('?view=month&date=2026-11-18');
     const day = await screen.findByRole('region', { name: '11월 20일' });
     expect(within(day).getByRole('button', { name: /15:00 한예린/ })).toBeInTheDocument();
-    expect(within(day).getByText('차단 · 원장 외출')).toBeInTheDocument();
+    expect(within(day).getByText('관리 불가 · 원장 외출')).toBeInTheDocument();
+    // 월로 바꿔도 관리 불가와 겹친 예약은 "겹침"으로 보인다(R50, #50 리뷰)
+    const overlapped = within(day).getByRole('button', { name: /15:00 한예린/ });
+    expect(overlapped).toHaveAttribute('data-overlap', 'true');
+    expect(overlapped).toHaveTextContent('겹침');
 
     await userEvent.click(screen.getByRole('button', { name: '다음 달' }));
     expect(await screen.findByRole('heading', { level: 2, name: '2026년 12월' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: '주' }));
-    expect(await screen.findByRole('heading', { level: 2, name: '11월 30일 – 12월 6일' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('radio', { name: '주' }));
+    expect(await screen.findByRole('heading', { level: 2, name: '12월 첫째 주' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: '이전 주' }));
-    expect(await screen.findByRole('heading', { level: 2, name: '11월 23일 – 11월 29일' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 2, name: '11월 넷째 주' })).toBeInTheDocument();
   });
 
   it('월간 보기에서도 준비 시간이 있는 예약을 구분한다(관리 시작 + 준비 표시)', async () => {
@@ -209,10 +357,262 @@ describe('캘린더 화면', () => {
   it('불러오기 실패는 경고와 다시 시도로 보인다', async () => {
     let fail = true;
     const ok = API();
-    renderAt('/calendar?date=2026-11-18', { range: (f, t) => (fail ? Promise.reject(new Error('x')) : ok.range(f, t)) });
+    renderAt('/calendar?date=2026-11-18', { ...ok, range: (f, t) => (fail ? Promise.reject(new Error('x')) : ok.range(f, t)) });
     expect(await screen.findByRole('alert')).toBeInTheDocument();
     fail = false;
     await userEvent.click(screen.getByRole('button', { name: '다시 시도' }));
     expect(await screen.findByRole('region', { name: '11월 16일' })).toBeInTheDocument();
+  });
+});
+
+describe('폰·웹 배치(캘린더 PR 2a) — 너비 기준 SEED md 768', () => {
+  it('폰 주 보기: 위 7일 띠와 고른 날 하루 시간표, 띠에서 날을 누르면 시간표와 ?date가 바뀐다', async () => {
+    setTestWidth(390);
+    const router = renderAt('/calendar?date=2026-11-18');
+    const strip = await screen.findByRole('group', { name: '날짜 고르기' });
+    expect(within(strip).getAllByRole('button')).toHaveLength(7);
+    expect(within(strip).getByRole('button', { name: /11월 18일 수요일/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(strip).getByRole('button', { name: /11월 16일 월요일 · 예약 03건/ })).toBeInTheDocument();
+    expect(within(strip).getByRole('button', { name: /11월 22일 일요일 · 휴무/ })).toBeInTheDocument();
+    // 하루 시간표 = 그날 칸 하나
+    expect(screen.getAllByRole('region', { name: /^11월 \d+일$/ })).toHaveLength(1);
+    expect(screen.getByRole('region', { name: '11월 18일' })).toBeInTheDocument();
+
+    await userEvent.click(within(strip).getByRole('button', { name: /11월 16일 월요일/ }));
+    expect(router.state.location.search).toBe('?view=week&date=2026-11-16');
+    const monday = await screen.findByRole('region', { name: '11월 16일' });
+    expect(within(monday).getByRole('button', { name: /이서윤/ })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '11월 18일' })).not.toBeInTheDocument();
+  });
+
+  it('폰 주 보기에서 담당자가 2명이면 하루 시간표 머리에 담당자별 칸 이름', async () => {
+    setTestWidth(390);
+    renderAt(
+      '/calendar?date=2026-11-18',
+      createMemoryCalendarApi({
+        staff: [{ id: 's1', name: '원장' }, { id: 's2', name: '보조' }],
+        appointments: [appt({ id: 'p1', customerName: '손님가', staffId: 's1' }), appt({ id: 'p2', customerName: '손님나', staffId: 's2' })],
+        blocks: [],
+      }),
+    );
+    const wed = await screen.findByRole('region', { name: '11월 18일' });
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['원장', '보조']);
+    const a = within(wed).getByRole('button', { name: /손님가/ });
+    const b = within(wed).getByRole('button', { name: /손님나/ });
+    expect(a.style.left).not.toBe(b.style.left);
+  });
+
+  it('폰 월 보기: 칸엔 예약 수만, 날을 누르면 아래에 그날 목록, 누르면 예약 보기', async () => {
+    setTestWidth(390);
+    const router = renderAt('/calendar?view=month&date=2026-11-18');
+    const monday = await screen.findByRole('region', { name: '11월 16일' });
+    const cell = within(monday).getByRole('button', { name: '16일 · 예약 3건' });
+    expect(cell).toHaveTextContent('3');
+    expect(within(monday).queryByText(/이서윤/)).not.toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: '11월 22일' })).getByRole('button', { name: '22일 · 휴무' })).toBeInTheDocument();
+
+    await userEvent.click(cell);
+    expect(router.state.location.search).toBe('?view=month&date=2026-11-16');
+    const list = await screen.findByRole('region', { name: '11/16(월) 예약' });
+    expect(within(list).getByText('예약 03')).toBeInTheDocument();
+    expect(within(list).getAllByRole('button').map((b) => b.textContent)).toEqual([
+      expect.stringContaining('10:00김하늘'),
+      expect.stringContaining('14:00이서윤'),
+      expect.stringContaining('16:00박지민'),
+    ]);
+    expect(within(list).getAllByRole('button')[0]).toHaveTextContent('완료');
+    await userEvent.click(within(list).getByRole('button', { name: /이서윤/ }));
+    expect(await screen.findByRole('dialog', { name: '이서윤' })).toBeInTheDocument();
+  });
+
+  it('폰 월 보기: 관리 불가와 겹치는 예약에만 겹침을 표시한다', async () => {
+    setTestWidth(390);
+    const data = seedCalendar('2026-11-18');
+    data.appointments.push(appt({ id: 'after-block', customerName: '합성 고객', startAt: '2026-11-20T08:00:00Z' }));
+    renderAt('/calendar?view=month&date=2026-11-18', createMemoryCalendarApi(data));
+
+    const friday = await screen.findByRole('region', { name: '11월 20일' });
+    await userEvent.click(within(friday).getByRole('button', { name: /20일 · 예약/ }));
+    const list = await screen.findByRole('region', { name: '11/20(금) 예약' });
+    expect(within(list).getByRole('button', { name: /한예린/ })).toHaveTextContent('겹침');
+    expect(within(list).getByRole('button', { name: /합성 고객/ })).not.toHaveTextContent('겹침');
+  });
+
+  it('폰 월 보기: 담당자가 2명이면 목록 줄에 "메뉴 · 담당자"', async () => {
+    setTestWidth(390);
+    renderAt(
+      '/calendar?view=month&date=2026-11-18',
+      createMemoryCalendarApi({
+        staff: [{ id: 's1', name: '원장' }, { id: 's2', name: '보조' }],
+        appointments: [appt({ id: 'p1', customerName: '손님가', staffId: 's2', menuName: '등 관리' })],
+        blocks: [],
+      }),
+    );
+    const list = await screen.findByRole('region', { name: '11/18(수) 예약' });
+    expect(within(list).getByRole('button', { name: /손님가/ })).toHaveTextContent('등 관리 · 보조');
+  });
+
+  it('웹 월 보기: 날마다 3건까지 이름, 넘치면 "+N"', async () => {
+    const many = Array.from({ length: 5 }, (_, i) =>
+      appt({ id: `m${i}`, customerName: `손님${i}`, startAt: `2026-11-18T0${i}:00:00Z`, prepMin: 0, durationMin: 30 }),
+    );
+    renderAt('/calendar?view=month&date=2026-11-18', createMemoryCalendarApi({ staff: [{ id: 's1', name: '원장' }], appointments: many, blocks: [] }));
+    const wed = await screen.findByRole('region', { name: '11월 18일' });
+    expect(within(wed).getAllByRole('button')).toHaveLength(3);
+    expect(within(wed).getByText('+2')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: '날짜 고르기' })).not.toBeInTheDocument();
+  });
+  it('폰 주 보기 예약 칸 둘째 줄은 "메뉴 · 시작 시각" 한 줄 — 긴 메뉴만 말줄임, 시각은 늘 보이고 끝 시각은 없다', async () => {
+    setTestWidth(390);
+    renderAt(
+      '/calendar?date=2026-11-18',
+      createMemoryCalendarApi({
+        staff: [{ id: 's1', name: '원장' }, { id: 's2', name: '보조' }],
+        appointments: [
+          appt({ id: 'long', customerName: '손님가', staffId: 's2', menuName: '프리미엄 리프팅 앤 수분 집중 관리', startAt: '2026-11-18T07:00:00Z' }),
+          appt({ id: 'none', customerName: '손님나', staffId: 's1', startAt: '2026-11-18T07:00:00Z' }),
+        ],
+        blocks: [],
+      }),
+    );
+    const wed = await screen.findByRole('region', { name: '11월 18일' });
+    const card = within(wed).getByRole('button', { name: /손님가/ });
+    expect(card).toHaveClass('overflow-hidden'); // 칸을 넘는 줄은 칸 안에서 잘린다
+    const line = card.querySelector('[data-part="menu-time"]')!;
+    expect(line).toHaveClass('whitespace-nowrap');
+    expect(line.children[0]).toHaveClass('truncate');
+    expect(line.children[0]).toHaveTextContent('프리미엄 리프팅 앤 수분 집중 관리');
+    expect(line.children[1]).toHaveClass('shrink-0');
+    expect(line.children[1]).toHaveTextContent('· 16:00');
+    expect(card).not.toHaveTextContent('17:00');
+    const none = within(wed).getByRole('button', { name: /손님나/ });
+    expect(none.querySelector('[data-part="menu-time"]')).toHaveTextContent('메뉴 없음 · 16:00');
+  });
+
+  it('폰 월 보기: ‹ ›가 없으니 달력을 왼쪽으로 밀면 다음 달, 오른쪽으로 밀면 이전 달(#66 리뷰)', async () => {
+    setTestWidth(390);
+    const router = renderAt('/calendar?view=month&date=2027-02-10');
+    expect(await screen.findByRole('heading', { level: 2, name: '2027년 2월' })).toBeInTheDocument();
+    const grid = (await screen.findAllByRole('columnheader'))[0]!; // 요일 머리에서 밀어도 달력까지 올라간다(데이터를 받은 뒤 그려짐)
+    fireEvent.touchStart(grid, { touches: [{ clientX: 300, clientY: 100 }] });
+    fireEvent.touchEnd(grid, { changedTouches: [{ clientX: 150, clientY: 110 }] });
+    expect(await screen.findByRole('heading', { level: 2, name: '2027년 3월' })).toBeInTheDocument();
+    expect(router.state.location.search).toBe('?view=month&date=2027-03-01'); // 달 이동은 그달 1일로
+    const grid2 = (await screen.findAllByRole('columnheader'))[0]!; // 요일 머리에서 밀어도 달력까지 올라간다(데이터를 받은 뒤 그려짐)
+    fireEvent.touchStart(grid2, { touches: [{ clientX: 100, clientY: 100 }] });
+    fireEvent.touchEnd(grid2, { changedTouches: [{ clientX: 260, clientY: 90 }] });
+    expect(await screen.findByRole('heading', { level: 2, name: '2027년 2월' })).toBeInTheDocument();
+  });
+
+  it('웹에서 담당자를 거른 뒤 폰 폭으로 바뀌면 칩이 없으니 거르기를 풀어 모든 담당자 예약을 보인다(#66 리뷰)', async () => {
+    renderAt(
+      '/calendar?date=2026-11-18',
+      createMemoryCalendarApi({
+        staff: [{ id: 's1', name: '원장' }, { id: 's2', name: '보조' }],
+        appointments: [appt({ id: 'p1', customerName: '손님가', staffId: 's1' }), appt({ id: 'p2', customerName: '손님나', staffId: 's2' })],
+        blocks: [],
+      }),
+    );
+    const chips = await screen.findByRole('radiogroup', { name: '담당자' });
+    await userEvent.click(within(chips).getByRole('radio', { name: '보조' }));
+    expect(screen.queryByRole('button', { name: /손님가/ })).not.toBeInTheDocument();
+    act(() => setTestWidth(390));
+    await waitFor(() => expect(screen.queryByRole('radiogroup', { name: '담당자' })).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /손님가/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /손님나/ })).toBeInTheDocument();
+  });
+});
+
+describe('예약 보기 W2 — 웹 오른쪽 패널 / 폰 아래 시트 (캘린더 PR 2b)', () => {
+  it('웹: 패널이 열려도 격자는 남아 있고(모달 아님), Esc로 닫히면 누른 예약 칸으로 초점이 돌아온다', async () => {
+    renderAt('/calendar?date=2026-11-18');
+    const monday = await screen.findByRole('region', { name: '11월 16일' });
+    const card = within(monday).getByRole('button', { name: /이서윤/ });
+    await userEvent.click(card);
+    const panel = await screen.findByRole('dialog', { name: '이서윤' });
+    expect(panel).not.toHaveAttribute('aria-modal', 'true');
+    expect(screen.getByRole('region', { name: '11월 16일' })).toBeVisible();
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '이서윤' })).not.toBeInTheDocument());
+    await waitFor(() => expect(card).toHaveFocus());
+  });
+
+  it('예정 예약: 완료·노쇼는 켜져 있고 문자 보내기·더보기는 아직 꺼짐 / 겹친 예약은 빨간 알림', async () => {
+    renderAt('/calendar?date=2026-11-18');
+    const friday = await screen.findByRole('region', { name: '11월 20일' });
+    await userEvent.click(within(friday).getByRole('button', { name: /한예린/ }));
+    const panel = await screen.findByRole('dialog', { name: '한예린' });
+    expect(within(panel).getByRole('button', { name: '완료' })).toBeEnabled();
+    expect(within(panel).getByRole('button', { name: '노쇼' })).toBeEnabled();
+    for (const name of ['문자 보내기', '더보기']) expect(within(panel).getByRole('button', { name })).toBeDisabled();
+    expect(panel).toHaveTextContent('관리 불가 시간(14:00–16:00 원장 외출)과 겹쳐요. 예약은 그대로 있어요.');
+  });
+
+  it('완료를 누르면 완료가 되고 버튼은 "상태 고치기" 하나 → 예정으로 되돌릴 수 있다(결정 S5)', async () => {
+    renderAt('/calendar?date=2026-11-18');
+    const tuesday = await screen.findByRole('region', { name: '11월 17일' });
+    await userEvent.click(within(tuesday).getByRole('button', { name: /최유나/ }));
+    let panel = await screen.findByRole('dialog', { name: '최유나' });
+    await userEvent.click(within(panel).getByRole('button', { name: '완료' }));
+    const card = () => within(screen.getByRole('region', { name: '11월 17일' })).getByRole('button', { name: /최유나/ });
+    await waitFor(() => expect(card()).toHaveAttribute('data-status', 'completed'));
+    panel = screen.getByRole('dialog', { name: '최유나' });
+    expect(within(panel).queryByRole('button', { name: '완료' })).not.toBeInTheDocument();
+    // 완료 배지는 positive(초록) — 설계서 §7·§9.3(캡처의 회색과 다르면 설계서를 따른다)
+    expect(within(panel).getByText('완료').closest('[class*="seed-badge__root"]')?.className).toMatch(/tone_positive/);
+    await userEvent.click(within(panel).getByRole('button', { name: '상태 고치기' }));
+    await userEvent.click(within(panel).getByRole('button', { name: '예정' }));
+    await waitFor(() => expect(card()).toHaveAttribute('data-status', 'scheduled'));
+  });
+
+  it('상태 고치기 → 취소는 확인을 한 번 더 묻고, 그만두면 그대로다(설계서 W2, #68 리뷰)', async () => {
+    renderAt('/calendar?date=2026-11-18');
+    const monday = await screen.findByRole('region', { name: '11월 16일' });
+    await userEvent.click(within(monday).getByRole('button', { name: /김하늘/ }));
+    const panel = await screen.findByRole('dialog', { name: '김하늘' });
+    await userEvent.click(within(panel).getByRole('button', { name: '상태 고치기' }));
+    await userEvent.click(within(panel).getByRole('button', { name: '취소' }));
+    const confirm = await screen.findByRole('alertdialog', { name: '11/16(월) 10:00 김하늘 님 예약을 취소할까요?' });
+    await userEvent.click(within(confirm).getByRole('button', { name: '그만두기' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    const card = within(screen.getByRole('region', { name: '11월 16일' })).getByRole('button', { name: /김하늘/ });
+    expect(card).toHaveAttribute('data-status', 'completed');
+    expect(screen.getByRole('dialog', { name: '김하늘' })).toBeInTheDocument();
+  });
+
+  it('취소 확인에서 "예약 취소"를 누르면 취소되어 캘린더에서 빠지고 패널이 닫힌다', async () => {
+    renderAt('/calendar?date=2026-11-18');
+    const monday = await screen.findByRole('region', { name: '11월 16일' });
+    await userEvent.click(within(monday).getByRole('button', { name: /김하늘/ }));
+    const panel = await screen.findByRole('dialog', { name: '김하늘' });
+    await userEvent.click(within(panel).getByRole('button', { name: '상태 고치기' }));
+    await userEvent.click(within(panel).getByRole('button', { name: '취소' }));
+    const confirm = await screen.findByRole('alertdialog');
+    await userEvent.click(within(confirm).getByRole('button', { name: '예약 취소' }));
+    await waitFor(() =>
+      expect(within(screen.getByRole('region', { name: '11월 16일' })).queryByRole('button', { name: /김하늘/ })).not.toBeInTheDocument(),
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '김하늘' })).not.toBeInTheDocument());
+  });
+
+  it('취소를 예정으로 되살릴 때 같은 담당자 예약과 겹치면 거부하고 이유를 알린다(가짜 저장소, @bv/scheduling 규칙)', async () => {
+    const api = createMemoryCalendarApi({
+      staff: [{ id: 's1', name: '원장' }],
+      appointments: [appt({ id: 'live', customerName: '손님가' }), appt({ id: 'gone', customerName: '손님나', status: 'cancelled' })],
+      blocks: [],
+    });
+    const r = await api.setStatus('gone', 'scheduled');
+    expect(r).toEqual({ ok: false, reason: 'STAFF_OVERLAP', conflictingIds: ['live'] });
+    expect(await api.setStatus('live', 'completed')).toMatchObject({ ok: true, value: { status: 'completed' } });
+  });
+
+  it('폰: 같은 내용이 아래 시트로 열리고, "+ 예약"은 떠 있는 버튼 자리', async () => {
+    setTestWidth(390);
+    renderAt('/calendar?date=2026-11-16');
+    const monday = await screen.findByRole('region', { name: '11월 16일' });
+    expect(screen.getByRole('button', { name: '예약' })).toBeDisabled(); // 떠 있는 + 예약(W3 전까지 꺼짐) — 시트가 열리면 뒤 화면은 가려지므로 먼저 확인
+    await userEvent.click(within(monday).getByRole('button', { name: /이서윤/ }));
+    const sheet = await screen.findByRole('dialog', { name: '이서윤' });
+    expect(sheet).toHaveTextContent('준비 20분 · 13:40부터 일정이 잡혀요');
   });
 });
