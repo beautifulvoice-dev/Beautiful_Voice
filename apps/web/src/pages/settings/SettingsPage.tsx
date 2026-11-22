@@ -7,7 +7,7 @@ import { Link } from 'react-router';
 import { shopToday } from '@/features/customers/model';
 import { useSettingsApi } from '@/features/settings/api';
 import { closuresSummary } from '@/features/settings/closures';
-import { hoursSummary } from '@/features/settings/hours';
+import { hoursSummary, weeklyDaysOf } from '@/features/settings/hours';
 import { useLoad } from '@/lib/useLoad';
 
 interface Entry {
@@ -19,17 +19,20 @@ interface Entry {
 
 export function SettingsPage() {
   const api = useSettingsApi();
-  const load = useCallback(() => Promise.all([api.getBusinessHours(), api.listClosures(), api.listStaff()]), [api]);
+  const load = useCallback(
+    () => Promise.all([api.getBusinessHours(), api.listClosures(), api.listMenus(), api.listStaff()]),
+    [api],
+  );
   const { state } = useLoad(load);
   // 요약을 못 불러와도 목록은 보인다 — 들어가서 다시 불러올 수 있다.
-  const [hours, closures, staff] = state.status === 'ok' ? state.data : [];
-  const hoursDetail = state.status === 'ok' ? hoursSummary(hours ?? null) : undefined;
+  const [hours, closures, menus, staff] = state.status === 'ok' ? state.data : [];
+  const hoursDetail = state.status === 'ok' ? hoursSummary(hours ?? null, weeklyDaysOf(closures ?? [])) : undefined;
   const closuresDetail = closures ? closuresSummary(closures, shopToday()) : undefined;
 
   const entries: Entry[] = [
     { title: '영업시간', to: '/settings/hours', detail: hoursDetail },
     { title: '휴무·휴가', to: '/settings/closures', detail: closuresDetail },
-    { title: '메뉴' },
+    { title: '메뉴', to: '/settings/menus', detail: menus ? (menus.length ? `${menus.length}개` : '없음') : undefined },
     // W13 디자인 요약: 사용 중인 담당자 이름(예: "박원장, 이실장").
     { title: '담당자', to: '/settings/staff', detail: staff ? staff.map((s) => s.name).join(', ') || '없음' : undefined },
   ];

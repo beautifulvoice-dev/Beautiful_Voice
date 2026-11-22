@@ -9,6 +9,7 @@ import { CustomerFormPage } from '@/pages/customers/CustomerFormPage';
 import { CustomersPage } from '@/pages/customers/CustomersPage';
 import { ClosuresPage } from '@/pages/settings/ClosuresPage';
 import { HoursPage } from '@/pages/settings/HoursPage';
+import { MenusPage } from '@/pages/settings/MenusPage';
 import { StaffPage } from '@/pages/settings/StaffPage';
 import { SettingsPage } from '@/pages/settings/SettingsPage';
 
@@ -32,6 +33,7 @@ export const routes: RouteObject[] = [
       { path: 'settings', element: <SettingsPage /> },
       { path: 'settings/hours', element: <HoursPage /> },
       { path: 'settings/closures', element: <ClosuresPage /> },
+      { path: 'settings/menus', element: <MenusPage /> },
       { path: 'settings/staff', element: <StaffPage /> },
       { path: '*', element: <EmptyState title="없는 화면이에요" /> },
     ],

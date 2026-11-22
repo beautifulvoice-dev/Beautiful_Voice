@@ -89,7 +89,7 @@ function CalendarScreen() {
   const snackbar = useSnackbarAdapter();
   const api = useCalendarApi();
   const hasApiProvider = useHasCalendarApiProvider();
-  const entryPreview = FAKE_API || hasApiProvider;
+  const canEnter = FAKE_API || hasApiProvider || api.persistsAppointments === true;
   const shopName = useShopName();
   // 폰은 주 보기를 7일 띠 + 고른 날 하루 시간표로, 월 보기를 예약 수 + 아래 목록으로(설계 D4: 부품이 다른 곳만 JS로).
   const phone = useIsPhone();
@@ -126,13 +126,18 @@ function CalendarScreen() {
 
   const staffName = (id: string) => data?.staff.find((s) => s.id === id)?.name ?? '담당자 미상';
   const newEntry = (start?: Partial<EntryStart>) =>
-    setEntry({ date: start?.date ?? date, time: start?.time ?? '10:00', staffId: start?.staffId ?? (staffId === ALL ? null : staffId) });
+    // `+ 예약`은 보고 있는 날짜만 채우고 시각은 원장이 고른다. 빈 칸은 그 날짜·시각·담당자 열(설계 06 D1).
+    setEntry({ date: start?.date ?? date, time: start?.time ?? null, staffId: start?.staffId ?? (staffId === ALL ? null : staffId) });
 
   const changeStatus = async (a: CalendarAppointment, to: AppointmentStatus) => {
     const reason = (r: { reason: Parameters<typeof rejectText>[0]; conflictingIds: string[] }) =>
       data ? rejectText(r.reason, r.conflictingIds, { data, staffId: a.staffId, startAt: a.startAt }) : '바꾸지 못했어요.';
     const r = await api.setStatus(a.id, to);
-    if (!r.ok) return reason(r);
+    if (!r.ok) {
+      // 그사이 바뀌었거나 없어졌으면 최신으로 다시 읽는다(설계 05 D4).
+      if (r.reason === 'VERSION_CONFLICT' || r.reason === 'NOT_FOUND') reload();
+      return reason(r);
+    }
     // 저장되면 패널을 닫고 스낵바로 알린다 — "되돌리기"는 이전 상태로(설계서 W2, 11/22 옵마).
     const from = a.status;
     setOpen(null);
@@ -228,7 +233,7 @@ function CalendarScreen() {
           </ActionButton>
           <span className="flex-1" />
           {segment}
-          {entryPreview && (
+          {canEnter && (
             <ActionButton variant="brandSolid" size="medium" onClick={() => newEntry()}>
               <PrefixIcon svg={<Plus />} />
               예약
@@ -241,6 +246,15 @@ function CalendarScreen() {
 
       {state.status === 'loading' && <p className="py-8 text-center text-sm text-ink-soft">불러오는 중…</p>}
       {state.status === 'error' && <ErrorState onRetry={reload} />}
+      {/* 영업시간·휴무만 못 불러왔으면 예약은 그대로 보이고, 열린 날처럼 보이지 않게 따로 알린다(설계 05 D3). */}
+      {data?.hoursUnavailable && (
+        <p role="status" className={cn('text-sm text-ink-soft', phone && 'px-5')}>
+          영업시간·휴무를 불러오지 못해 쉬는 시간 표시를 뺐어요.{' '}
+          <button type="button" className="font-bold underline" onClick={reload}>
+            다시 불러오기
+          </button>
+        </p>
+      )}
       {shown && view === 'week' && (
         <>
           {phone && <WeekStrip days={days} data={shown} selected={date} today={today} onPick={(d) => go({ date: d })} onStep={step} />}
@@ -252,7 +266,7 @@ function CalendarScreen() {
             onOpen={setOpen}
             staffName={staffName}
             phone={phone}
-            onEmpty={entryPreview ? (d, minute, lane) => newEntry({ date: d, time: hhmm(minute), staffId: lane }) : undefined}
+            onEmpty={canEnter ? (d, minute, lane) => newEntry({ date: d, time: hhmm(minute), staffId: lane }) : undefined}
           />
         </>
       )}
@@ -290,7 +304,7 @@ function CalendarScreen() {
         }}
       />
       {/* + 예약: 폰은 오른쪽 아래 떠 있는 버튼(디자인 .fab — 탭 바 위 오른쪽 18px), 웹은 제목 줄 오른쪽(설계서 W1). */}
-      {phone && entryPreview && (
+      {phone && canEnter && (
         <button
           type="button"
           onClick={() => newEntry()}
