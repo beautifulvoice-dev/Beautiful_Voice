@@ -22,13 +22,26 @@ export class CustomerValidationError extends Error {
   }
 }
 
+/** 409 VERSION_CONFLICT — 그사이 다른 곳에서 고쳤다. 입력은 두고 최신 값을 다시 불러와 확인한다(설계 05 D4). */
+export class CustomerConflictError extends Error {
+  constructor() {
+    super('VERSION_CONFLICT');
+  }
+}
+
+/** 쓰기 요청 옵션. 실제 API는 Idempotency-Key 헤더와 읽은 version을 보낸다(절대 규칙 6, 계약 #42). */
+export interface CustomerWriteOptions {
+  idempotencyKey?: string;
+  version?: number;
+}
+
 export interface CustomerApi {
   /** 이름(띄어쓰기 무시) 또는 전화번호 숫자 일부로 찾는다. 빈 검색어는 전체. */
   list(query: string): Promise<Customer[]>;
   get(id: string): Promise<CustomerDetail | null>;
   checkSameName(subject: Subject): Promise<SameNameCheck>;
-  create(input: CustomerInput): Promise<Customer>;
-  update(id: string, patch: CustomerPatch): Promise<Customer>;
+  create(input: CustomerInput, options?: CustomerWriteOptions): Promise<Customer>;
+  update(id: string, patch: CustomerPatch, options?: CustomerWriteOptions): Promise<Customer>;
 }
 
 export interface MemorySeed {

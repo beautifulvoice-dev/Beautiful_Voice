@@ -98,7 +98,8 @@ export function CalendarPage() {
 
   const staffName = (id: string) => data?.staff.find((s) => s.id === id)?.name ?? '담당자 미상';
   const newEntry = (start?: Partial<EntryStart>) =>
-    setEntry({ date: start?.date ?? date, time: start?.time ?? '10:00', staffId: start?.staffId ?? (staffId === ALL ? null : staffId) });
+    // `+ 예약`은 보고 있는 날짜만 채우고 시각은 원장이 고른다. 빈 칸은 그 날짜·시각·담당자 열(설계 06 D1).
+    setEntry({ date: start?.date ?? date, time: start?.time ?? null, staffId: start?.staffId ?? (staffId === ALL ? null : staffId) });
 
   const changeStatus = async (a: CalendarAppointment, to: AppointmentStatus) => {
     const r = await api.setStatus(a.id, to);

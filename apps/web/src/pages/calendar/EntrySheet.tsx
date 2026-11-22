@@ -2,8 +2,10 @@
 // 폰은 큰 아래 시트, 웹은 오른쪽 패널(W2와 같은 틀). 저장 검사는 서버와 같은 @bv/scheduling checkBooking(절대 규칙 4) —
 // 거부되면 저장 버튼 위 빨간 알림(W3 거부 표).
 import { checkBooking } from '@bv/scheduling/booking';
+import type { Candidate } from '@bv/customers/duplicates';
 import {
   ActionButton,
+  AlertDialog,
   Icon,
   Callout,
   Chip,
@@ -17,8 +19,10 @@ import { useEffect, useState } from 'react';
 import { toBookingInputs, useCalendarApi } from '@/features/calendar/api';
 import { occupancyText, rejectText, shopIso } from '@/features/calendar/bookingText';
 import { addDays, shopDate, type Menu, type Staff } from '@/features/calendar/model';
-import { useCustomerApi } from '@/features/customers/api';
+import { CustomerValidationError, useCustomerApi } from '@/features/customers/api';
 import type { Customer } from '@/features/customers/model';
+import { NetworkError } from '@/lib/http';
+import { useRetryKey } from '@/lib/retryKey';
 import { useIsPhone } from '@/lib/useLayout';
 import { cn } from '@/lib/utils';
 import { CalendarSheet, sheetBodyClass, sheetFootClass, sheetHeadClass, titleClass } from './Sheet';
@@ -26,8 +30,8 @@ import { CalendarSheet, sheetBodyClass, sheetFootClass, sheetHeadClass, titleCla
 export interface EntryStart {
   /** 매장 날짜 'YYYY-MM-DD'. */
   date: string;
-  /** 'HH:MM'. */
-  time: string;
+  /** 'HH:MM'. null = `+ 예약`으로 열었다 — 시각은 원장이 직접 고른다(설계 06 D1). */
+  time: string | null;
   staffId: string | null;
 }
 
@@ -41,8 +45,16 @@ interface Props {
 
 export function EntrySheet({ start, staff, onClose, onSaved }: Props) {
   const phone = useIsPhone();
+  // 입력을 바꿨으면 닫기 전에 묻는다(설계 06 D4). 저장 중에는 닫지 않는다.
+  const [dirty, setDirty] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const close = () => (dirty ? setAsking(true) : onClose());
+  const reset = () => {
+    setDirty(false);
+    setAsking(false);
+  };
   return (
-    <CalendarSheet open={start !== null} onClose={onClose} full>
+    <CalendarSheet open={start !== null} onClose={close} full>
       {start && (
         <>
           <ResponsiveSidePanel.Header className={sheetHeadClass(phone)}>
@@ -50,14 +62,50 @@ export function EntrySheet({ start, staff, onClose, onSaved }: Props) {
               <ResponsiveSidePanel.Title className={cn(titleClass, 'text-xl font-bold tracking-[-0.02em]')}>
                 예약 넣기
               </ResponsiveSidePanel.Title>
-              <ResponsiveSidePanel.CloseButton asChild>
-                <ActionButton variant="ghost" size="small" layout="iconOnly" aria-label="닫기">
-                  <Icon svg={<X />} />
-                </ActionButton>
-              </ResponsiveSidePanel.CloseButton>
+              <ActionButton variant="ghost" size="small" layout="iconOnly" aria-label="닫기" onClick={close}>
+                <Icon svg={<X />} />
+              </ActionButton>
             </div>
           </ResponsiveSidePanel.Header>
-          <AppointmentForm start={start} staff={staff} onSaved={onSaved} />
+          <AppointmentForm
+            key={`${start.date}-${start.time}-${start.staffId}`}
+            start={start}
+            staff={staff}
+            onDirty={setDirty}
+            onSaved={(d) => {
+              reset();
+              onSaved(d);
+            }}
+          />
+          {/* 확인 창은 시트 안에 둔다 — 밖에 두면 폰 아래 시트 뒤로 가려진다(W2 취소 확인과 같은 자리). */}
+          <AlertDialog.Root open={asking} onOpenChange={setAsking}>
+            <AlertDialog.Backdrop />
+            <AlertDialog.Positioner>
+              <AlertDialog.Content>
+                <AlertDialog.Header>
+                  <AlertDialog.Title>입력한 내용이 저장되지 않았어요. 닫을까요?</AlertDialog.Title>
+                </AlertDialog.Header>
+                <AlertDialog.Footer>
+                  <AlertDialog.Action asChild>
+                    <ActionButton variant="neutralWeak" size="large" flexGrow={1}>
+                      계속 입력
+                    </ActionButton>
+                  </AlertDialog.Action>
+                  <ActionButton
+                    variant="criticalSolid"
+                    size="large"
+                    flexGrow={1}
+                    onClick={() => {
+                      reset();
+                      onClose();
+                    }}
+                  >
+                    닫기
+                  </ActionButton>
+                </AlertDialog.Footer>
+              </AlertDialog.Content>
+            </AlertDialog.Positioner>
+          </AlertDialog.Root>
         </>
       )}
     </CalendarSheet>
@@ -66,39 +114,72 @@ export function EntrySheet({ start, staff, onClose, onSaved }: Props) {
 
 // ── W3 예약 넣기 ─────────────────────────────────────────
 
+/** 고른 고객. id가 null이면 아직 등록 전인 새 고객(이름만). */
 type Picked = { id: string | null; name: string; phone: string | null };
 
 const DEFAULT_DURATION = 60;
-/** 메뉴가 없으면 준비 시간 기본 10분(PM 메모 닫힌 항목). */
+/** 메뉴가 없으면 준비 시간 기본 10분(PM 메모 닫힌 항목). 요청에 명시한다 — 생략하면 서버는 0분(설계 06 ④). */
 const DEFAULT_PREP = 10;
+/** 고객 검색은 두 글자부터(설계 06 ②). */
+const MIN_QUERY = 2;
 
-function AppointmentForm({ start, staff, onSaved }: { start: EntryStart; staff: Staff[]; onSaved: (date: string) => void }) {
+const CUSTOMER_SAVED_TEXT = '고객은 등록됐어요. 예약은 저장되지 않았어요.';
+const NETWORK_TEXT = '저장 결과를 확인하지 못했어요. 같은 내용으로 다시 시도해 주세요.';
+
+function AppointmentForm({
+  start,
+  staff: allStaff,
+  onDirty,
+  onSaved,
+}: {
+  start: EntryStart;
+  staff: Staff[];
+  onDirty: (dirty: boolean) => void;
+  onSaved: (date: string) => void;
+}) {
   const api = useCalendarApi();
   const customers = useCustomerApi();
   const phone = useIsPhone();
+  // 새 예약에는 사용 중인 담당자만(설계 04 D3·06 ⑤). 1명이면 자동, 0명이면 저장할 수 없다.
+  const staff = allStaff.filter((s) => s.active !== false);
   const [menus, setMenus] = useState<Menu[]>([]);
   const [query, setQuery] = useState('');
   const [picked, setPicked] = useState<Picked | null>(null);
-  const [candidates, setCandidates] = useState<Customer[]>([]);
+  /** 검색 결과. null = 아직 결과를 받지 못함(새 고객 제안은 결과가 비었을 때만, 06 ③). */
+  const [candidates, setCandidates] = useState<Customer[] | null>(null);
+  /** 새 고객 등록 전 같은 이름 후보 — 고르거나 "새 고객이 맞아요"로 확인한다(06 ③). */
+  const [sameName, setSameName] = useState<Candidate[] | null>(null);
   const [menuId, setMenuId] = useState<string>('');
   const [date, setDate] = useState(start.date);
-  const [time, setTime] = useState(start.time);
+  const [time, setTime] = useState(start.time ?? '');
   const [duration, setDuration] = useState(DEFAULT_DURATION);
   const [prep, setPrep] = useState(DEFAULT_PREP);
-  // 담당자가 1명이면 자동으로 정해지고 칸이 보이지 않는다(F1-4).
-  const [staffId, setStaffId] = useState<string>(staff.length === 1 ? staff[0]!.id : (start.staffId ?? ''));
+  const lane = start.staffId && staff.some((s) => s.id === start.staffId) ? start.staffId : '';
+  const [staffId, setStaffId] = useState<string>(staff.length === 1 ? staff[0]!.id : lane);
   const [memo, setMemo] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // 고객·예약은 서로 다른 키. 응답을 못 받으면 같은 내용·같은 키로 다시(설계 05 D5·06 D2).
+  const customerKey = useRetryKey();
+  const appointmentKey = useRetryKey();
+  const touched = <T,>(setter: (v: T) => void) => (v: T) => {
+    onDirty(true);
+    setError(null);
+    setter(v);
+  };
 
   useEffect(() => {
     api.menus().then(setMenus, () => setMenus([]));
   }, [api]);
   useEffect(() => {
     const q = query.trim();
-    if (picked || !q) return setCandidates([]);
-    let alive = true;
-    customers.list(q).then((list) => alive && setCandidates(list.slice(0, 5)));
+    setCandidates(null);
+    if (picked || q.length < MIN_QUERY) return;
+    let alive = true; // 검색어가 바뀌면 늦게 온 이전 결과는 버린다.
+    customers.list(q).then(
+      (list) => alive && setCandidates(list.filter((c) => c.active !== false).slice(0, 5)),
+      () => alive && setCandidates([]),
+    );
     return () => {
       alive = false;
     };
@@ -106,70 +187,81 @@ function AppointmentForm({ start, staff, onSaved }: { start: EntryStart; staff: 
 
   const startAt = date && time ? shopIso(date, time) : null;
   const staffName = staff.find((s) => s.id === staffId)?.name;
-  const ready = picked !== null && staffId !== '' && startAt !== null;
+  const ready = picked !== null && staffId !== '' && startAt !== null && sameName === null;
 
   const pickMenu = (id: string) => {
-    setMenuId(id);
+    touched(setMenuId)(id);
     const m = menus.find((x) => x.id === id);
-    if (m) {
-      setDuration(m.durationMin);
-      setPrep(m.prepMin);
+    // 메뉴에 정해 둔 값만 덮어쓴다(06 D3).
+    if (m?.durationMin != null) setDuration(m.durationMin);
+    if (m?.prepMin != null) setPrep(m.prepMin);
+  };
+
+  /** 새 고객 등록. 성공하면 고른 고객에 id를 넣어 둔다 — 예약이 실패해 다시 저장해도 고객을 또 만들지 않는다. */
+  const ensureCustomer = async (who: Picked): Promise<Picked | null> => {
+    if (who.id) return who;
+    const input = { name: who.name, phone: null, memo: null };
+    try {
+      const created = await customers.create(input, { idempotencyKey: customerKey.keyFor(JSON.stringify(input)) });
+      customerKey.settle();
+      const saved = { id: created.id, name: created.name, phone: created.phone };
+      setPicked(saved);
+      return saved;
+    } catch (err) {
+      if (err instanceof NetworkError) setError(NETWORK_TEXT);
+      else {
+        customerKey.settle();
+        setError(err instanceof CustomerValidationError ? '고객 이름을 확인해 주세요.' : '고객을 등록하지 못했어요. 다시 시도해 주세요.');
+      }
+      return null;
     }
   };
 
-  const save = async () => {
-    if (!ready || !startAt) return;
+  const save = async (confirmedNew = false) => {
+    if (!picked || staffId === '' || !startAt) return;
     setBusy(true);
     setError(null);
     try {
-      // 1) 같은 규칙으로 먼저 검사해 거부 이유를 문구로(새 고객을 헛되이 만들지 않게). 최종 판정은 저장소가 다시 한다.
+      // 0) 새 고객이면 같은 이름 고객이 있는지 먼저 묻는다(읽기 — 키 없음).
+      if (!picked.id && !confirmedNew) {
+        const r = await customers.checkSameName({ name: picked.name, phone: null });
+        if (r.needsReview) return setSameName(r.candidates);
+      }
+      setSameName(null);
+      // 1) 같은 규칙으로 먼저 검사해 거부 이유를 문구로(새 고객을 헛되이 만들지 않게). 최종 판정은 서버가 다시 한다.
       const day = shopDate(Date.parse(startAt));
       const data = await api.range(addDays(day, -1), addDays(day, 1));
+      const ctx = { data, staffId, startAt };
       const { hours, existing, blocks } = toBookingInputs(data);
-      const check = checkBooking(
-        {
-          staffId,
-          start: new Date(startAt),
-          durationMin: duration,
-          prepMin: prep,
-        },
-        hours,
-        existing,
-        blocks,
-      );
-      if (!check.ok)
-        return setError(
-          rejectText(check.reason, check.conflictingIds, {
-            data,
-            staffId,
-            startAt,
-          }),
-        );
-      // 2) 새 고객이면 이름만으로 등록(01 §2.3)
-      const customer = picked.id
-        ? picked
-        : {
-            ...(await customers.create({
-              name: picked.name,
-              phone: null,
-              memo: null,
-            })),
-            phone: null,
-          };
+      const check = checkBooking({ staffId, start: new Date(startAt), durationMin: duration, prepMin: prep }, hours, existing, blocks);
+      if (!check.ok) return setError(rejectText(check.reason, check.conflictingIds, ctx));
+      // 2) 고객 → 예약 순서로 따로 저장(06 D2).
+      const wasNew = !picked.id;
+      const customer = await ensureCustomer(picked);
+      if (!customer?.id) return;
       const menu = menus.find((m) => m.id === menuId);
-      const r = await api.createAppointment({
+      const input = {
         customerId: customer.id,
         customerName: customer.name,
         customerPhone: customer.phone,
+        menuId: menu?.id ?? null,
         menuName: menu?.name ?? null,
         staffId,
         startAt,
         durationMin: duration,
         prepMin: prep,
         memo: memo.trim() || null,
-      });
-      if (!r.ok) return setError(rejectText(r.reason, r.conflictingIds, { data, staffId, startAt }));
-      onSaved(day);
+      };
+      const r = await api.createAppointment(input, { idempotencyKey: appointmentKey.keyFor(JSON.stringify(input)) });
+      if (r.ok) {
+        appointmentKey.settle();
+        return onSaved(shopDate(Date.parse(r.value.startAt)));
+      }
+      if (r.reason !== 'NETWORK') appointmentKey.settle();
+      const why = rejectText(r.reason, r.conflictingIds, ctx);
+      setError(wasNew ? `${CUSTOMER_SAVED_TEXT} ${why}` : why);
+    } catch (err) {
+      setError(err instanceof NetworkError ? NETWORK_TEXT : '저장하지 못했어요. 다시 시도해 주세요.');
     } finally {
       setBusy(false);
     }
@@ -190,13 +282,16 @@ function AppointmentForm({ start, staff, onSaved }: { start: EntryStart; staff: 
                 placeholder="이름 두 글자"
                 autoComplete="off"
                 onChange={(e) => {
+                  onDirty(true);
+                  setError(null);
+                  setSameName(null);
                   setPicked(null);
                   setQuery(e.target.value);
                 }}
               />
             </TextField.Root>
           </Field.Root>
-          {!picked && query.trim() && (
+          {!picked && candidates && (
             <ul role="listbox" aria-label="고객 후보" className="mt-1 overflow-hidden rounded-xl border border-line bg-floating">
               {candidates.map((c) => (
                 <li key={c.id} role="option" aria-selected={false}>
@@ -211,16 +306,48 @@ function AppointmentForm({ start, staff, onSaved }: { start: EntryStart; staff: 
                   </button>
                 </li>
               ))}
-              <li role="option" aria-selected={false} className="border-t border-line first:border-t-0">
-                <button
-                  type="button"
-                  className="w-full px-3.5 py-2.5 text-left text-[15px] font-bold text-brand-text"
-                  onClick={() => setPicked({ id: null, name: query.trim(), phone: null })}
-                >
-                  "{query.trim()}" 새 고객으로 넣기
-                </button>
-              </li>
+              {/* 새 고객 제안은 결과가 없을 때만(06 ③) */}
+              {candidates.length === 0 && (
+                <li role="option" aria-selected={false}>
+                  <button
+                    type="button"
+                    className="w-full px-3.5 py-2.5 text-left text-[15px] font-bold text-brand-text"
+                    onClick={() => setPicked({ id: null, name: query.trim(), phone: null })}
+                  >
+                    "{query.trim()}" 새 고객으로 넣기
+                  </button>
+                </li>
+              )}
             </ul>
+          )}
+          {sameName && picked && (
+            <div role="group" aria-label="같은 이름 고객" className="mt-2 grid gap-2 rounded-xl border border-line p-3 text-[15px]">
+              <p className="font-bold">같은 이름의 고객이 있어요. 이분인가요?</p>
+              {sameName.map((c) =>
+                // 실제 API는 숨긴 고객도 후보에 넣는다(active=false, #42) — 새 예약에는 고를 수 없다(04 D3).
+                (c as Candidate & { active?: boolean }).active === false ? (
+                  <p key={c.customerId} className="text-ink-soft">
+                    {c.name} {c.phone ? `···${c.phone.slice(-4)}` : '전화 없음'} — 숨긴 고객이라 고를 수 없어요
+                  </p>
+                ) : (
+                  <button
+                    key={c.customerId}
+                    type="button"
+                    className="flex justify-between rounded-lg px-2 py-1.5 text-left hover:bg-brand-weak"
+                    onClick={() => {
+                      setSameName(null);
+                      setPicked({ id: c.customerId, name: c.name, phone: c.phone });
+                    }}
+                  >
+                    <b>{c.name}</b>
+                    <span className="text-sm text-ink-soft tabular-nums">{c.phone ? `···${c.phone.slice(-4)}` : '전화 없음'}</span>
+                  </button>
+                ),
+              )}
+              <ActionButton variant="neutralWeak" size="medium" loading={busy} onClick={() => save(true)}>
+                새 고객이 맞아요, 저장
+              </ActionButton>
+            </div>
           )}
         </div>
 
@@ -246,7 +373,7 @@ function AppointmentForm({ start, staff, onSaved }: { start: EntryStart; staff: 
               <Field.Label>날짜</Field.Label>
             </Field.Header>
             <TextField.Root size="large">
-              <TextField.Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <TextField.Input type="date" value={date} onChange={(e) => touched(setDate)(e.target.value)} />
             </TextField.Root>
           </Field.Root>
           <Field.Root className="w-[45%]">
@@ -254,21 +381,33 @@ function AppointmentForm({ start, staff, onSaved }: { start: EntryStart; staff: 
               <Field.Label>시작</Field.Label>
             </Field.Header>
             <TextField.Root size="large">
-              {/* 15분 간격 [제안] */}
-              <TextField.Input type="time" step={900} value={time} onChange={(e) => setTime(e.target.value)} />
+              {/* 15분 간격은 고르기 편의만 — 분 단위로 저장한다(06 D1) */}
+              <TextField.Input type="time" step={900} value={time} onChange={(e) => touched(setTime)(e.target.value)} />
             </TextField.Root>
           </Field.Root>
         </div>
 
-        <Stepper label="관리 시간" value={duration} step={10} min={10} onChange={setDuration} />
-        <Stepper label="준비 시간" value={prep} step={5} min={0} onChange={setPrep} />
+        <Stepper label="관리 시간" value={duration} step={10} min={10} onChange={touched(setDuration)} />
+        <Stepper label="준비 시간" value={prep} step={5} min={0} onChange={touched(setPrep)} />
 
+        {staff.length === 0 && (
+          <Callout.Root tone="warning">
+            <Callout.Content>
+              <Callout.Description>담당자가 없어 저장할 수 없어요. 설정에서 담당자를 먼저 넣어 주세요.</Callout.Description>
+            </Callout.Content>
+          </Callout.Root>
+        )}
         {staff.length > 1 && (
           <div className="grid gap-2">
             <span className="pl-0.5 text-sm font-medium" id="staff-label">
               담당자
             </span>
-            <Chip.RadioRoot aria-labelledby="staff-label" value={staffId} onValueChange={setStaffId} className="flex flex-wrap gap-2">
+            <Chip.RadioRoot
+              aria-labelledby="staff-label"
+              value={staffId}
+              onValueChange={touched(setStaffId)}
+              className="flex flex-wrap gap-2"
+            >
               {staff.map((s) => (
                 <Chip.RadioItem key={s.id} value={s.id} variant="outlineStrong" size="medium">
                   <RadioGroupItemHiddenInput />
@@ -286,7 +425,12 @@ function AppointmentForm({ start, staff, onSaved }: { start: EntryStart; staff: 
             </Field.Label>
           </Field.Header>
           <TextField.Root size="large">
-            <TextField.Textarea autoresize className="min-h-12" value={memo} onChange={(e) => setMemo(e.target.value)} />
+            <TextField.Textarea
+              autoresize
+              className="min-h-12"
+              value={memo}
+              onChange={(e) => touched(setMemo)(e.target.value)}
+            />
           </TextField.Root>
         </Field.Root>
       </ResponsiveSidePanel.Body>
@@ -308,7 +452,7 @@ function AppointmentForm({ start, staff, onSaved }: { start: EntryStart; staff: 
               </Callout.Content>
             </Callout.Root>
           )}
-          <ActionButton variant="brandSolid" size="large" disabled={!ready} loading={busy} onClick={save}>
+          <ActionButton variant="brandSolid" size="large" disabled={!ready} loading={busy} onClick={() => save()}>
             저장
           </ActionButton>
         </div>

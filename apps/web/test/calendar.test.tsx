@@ -690,10 +690,13 @@ describe('예약 넣기 W3', () => {
     await userEvent.click(screen.getByRole('button', { name: '예약' }));
     const sheet = await screen.findByRole('dialog', { name: '예약 넣기' });
     await userEvent.type(within(sheet).getByPlaceholderText('이름 두 글자'), '나새봄');
-    await userEvent.click(within(sheet).getByRole('button', { name: '"나새봄" 새 고객으로 넣기' }));
+    await userEvent.click(await within(sheet).findByRole('button', { name: '"나새봄" 새 고객으로 넣기' }));
     const date = sheet.querySelector<HTMLInputElement>('input[type=date]')!;
     await userEvent.clear(date);
     await userEvent.type(date, '2026-11-17');
+    // `+ 예약`은 시각을 비워 둔다 — 고르기 전에는 저장할 수 없다(설계 06 D1).
+    expect(within(sheet).getByRole('button', { name: '저장' })).toBeDisabled();
+    await userEvent.type(sheet.querySelector<HTMLInputElement>('input[type=time]')!, '10:00');
     await userEvent.click(within(sheet).getByRole('button', { name: '저장' }));
     const tuesday = await screen.findByRole('region', { name: '11월 17일' });
     await waitFor(() => expect(within(tuesday).getByRole('button', { name: /나새봄/ })).toBeInTheDocument());
