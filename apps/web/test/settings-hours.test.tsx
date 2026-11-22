@@ -49,13 +49,14 @@ describe('영업시간 값 바꾸기', () => {
     expect(fromDraft(d)).toEqual({ '2': w }); // 정기 휴무 요일은 영업시간에서도 뺀다
   });
 
-  it('정기 휴무 스위치와 저장된 매주 휴무를 맞출 더하기·지우기를 구한다(같은 요일 여러 줄이면 모두 지움)', () => {
-    const d = toDraft(null, [3]);
-    d[1].isOpen = true;
+  it('스위치를 바꾼 요일만 더하기·지우기를 구한다(같은 요일 여러 줄이면 모두 지움, #63 옵마 리뷰)', () => {
     const weekly = (id: string, weekday: 1 | 2 | 3 | 4 | 5 | 6 | 7) => ({ id, kind: 'weekly' as const, weekday, note: null });
-    const { add, remove } = weeklyChanges(d, [weekly('a', 1), weekly('b', 1), { id: 'v', kind: 'vacation', startDate: '2026-12-24', endDate: '2026-12-26', note: null }]);
+    const base = toDraft(null, [1]); // 열었을 때: 월 정기 휴무
+    const d = toDraft(null, [3]); // 지금: 월 영업으로 바꾸고 수 정기 휴무로 바꿈
+    const latest = [weekly('a', 1), weekly('b', 1), weekly('t', 2), { id: 'v', kind: 'vacation' as const, startDate: '2026-12-24', endDate: '2026-12-26', note: null }];
+    const { add, remove } = weeklyChanges(d, base, latest);
     expect(add).toEqual([3]);
-    expect(remove.map((c) => c.id)).toEqual(['a', 'b']);
+    expect(remove.map((c) => c.id)).toEqual(['a', 'b']); // 화요일(t)은 이 화면에서 안 바꿨으니 그대로
   });
 
   it('목록 한 줄 요약', () => {
@@ -233,6 +234,17 @@ describe('영업시간 화면', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(HOURS_SAVED_TEXT);
     expect(screen.queryByRole('alert')).toBeNull();
     expect(await weeklyDays(api)).toEqual([]);
+  });
+
+  it('화면을 연 뒤 다른 기기에서 넣은 정기 휴무를, 다른 요일만 고쳐 저장해도 지우지 않는다(#63 옵마 리뷰)', async () => {
+    const api = createMemorySettingsApi();
+    renderAt('/settings/hours', api);
+    expect(await findHoliday('화')).not.toBeChecked();
+    await api.addClosure({ kind: 'weekly', weekday: 2, note: null }); // 다른 기기에서 화요일 정기 휴무
+    await userEvent.selectOptions(select('수요일 닫는 시각'), '19:00'); // 이 화면에서는 수요일 시각만 바꿈
+    await userEvent.click(screen.getByRole('button', { name: '저장' }));
+    await screen.findByRole('status');
+    expect(await weeklyDays(api)).toEqual([1, 2]);
   });
 
   it('영업시간 규칙 안내를 보인다', async () => {

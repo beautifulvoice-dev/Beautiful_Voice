@@ -50,6 +50,8 @@ export function HoursPage() {
 function HoursForm({ initial, closures, reload }: { initial: BusinessHours | null; closures: Closure[]; reload: () => void }) {
   const api = useSettingsApi();
   const [draft, setDraft] = useState<HoursDraft>(() => toDraft(initial, weeklyDaysOf(closures)));
+  // 스위치를 바꾼 요일만 저장하려고, 화면을 열었을 때(또는 마지막 저장 뒤) 상태를 기억한다(#63 옵마 리뷰).
+  const [base, setBase] = useState<HoursDraft>(draft);
   const [unset, setUnset] = useState(initial === null);
   const [saved, setSaved] = useState(false);
   const save = useSaveAction(reload);
@@ -75,17 +77,19 @@ function HoursForm({ initial, closures, reload }: { initial: BusinessHours | nul
     e.preventDefault();
     // 저장 한 번 = 요청 여러 개(영업시간 1 + 매주 휴무 더하기·지우기). 키는 저장 시도 하나에서 요청마다 꼬리를 붙여 나눈다.
     // 연결이 끊겨 다시 누르면 같은 키들이 다시 나가 이미 된 요청은 서버가 처음 결과를 돌려준다.
-    // 매주 휴무는 지금 서버 목록과 비교해서 정한다 — 앞 시도에서 일부만 됐어도 두 번 넣지 않게.
+    // 매주 휴무는 이 화면에서 스위치를 바꾼 요일만, 지금 서버 목록과 비교해 반영한다(weeklyChanges).
     const result = await save.run(async (key) => {
       const hours = await api.putBusinessHours(fromDraft(draft), { idempotencyKey: `${key}:hours` });
-      const { add, remove } = weeklyChanges(draft, await api.listClosures());
+      const { add, remove } = weeklyChanges(draft, base, await api.listClosures());
       for (const weekday of add) await api.addClosure({ kind: 'weekly', weekday, note: null }, { idempotencyKey: `${key}:weekly-add:${weekday}` });
       for (const c of remove) await removeIfThere(c.id, `${key}:weekly-remove:${c.id}`);
       return hours;
     });
     if (result !== undefined) {
       // 저장된 모양(구간을 여는 시각 순으로 정렬)으로 화면을 맞춘다 — 다시 열었을 때와 같게(#58 리뷰).
-      setDraft(toDraft(result, WEEKDAYS.filter((d) => !draft[d].isOpen)));
+      const next = toDraft(result, WEEKDAYS.filter((d) => !draft[d].isOpen));
+      setDraft(next);
+      setBase(next);
       setUnset(false);
       setSaved(true);
     }

@@ -34,7 +34,7 @@ export function timeOptions(base: readonly string[], current: string): string[] 
 
 /**
  * @param weeklyDays 매주 휴무(weekly)로 저장된 요일. 이 요일은 영업시간이 남아 있어도 정기 휴무로 보인다.
- * 영업시간을 넣었는데 요일이 빠져 있으면(예전 저장) 그 요일도 정기 휴무로 보인다 — 저장하면 매주 휴무가 함께 생긴다.
+ * 영업시간을 넣었는데 요일이 빠져 있으면(예전 저장) 그 요일도 정기 휴무로 보인다(영업시간에 없으니 어차피 쉬는 날).
  */
 export function toDraft(hours: BusinessHours | null, weeklyDays: readonly Weekday[] = []): HoursDraft {
   const draft = {} as HoursDraft;
@@ -52,13 +52,17 @@ export function toDraft(hours: BusinessHours | null, weeklyDays: readonly Weekda
 export const weeklyDaysOf = (closures: readonly Closure[]): Weekday[] => closures.flatMap((c) => (c.kind === 'weekly' ? [c.weekday] : []));
 
 /**
- * 정기 휴무 스위치와 저장된 매주 휴무를 맞추려면 무엇을 더하고 지워야 하나.
+ * 이 화면에서 정기 휴무 스위치를 바꾼 요일만 매주 휴무에 반영하려면 무엇을 더하고 지워야 하나(#63 옵마 리뷰).
+ * 바꾸지 않은 요일은 건드리지 않는다 — 화면을 연 뒤 다른 기기에서 넣은 정기 휴무를 지우지 않게.
+ * 더하기·지우기는 지금 서버 목록(closures)과 비교한다 — 앞 시도에서 일부만 됐어도 두 번 넣지 않게.
  * 같은 요일에 매주 휴무가 여럿이면(예전 화면에서 두 번 넣음) 영업하는 날로 바꿀 때 모두 지운다.
+ * @param base 화면을 열었을 때(또는 마지막 저장 뒤)의 스위치 상태
  */
-export function weeklyChanges(draft: HoursDraft, closures: readonly Closure[]): { add: Weekday[]; remove: Closure[] } {
+export function weeklyChanges(draft: HoursDraft, base: HoursDraft, closures: readonly Closure[]): { add: Weekday[]; remove: Closure[] } {
+  const changed = (d: Weekday) => draft[d].isOpen !== base[d].isOpen;
   const weekly = closures.filter((c): c is Extract<Closure, { kind: 'weekly' }> => c.kind === 'weekly');
-  const add = WEEKDAYS.filter((d) => !draft[d].isOpen && !weekly.some((c) => c.weekday === d));
-  const remove = weekly.filter((c) => draft[c.weekday].isOpen);
+  const add = WEEKDAYS.filter((d) => changed(d) && !draft[d].isOpen && !weekly.some((c) => c.weekday === d));
+  const remove = weekly.filter((c) => changed(c.weekday) && draft[c.weekday].isOpen);
   return { add, remove };
 }
 
