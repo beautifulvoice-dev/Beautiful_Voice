@@ -1,6 +1,6 @@
 // 예약 보기 W2 (화면 설계서 §5 W2, 디자인 w2.png·phase2-screens.html .panel/.sheet): 폰은 아래 시트, 웹은 오른쪽 패널.
-// 예정이면 주 버튼 완료, 보조 노쇼·문자 보내기, 더보기. 완료·노쇼·취소면 상태 고치기 하나(결정 S5).
-// 완료·노쇼·상태 고치기는 가짜 저장소에서 실제로 바뀐다(@bv/scheduling changeStatus, 11/21 옵마 결정).
+// 예정이면 주 버튼 "시술 완료"(11/22 옵마 결정 — 디자인 문구는 "완료"), 보조 노쇼·문자 보내기, 더보기. 완료·노쇼·취소면 상태 고치기 하나(결정 S5).
+// 완료·노쇼·상태 고치기는 가짜 저장소에서 실제로 바뀐다(@bv/scheduling changeStatus, 11/21 옵마 결정). 저장되면 패널을 닫고 스낵바 + 되돌리기(CalendarPage).
 // 문자 보내기(M3)·더보기(바꾸기·예약 취소)는 아직 꺼 둔다.
 import { ActionButton, AlertDialog, Icon, PrefixIcon, Badge, Callout, ResponsiveSidePanel } from '@seed-design/react';
 import { ChevronRight, Ellipsis, MessageSquare, X } from 'lucide-react';
@@ -94,13 +94,12 @@ function Body({
               </Badge.Root>
             )}
           </span>
-          {!phone && (
-            <ResponsiveSidePanel.CloseButton asChild>
-              <ActionButton variant="ghost" size="small" layout="iconOnly" aria-label="닫기">
-                <Icon svg={<X />} />
-              </ActionButton>
-            </ResponsiveSidePanel.CloseButton>
-          )}
+          {/* 닫기 ×는 폰 시트에도 늘 보인다(11/22 옵마) */}
+          <ResponsiveSidePanel.CloseButton asChild>
+            <ActionButton variant="ghost" size="small" layout="iconOnly" aria-label="닫기">
+              <Icon svg={<X />} />
+            </ActionButton>
+          </ResponsiveSidePanel.CloseButton>
         </div>
         <div className="flex items-center justify-between gap-2">
           <ResponsiveSidePanel.Title className={cn(titleClass, phone ? 'text-xl font-bold tracking-[-0.02em]' : 'text-[22px] font-bold')}>
@@ -176,7 +175,7 @@ function Body({
         ) : scheduled ? (
           <div className="flex w-full gap-2">
             <ActionButton variant="brandSolid" size={size} flexGrow={phone ? 2 : 1} loading={busy} onClick={() => run('completed')}>
-              완료
+              시술 완료
             </ActionButton>
             <ActionButton variant="neutralWeak" size={size} flexGrow={phone ? 1 : 0} disabled={busy} onClick={() => run('no_show')}>
               노쇼

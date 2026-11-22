@@ -26,6 +26,8 @@ const WEEKDAY = ['월', '화', '수', '목', '금', '토', '일'];
 /** 0=월 … 6=일 */
 const weekdayOf = (d: string) => (new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7;
 const MIN = 60_000;
+/** 칸 안 배지: 글자는 14px 그대로, 위아래 여백·높이만 줄여 1시간 칸(웹 48px)에 이름 + 배지가 들어가게. */
+const CARD_BADGE = '!min-h-0 !py-0 !leading-[18px]';
 
 interface Props {
   days: string[];
@@ -138,7 +140,7 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, p
           key={key}
           data-kind="block"
           className={cn(
-            'absolute grid content-start gap-px overflow-hidden rounded-lg px-[7px] py-[5px] text-sm leading-[1.3]',
+            'absolute flex flex-col gap-px overflow-hidden rounded-lg [&>*]:shrink-0 px-[7px] py-[5px] text-sm leading-[1.3]',
             KIND_CLASS.block,
           )}
           style={pos}
@@ -155,20 +157,27 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, p
     const overlap = overlapsBlock(a, data.blocks);
     const start = Date.parse(a.startAt);
     const tone = STATUS_TONE[a.status];
-    const labels = (tone || overlap) && (
-      <span className="flex flex-wrap gap-0.5">
+    const badges = (tone || overlap) && (
+      <span className="flex shrink-0 gap-0.5">
         {tone && (
-          <Badge.Root tone={tone} variant="weak" size="large">
+          <Badge.Root tone={tone} variant="weak" size="large" className={CARD_BADGE}>
             <Badge.Label>{STATUS_TEXT[a.status]}</Badge.Label>
           </Badge.Root>
         )}
         {overlap && (
-          <Badge.Root tone="critical" variant="weak" size="large">
+          <Badge.Root tone="critical" variant="weak" size="large" className={CARD_BADGE}>
             <Badge.Label>겹침</Badge.Label>
           </Badge.Root>
         )}
       </span>
     );
+    const menu = a.menuName ?? '메뉴 없음';
+    // 칸 모양(카본 디자인, 11/22 옵마):
+    // - 폰 하루 시간표·웹 담당자 1명(넓은 칸): 1줄 = 이름 + 상태 배지, 2줄 = 메뉴 · 시각 한 줄(메뉴만 말줄임).
+    // - 웹 담당자 2명 이상(좁은 칸): 1줄 = 이름만(배지에 밀려 잘리지 않게), 2줄 = 예정이면 시작 시각, 완료·노쇼·겹침이면 배지.
+    // 어느 경우든 줄바꿈 없이, 칸 높이를 넘는 줄은 칸 안에서 잘린다(overflow-hidden).
+    const wide = phone || lanes.length === 1;
+    const timeText = phone ? shopTime(start) : `${shopTime(start)}–${shopTime(start + a.durationMin * MIN)}`;
     return (
       <button
         key={key}
@@ -178,37 +187,41 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, p
         data-overlap={overlap || undefined}
         onClick={() => onOpen(a)}
         className={cn(
-          'absolute z-[1] grid content-start justify-items-stretch gap-px overflow-hidden rounded-lg px-[7px] py-[5px] text-left text-sm leading-[1.3]',
+          // 세로로 줄을 쌓고(flex-col), 칸 높이에 다 못 들어가는 줄은 옆 열로 넘겨(flex-wrap + 줄 폭 100%) 칸 밖에서 통째로 숨긴다 —
+          // 반쯤 잘린 배지·글자가 보이지 않게. 첫 줄(이름)은 늘 첫 열에 남는다.
+          '@container absolute z-[1] flex flex-col flex-wrap content-start gap-x-4 gap-y-px overflow-hidden [&>*]:w-full [&>*]:shrink-0 rounded-lg px-[7px] py-1 text-left text-sm leading-[1.3]',
           STATUS_CLASS[a.status] ?? KIND_CLASS.care,
           overlap && OVERLAP_CLASS,
         )}
         style={pos}
       >
         {lanes.length > 1 && staffName && <span className="sr-only">{staffName(a.staffId)} · </span>}
-        <div className={cn('min-w-0', !phone && 'flex items-center gap-0.5')}>
-          <b className="block min-w-0 truncate text-sm font-bold text-ink">
-            {a.customerName}
-            {phone && overlap && a.menuName ? ` · ${a.menuName}` : ''}
-          </b>
-          {!phone && labels}
-        </div>
-        {phone ? (
+        {wide ? (
           <>
-            {labels}
-            {/* 둘째 줄은 "메뉴 · 시작 시각" 한 줄(디자인: "수분 관리 · 16:00"). 줄바꿈 없이 메뉴만 말줄임, 시각은 늘 보인다.
-                넘치는 줄은 칸 안에서 잘린다(overflow-hidden) — 30분 칸은 이름 한 줄만 보여도 된다. */}
-            {!overlap && a.status !== 'no_show' && (
-              <span data-part="menu-time" className="flex min-w-0 whitespace-nowrap">
-                <span className="min-w-0 truncate">{a.menuName ?? '메뉴 없음'}</span>
-                {!tone && <span className="shrink-0 tabular-nums">{` · ${shopTime(start)}`}</span>}
-              </span>
-            )}
+            {/* 칸 폭 8rem 이상: 이름 옆에 배지. 그보다 좁으면 배지는 따로 아랫줄 — 이름이 배지에 밀려 잘리지 않고,
+                칸 높이에 못 들어가면 그 줄이 통째로 숨는다(반쯤 잘린 배지 없음). 폰 칸은 늘 8rem보다 넓다. */}
+            <span data-part="name" className="flex min-w-0 items-center gap-1 whitespace-nowrap">
+              <b className="min-w-0 truncate text-sm font-bold text-ink">{a.customerName}</b>
+              {badges && <span className="hidden shrink-0 @[8rem]:flex">{badges}</span>}
+            </span>
+            {badges && <span className="flex @[8rem]:hidden">{badges}</span>}
+            {/* 메뉴만 말줄임. 시각은 칸 폭이 9rem 이상일 때(폰·넓은 웹) — 좁은 웹 칸은 시각이 격자 위치로 보이므로 메뉴를 남긴다. */}
+            <span data-part="menu-time" className="flex min-w-0 whitespace-nowrap">
+              <span className="min-w-0 truncate">{menu}</span>
+              <span className={cn('shrink-0 tabular-nums', !phone && 'hidden @[9rem]:inline')}>{`\u00a0· ${timeText}`}</span>
+            </span>
           </>
         ) : (
-          <span className="truncate whitespace-nowrap tabular-nums">
-            {!tone && shopTime(start)}
-            <span className="sr-only"> · {a.menuName ?? '메뉴 없음'}</span>
-          </span>
+          <>
+            <b data-part="name" className="truncate text-sm font-bold whitespace-nowrap text-ink">
+              {a.customerName}
+            </b>
+            <span className="flex min-w-0 items-center gap-0.5 whitespace-nowrap">
+              {/* 예정이면 시작 시각, 완료·노쇼·겹침이면 배지만(좁은 칸에 둘 다 넣으면 시각이 "1…"로 잘린다) */}
+              {badges || <span className="truncate tabular-nums">{shopTime(start)}</span>}
+              <span className="sr-only"> · {menu}</span>
+            </span>
+          </>
         )}
       </button>
     );

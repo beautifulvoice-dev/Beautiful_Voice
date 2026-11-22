@@ -11,6 +11,8 @@ import {
   RadioGroupItemHiddenInput,
   SegmentedControl,
   SegmentedControlItemHiddenInput,
+  Snackbar,
+  useSnackbarAdapter,
 } from '@seed-design/react';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
@@ -58,7 +60,30 @@ function title(view: View, date: string): string {
 
 const ALL = 'all';
 
+/** 상태를 바꾼 뒤 스낵바 문구(설계서 W2 "완료로 표시했어요 · 되돌리기"). */
+const STATUS_DONE: Record<AppointmentStatus, string> = {
+  scheduled: '예정으로 되돌렸어요',
+  completed: '완료로 표시했어요',
+  no_show: '노쇼로 표시했어요',
+  cancelled: '예약을 취소했어요',
+  voided: '되돌렸어요', // 원장이 고르는 상태가 아님(업무 되돌리기 전용) — 형식을 맞추려고만
+};
+
 export function CalendarPage() {
+  // 스낵바(상태 바꾼 뒤 되돌리기)는 캘린더 화면 안에서만 쓴다.
+  return (
+    <Snackbar.RootProvider>
+      <CalendarScreen />
+      {/* 폰은 아래 탭(74px) 위에 띄운다 */}
+      <Snackbar.Region className="!bottom-[74px] md:!bottom-0">
+        <Snackbar.Renderer />
+      </Snackbar.Region>
+    </Snackbar.RootProvider>
+  );
+}
+
+function CalendarScreen() {
+  const snackbar = useSnackbarAdapter();
   const api = useCalendarApi();
   const shopName = useShopName();
   // 폰은 주 보기를 7일 띠 + 고른 날 하루 시간표로, 월 보기를 예약 수 + 아래 목록으로(설계 D4: 부품이 다른 곳만 JS로).
@@ -96,11 +121,30 @@ export function CalendarPage() {
   const staffName = (id: string) => data?.staff.find((s) => s.id === id)?.name ?? '담당자 미상';
 
   const changeStatus = async (a: CalendarAppointment, to: AppointmentStatus) => {
+    const reason = (r: { reason: Parameters<typeof rejectText>[0]; conflictingIds: string[] }) =>
+      data ? rejectText(r.reason, r.conflictingIds, { data, staffId: a.staffId, startAt: a.startAt }) : '바꾸지 못했어요.';
     const r = await api.setStatus(a.id, to);
-    if (!r.ok) return data ? rejectText(r.reason, r.conflictingIds, { data, staffId: a.staffId, startAt: a.startAt }) : '바꾸지 못했어요.';
-    // 취소하면 캘린더에서 빠지므로 패널을 닫는다(원칙: 취소 예약은 그리지 않음).
-    if (to === 'cancelled') setOpen(null);
+    if (!r.ok) return reason(r);
+    // 저장되면 패널을 닫고 스낵바로 알린다 — "되돌리기"는 이전 상태로(설계서 W2, 11/22 옵마).
+    const from = a.status;
+    setOpen(null);
     reload();
+    const show = (message: string, undo?: () => void) =>
+      snackbar.create({
+        render: () => (
+          <Snackbar.Root variant={undo ? 'default' : 'critical'}>
+            <Snackbar.Content>
+              <Snackbar.Message>{message}</Snackbar.Message>
+            </Snackbar.Content>
+            {undo && <Snackbar.ActionButton onClick={undo}>되돌리기</Snackbar.ActionButton>}
+          </Snackbar.Root>
+        ),
+      });
+    show(STATUS_DONE[to], async () => {
+      const back = await api.setStatus(a.id, from);
+      if (!back.ok) show(`되돌리지 못했어요. ${reason(back)}`);
+      reload();
+    });
     return null;
   };
   const segment = (
