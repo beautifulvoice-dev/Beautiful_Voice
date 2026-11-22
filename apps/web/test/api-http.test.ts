@@ -150,7 +150,7 @@ describe('고객 실제 어댑터', () => {
     const { fetcher, sent } = fakeFetch(json(200, { needsReview: true, candidates: [candidate] }));
     const api = createHttpCustomerApi(createHttp(fetcher), 'shop-1');
     const r = await api.checkSameName({ id: 'c-1', name: '합성 고객', phone: null });
-    expect(r).toEqual({ needsReview: true, candidates: [{ customerId: 'c-9', name: '합성 고객', phone: null, hint: 'phone_missing' }] });
+    expect(r).toEqual({ needsReview: true, candidates: [candidate] });
     expect(sent[0]!.body).toEqual({ name: '합성 고객', phone: null, excludeId: 'c-1' });
     expect(sent[0]!.headers['Idempotency-Key']).toBeUndefined();
   });

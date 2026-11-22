@@ -59,7 +59,8 @@ export function createHttpCustomerApi(http: Http, shopId: string): CustomerApi {
       const r = await http.send<SameNameCheckResponse>('POST', path('same-name-check'), {
         body: { name: subject.name, phone: subject.phone, ...(subject.id ? { excludeId: subject.id } : {}) },
       });
-      return { needsReview: r.needsReview, candidates: r.candidates.map(({ customerId, name, phone, hint }) => ({ customerId, name, phone, hint })) };
+      // active는 그대로 둔다 — W3가 숨긴 고객을 고를 수 없게 표시한다(04 D3).
+      return { needsReview: r.needsReview, candidates: r.candidates.map(({ customerId, name, phone, hint, active }) => ({ customerId, name, phone, hint, active })) };
     },
     async create(input, options) {
       const created = await mapped(http.send<ContractCustomer>('POST', path(), { body: input, idempotencyKey: options?.idempotencyKey ?? randomKey() }));
