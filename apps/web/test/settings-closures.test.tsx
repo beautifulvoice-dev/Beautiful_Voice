@@ -229,6 +229,33 @@ describe('휴무·휴가 화면', () => {
     expect((await api.listClosures()).filter((c) => c.kind === 'holiday')).toHaveLength(1);
   });
 
+  it('느린 목록 갱신 중에도 방금 추가한 요일을 다시 고를 수 없다(#60 옵마 리뷰 — 다시 불러오는 동안 목록 유지와 함께)', async () => {
+    const api = createMemorySettingsApi();
+    let calls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const slow: SettingsApi = {
+      ...api,
+      listClosures: async () => {
+        calls++;
+        if (calls >= 2) await gate; // 추가 뒤 목록 갱신이 늦다
+        return api.listClosures();
+      },
+    };
+    renderAt('/settings/closures', slow);
+    for (let i = 0; i < 2; i++) {
+      const sheet = await openSheet();
+      await userEvent.click(within(sheet).getByRole('radio', { name: '매주' }));
+      if (i === 1) expect(within(within(sheet).getByLabelText(/쉬는 요일/)).queryByRole('option', { name: '화요일' })).toBeNull();
+      await userEvent.click(within(sheet).getByRole('button', { name: '추가' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    }
+    // 새 목록이 오기 전에도 방금 추가한 두 요일이 보인다.
+    expect(texts(await section('매주 쉬는 요일'))).toEqual(['매주 월요일지우기', '매주 화요일지우기', '매주 수요일지우기']);
+    release();
+    expect((await api.listClosures()).flatMap((c) => (c.kind === 'weekly' ? [c.weekday] : []))).toEqual([1, 2, 3]);
+  });
+
   it('지우기가 끊기면 같은 항목은 같은 키로, 다른 항목은 새 키로 보낸다', async () => {
     const api = createMemorySettingsApi();
     const keys: (string | undefined)[] = [];
