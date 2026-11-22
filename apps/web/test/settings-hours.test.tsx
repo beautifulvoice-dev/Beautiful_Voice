@@ -79,11 +79,13 @@ describe('영업시간 값 바꾸기', () => {
 });
 
 describe('설정 목록', () => {
-  it('영업시간 요약을 보이고, 누르면 영업시간 화면으로 간다. 아직 없는 항목은 준비 중', async () => {
+  it('영업시간 요약을 보이고, 누르면 영업시간 화면으로 간다. 메뉴·담당자도 화면이 있다', async () => {
     const router = renderAt('/settings');
     const list = await screen.findByRole('list', { name: '설정 항목' });
     const hours = await within(list).findByRole('link', { name: /영업시간.*화~일/ });
-    expect(within(list).getByText('담당자').closest('[aria-disabled="true"]')).not.toBeNull();
+    // 메뉴(#61)·담당자(#65)까지 생겨 M1 설정 항목에 "준비 중"은 없다.
+    for (const name of [/^메뉴/, /^담당자/]) expect(within(list).getByRole('link', { name })).toBeInTheDocument();
+    expect(list.querySelector('[aria-disabled="true"]')).toBeNull();
     await userEvent.click(hours);
     expect(router.state.location.pathname).toBe('/settings/hours');
   });
