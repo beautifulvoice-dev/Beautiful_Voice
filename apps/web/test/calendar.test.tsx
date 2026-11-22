@@ -630,6 +630,33 @@ describe('예약 보기 W2 — 웹 오른쪽 패널 / 폰 아래 시트 (캘린�
     expect(screen.queryByText(/표시했어요|취소했어요/)).not.toBeInTheDocument(); // 바뀐 것이 없으니 스낵바도 없다
   });
 
+  it('취소 저장 중에는 확인 창을 닫을 수 없다', async () => {
+    const base = API();
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const api: CalendarApi = {
+      ...base,
+      async setStatus(id, status) {
+        await pending;
+        return base.setStatus(id, status);
+      },
+    };
+    renderAt('/calendar?date=2026-11-18', api);
+    const monday = await screen.findByRole('region', { name: '11월 16일' });
+    await userEvent.click(within(monday).getByRole('button', { name: /김하늘/ }));
+    const panel = await screen.findByRole('dialog', { name: '김하늘' });
+    await userEvent.click(within(panel).getByRole('button', { name: '상태 고치기' }));
+    await userEvent.click(within(panel).getByRole('button', { name: '취소' }));
+    const confirm = await screen.findByRole('alertdialog');
+    await userEvent.click(within(confirm).getByRole('button', { name: '예약 취소' }));
+    expect(within(confirm).getByRole('button', { name: '그만두기' })).toBeDisabled();
+    await userEvent.keyboard('{Escape}');
+    expect(confirm).toBeInTheDocument();
+    finish();
+    expect(await screen.findByText('예약을 취소했어요')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+  });
+
   it('취소 확인에서 "예약 취소"를 누르면 취소되어 캘린더에서 빠지고 패널이 닫힌다', async () => {
     renderAt('/calendar?date=2026-11-18');
     const monday = await screen.findByRole('region', { name: '11월 16일' });
