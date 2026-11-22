@@ -34,7 +34,12 @@ const CARD_BADGE = '!min-h-0 !py-0 !leading-[18px]';
  * 작은 칸 = 웹에서 담당자 2명 이상이라 반쪽 폭인 칸, 또는 높이가 maxHeightPx보다 낮은 칸. 그 밖의 칸·화면은 14px.
  * 판정 기준은 여기 한 곳에 둔다. 12px 클래스는 아래 두 상수에만 쓴다(test/font-size.test.ts가 이 둘만 허용).
  */
-export const SMALL_CARD = { webMinLanes: 2, maxHeightPx: 48 } as const; // 48px = 웹 1시간 칸 높이. 이보다 낮으면(1시간 미만) 작은 칸
+export const SMALL_CARD = { webMinLanes: 2, maxHeightPx: 48 } as const;
+/**
+ * 웹 담당자 칸(반쪽 칸) 최소 폭: 12px 굵은 이름 4글자(≈48px) + 칸 안 여백 14px, 배지(완료·노쇼·겹침 ≈ 40px)도 들어가는 폭.
+ * 날 칸이 이보다 좁아지면 격자를 가로로 넘긴다(설계 D2) — 이름이 말줄임되거나 배지가 칸 밖으로 잘리지 않게(#70 리뷰).
+ */
+export const WEB_LANE_MIN_PX = 64; // 48px = 웹 1시간 칸 높이. 이보다 낮으면(1시간 미만) 작은 칸
 const SMALL_CARD_TEXT = 'text-xs leading-[15px]';
 const SMALL_CARD_BADGE = '!text-xs !leading-[15px]';
 
@@ -278,7 +283,12 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, p
     // isolate: 칸 안의 z-index(예약·지금 줄)가 머리줄·아래 탭과 겨루지 않게 이 표 안에 가둔다.
     <div className="isolate overflow-x-auto rounded-2xl border border-line">
       {/* 7일이면 768~1279px에서 가로로 넘긴다(설계 D2). */}
-      <div className="grid min-w-[640px]" style={{ gridTemplateColumns: `52px repeat(${days.length}, minmax(0, 1fr))` }}>
+      <div
+        className="grid min-w-[640px]"
+        style={{
+          gridTemplateColumns: `52px repeat(${days.length}, minmax(${lanes.length > 1 ? lanes.length * WEB_LANE_MIN_PX + 8 : 0}px, 1fr))`,
+        }}
+      >
         <div className="border-b border-line" />
         {days.map((d, i) => (
           <div

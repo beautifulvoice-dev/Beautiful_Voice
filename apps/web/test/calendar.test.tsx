@@ -598,6 +598,9 @@ describe('예약 보기 W2 — 웹 오른쪽 패널 / 폰 아래 시트 (캘린�
     const name = done.querySelector('[data-part="name"]')!;
     expect(name.textContent).toBe('남궁서연'); // 이름 줄엔 배지가 없다
     expect(done).toHaveClass('text-xs'); // 반쪽 칸은 작은 칸 — 12px(설계서 §9.1 예외, 카본 11/22 B안)
+    // 담당자 2명이면 날 칸 최소 폭 = 2 × 64px + 8 — 768px에서도 이름 전체·배지가 칸 안에(좁으면 가로로 넘김, #70 리뷰)
+    const grid = wed.parentElement as HTMLElement;
+    expect(grid.style.gridTemplateColumns).toContain('minmax(136px, 1fr)');
     expect(name.nextElementSibling).toHaveTextContent('완료');
     expect(within(wed).getByRole('button', { name: /손님나/ }).querySelector('[data-part="name"]')!.nextElementSibling).toHaveTextContent(
       '11:30',
