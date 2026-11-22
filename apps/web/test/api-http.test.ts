@@ -64,6 +64,20 @@ describe('공통 요청부', () => {
   });
 });
 
+describe('성공 응답 본문 유실', () => {
+  it('201 헤더 뒤 본문 수신이 끊기면 NetworkError — 같은 키로 다시 보내게 한다', async () => {
+    const broken = new ReadableStream({
+      start(c) {
+        c.enqueue(new TextEncoder().encode('{"id":"c-'));
+        c.error(new TypeError('network error'));
+      },
+    });
+    const { fetcher } = fakeFetch(new Response(broken, { status: 201 }));
+    const err = await createHttp(fetcher).send('POST', '/x', { body: {}, idempotencyKey: 'k' }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(NetworkError);
+  });
+});
+
 describe('저장 키', () => {
   it('같은 요청은 같은 키, 내용이 바뀌거나 결과가 확정되면 새 키', () => {
     let n = 0;
@@ -150,7 +164,7 @@ describe('고객 실제 어댑터', () => {
     const { fetcher, sent } = fakeFetch(json(200, { needsReview: true, candidates: [candidate] }));
     const api = createHttpCustomerApi(createHttp(fetcher), 'shop-1');
     const r = await api.checkSameName({ id: 'c-1', name: '합성 고객', phone: null });
-    expect(r).toEqual({ needsReview: true, candidates: [{ customerId: 'c-9', name: '합성 고객', phone: null, hint: 'phone_missing' }] });
+    expect(r).toEqual({ needsReview: true, candidates: [candidate] });
     expect(sent[0]!.body).toEqual({ name: '합성 고객', phone: null, excludeId: 'c-1' });
     expect(sent[0]!.headers['Idempotency-Key']).toBeUndefined();
   });
