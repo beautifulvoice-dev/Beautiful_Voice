@@ -4,6 +4,10 @@ import type { CustomerValues } from '@bv/customers';
 
 export interface Customer extends CustomerValues {
   id: string;
+  /** 실제 API의 행 버전 — 고칠 때 그대로 보낸다(계약 #42 동시 수정). 가짜 저장소는 비워 둔다. */
+  version?: number;
+  /** false = 비활성(숨김) 고객. 새 예약에 고를 수 없다(설계 04 D3). */
+  active?: boolean;
 }
 
 /**

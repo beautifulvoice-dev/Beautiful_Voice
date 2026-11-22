@@ -12,7 +12,11 @@ import {
   type ResourceField,
   type SettingsError,
 } from '@bv/scheduling/shop-settings';
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useMemo } from 'react';
+import { useOptionalSession } from '@/features/auth/session';
+import { FAKE_API } from '@/lib/apiMode';
+import { http } from '@/lib/http';
+import { createHttpSettingsApi } from './httpApi';
 import { seedSettings } from './mockData';
 
 /** 422 SETTINGS_INVALID — 영업시간·휴무 모양이 틀림. at은 문제 위치(예 "2[0]" = 화요일 첫 구간). */
@@ -217,7 +221,15 @@ export function createMemorySettingsApi(seed: SettingsSeed = seedSettings(), now
 const SettingsApiContext = createContext<SettingsApi | null>(null);
 export const SettingsApiProvider = SettingsApiContext.Provider;
 
-const defaultApi = createMemorySettingsApi();
+let fakeApi: SettingsApi | null = null;
+/** 주입한 것(테스트) → 명시적 가짜 모드면 메모리 → 아니면 로그인한 매장의 실제 API(설계 05 D2). */
 export function useSettingsApi(): SettingsApi {
-  return useContext(SettingsApiContext) ?? defaultApi;
+  const injected = useContext(SettingsApiContext);
+  const shopId = useOptionalSession()?.shopId;
+  return useMemo(() => {
+    if (injected) return injected;
+    if (FAKE_API) return (fakeApi ??= createMemorySettingsApi());
+    if (!shopId) throw new Error('useSettingsApi는 RequireSession 안에서만 쓴다');
+    return createHttpSettingsApi(http, shopId);
+  }, [injected, shopId]);
 }

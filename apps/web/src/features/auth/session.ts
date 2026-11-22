@@ -34,6 +34,9 @@ export const useSessionLoader = () => useContext(SessionLoaderContext);
 const SessionContext = createContext<Session | null>(null);
 export const SessionProvider = SessionContext.Provider;
 
+/** 세션이 없으면 null(Provider로 가짜 API를 주입한 테스트 등). */
+export const useOptionalSession = () => useContext(SessionContext);
+
 /** 로그인한 원장의 매장. RequireSession 안쪽 화면에서만 쓴다. */
 export function useSession(): Session {
   const session = useContext(SessionContext);
