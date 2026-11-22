@@ -1,5 +1,5 @@
 // 예약 넣기(W3)의 문구: 점유 미리보기와 저장 거부 이유(화면 설계서 W3 거부 표, 디자인 캡처 w2.png).
-import type { BookingReject } from '@bv/scheduling/booking';
+import type { SaveReject } from './api';
 import { dayStart, shopDate, shopTime, type CalendarData } from './model';
 
 const MIN = 60_000;
@@ -23,7 +23,7 @@ export interface RejectContext {
 }
 
 /** 저장 거부 이유 → 저장 버튼 위 빨간 알림 본문. 제목은 "저장하지 못했어요". */
-export function rejectText(reason: BookingReject | 'INVALID_TRANSITION', conflictingIds: readonly string[], ctx: RejectContext): string {
+export function rejectText(reason: SaveReject, conflictingIds: readonly string[], ctx: RejectContext): string {
   const staffName = ctx.data.staff.find((s) => s.id === ctx.staffId)?.name ?? '담당자';
   const range = (from: string | number, to: string | number) => `${shopTime(from)}–${shopTime(to)}`;
   switch (reason) {
@@ -57,6 +57,15 @@ export function rejectText(reason: BookingReject | 'INVALID_TRANSITION', conflic
       return '관리 시간을 확인해 주세요.';
     case 'INVALID_TRANSITION':
       return '이 상태로는 바꿀 수 없어요.';
+    // 아래는 실제 API의 응답(설계 05 오류와 문구, 06 W3 거부 표).
+    case 'NO_CHANGE':
+      return '이미 같은 상태예요.';
+    case 'VERSION_CONFLICT':
+      return '그사이 다른 곳에서 이 예약이 바뀌었어요. 다시 열어 확인해 주세요.';
+    case 'NOT_FOUND':
+      return '예약을 찾을 수 없어요. 다시 불러와 주세요.';
+    case 'NETWORK':
+      return '저장 결과를 확인하지 못했어요. 같은 내용으로 다시 시도해 주세요.';
   }
 }
 

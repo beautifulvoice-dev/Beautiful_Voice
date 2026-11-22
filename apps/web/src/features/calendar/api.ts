@@ -9,12 +9,16 @@ import {
   type ExistingBooking,
   type ShopHours,
 } from '@bv/scheduling/booking';
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useMemo } from 'react';
+import { useOptionalSession } from '@/features/auth/session';
+import { FAKE_API } from '@/lib/apiMode';
+import { http } from '@/lib/http';
+import { createHttpCalendarApi } from './httpApi';
 import { seedDesignScene, SCENE_MENUS } from './mockData';
 import { dayStart, type AppointmentStatus, type CalendarAppointment, type CalendarBlock, type CalendarData, type Menu } from './model';
 
 /** 가짜 저장소에 넣는 값. 영업시간·휴무를 빼면 "안 넣은 매장"으로 본다. */
-export type CalendarSeed = Omit<CalendarData, 'businessHours' | 'closures'> & Partial<Pick<CalendarData, 'businessHours' | 'closures'>>;
+export type CalendarSeed = Omit<CalendarData, 'businessHours' | 'closures' | 'hoursUnavailable'> & Partial<Pick<CalendarData, 'businessHours' | 'closures'>>;
 
 /** 예약 넣기(W3) 입력. 시각은 UTC ISO. */
 export interface NewAppointment {
@@ -27,19 +31,32 @@ export interface NewAppointment {
   durationMin: number;
   prepMin: number;
   memo: string | null;
+  /** 실제 API는 메뉴를 id로 저장한다(계약 #42). 가짜 저장소는 이름만 쓴다. */
+  menuId?: string | null;
 }
 
 /** 관리 불가 시간 넣기(W4) 입력. */
 export type NewBlock = Omit<CalendarBlock, 'id'>;
 
+/**
+ * 저장이 안 된 이유. 예약 규칙(@bv/scheduling) + 계약 #42의 상태·동시 수정 오류 + 응답을 못 받음(NETWORK).
+ * NETWORK는 저장됐는지 모른다 — 같은 내용으로 다시 보내면 같은 키라 두 번 저장되지 않는다(설계 05 D5).
+ */
+export type SaveReject = BookingReject | 'INVALID_TRANSITION' | 'NO_CHANGE' | 'VERSION_CONFLICT' | 'NOT_FOUND' | 'NETWORK';
+
 /** 저장 결과. 거부면 이유와 걸린 예약·차단 id(문구에 쓴다, W3 거부 표). */
-export type SaveResult<T> = { ok: true; value: T } | { ok: false; reason: BookingReject | 'INVALID_TRANSITION'; conflictingIds: string[] };
+export type SaveResult<T> = { ok: true; value: T } | { ok: false; reason: SaveReject; conflictingIds: string[] };
+
+/** 쓰기 옵션. 실제 API는 Idempotency-Key로 보낸다(절대 규칙 6). 비우면 창구가 만든다. */
+export interface CalendarWriteOptions {
+  idempotencyKey?: string;
+}
 
 export interface CalendarApi {
   /** 매장 날짜 from ~ to(마지막 날 포함). 즉 from 0시 ~ to 다음 날 0시 사이에 점유·차단이 걸치는 것. 예약 API 계약도 같은 뜻으로 둔다. */
   range(from: string, to: string): Promise<CalendarData>;
   menus(): Promise<Menu[]>;
-  createAppointment(input: NewAppointment): Promise<SaveResult<CalendarAppointment>>;
+  createAppointment(input: NewAppointment, options?: CalendarWriteOptions): Promise<SaveResult<CalendarAppointment>>;
   /** 상태 바꾸기·고치기(W2, 결정 S5). 취소를 되살리면 겹침을 다시 검사한다. */
   setStatus(id: string, to: AppointmentStatus): Promise<SaveResult<CalendarAppointment>>;
   /** 관리 불가 시간은 기존 예약을 막지 않는다(결정 R50). start < end만 검사. */
@@ -152,7 +169,15 @@ export function createMemoryCalendarApi(seed: CalendarSeed = seedDesignScene(), 
 const CalendarApiContext = createContext<CalendarApi | null>(null);
 export const CalendarApiProvider = CalendarApiContext.Provider;
 
-const defaultApi = createMemoryCalendarApi();
+let fakeApi: CalendarApi | null = null;
+/** 주입한 것(테스트) → 명시적 가짜 모드면 메모리 → 아니면 로그인한 매장의 실제 API(설계 05 D2). */
 export function useCalendarApi(): CalendarApi {
-  return useContext(CalendarApiContext) ?? defaultApi;
+  const injected = useContext(CalendarApiContext);
+  const shopId = useOptionalSession()?.shopId;
+  return useMemo(() => {
+    if (injected) return injected;
+    if (FAKE_API) return (fakeApi ??= createMemoryCalendarApi());
+    if (!shopId) throw new Error('useCalendarApi는 RequireSession 안에서만 쓴다');
+    return createHttpCalendarApi(http, shopId);
+  }, [injected, shopId]);
 }

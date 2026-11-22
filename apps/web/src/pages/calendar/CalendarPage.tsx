@@ -179,6 +179,15 @@ export function CalendarPage() {
 
       {state.status === 'loading' && <p className="py-8 text-center text-sm text-ink-soft">불러오는 중…</p>}
       {state.status === 'error' && <ErrorState onRetry={reload} />}
+      {/* 영업시간·휴무만 못 불러왔으면 예약은 그대로 보이고, 열린 날처럼 보이지 않게 따로 알린다(설계 05 D3). */}
+      {data?.hoursUnavailable && (
+        <p role="status" className={cn('text-sm text-ink-soft', phone && 'px-5')}>
+          영업시간·휴무를 불러오지 못해 쉬는 시간 표시를 뺐어요.{' '}
+          <button type="button" className="font-bold underline" onClick={reload}>
+            다시 불러오기
+          </button>
+        </p>
+      )}
       {shown && view === 'week' && (
         <>
           {phone && <WeekStrip days={days} data={shown} selected={date} today={today} onPick={(d) => go({ date: d })} onStep={step} />}
