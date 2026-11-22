@@ -462,6 +462,33 @@ describe('폰·웹 배치(캘린더 PR 2a) — 너비 기준 SEED md 768', () =>
     expect(within(wed).getByText('+2')).toBeInTheDocument();
     expect(screen.queryByRole('group', { name: '날짜 고르기' })).not.toBeInTheDocument();
   });
+  it('폰 주 보기 예약 칸 둘째 줄은 "메뉴 · 시작 시각" 한 줄 — 긴 메뉴만 말줄임, 시각은 늘 보이고 끝 시각은 없다', async () => {
+    setTestWidth(390);
+    renderAt(
+      '/calendar?date=2026-11-18',
+      createMemoryCalendarApi({
+        staff: [{ id: 's1', name: '원장' }, { id: 's2', name: '보조' }],
+        appointments: [
+          appt({ id: 'long', customerName: '손님가', staffId: 's2', menuName: '프리미엄 리프팅 앤 수분 집중 관리', startAt: '2026-11-18T07:00:00Z' }),
+          appt({ id: 'none', customerName: '손님나', staffId: 's1', startAt: '2026-11-18T07:00:00Z' }),
+        ],
+        blocks: [],
+      }),
+    );
+    const wed = await screen.findByRole('region', { name: '11월 18일' });
+    const card = within(wed).getByRole('button', { name: /손님가/ });
+    expect(card).toHaveClass('overflow-hidden'); // 칸을 넘는 줄은 칸 안에서 잘린다
+    const line = card.querySelector('[data-part="menu-time"]')!;
+    expect(line).toHaveClass('whitespace-nowrap');
+    expect(line.children[0]).toHaveClass('truncate');
+    expect(line.children[0]).toHaveTextContent('프리미엄 리프팅 앤 수분 집중 관리');
+    expect(line.children[1]).toHaveClass('shrink-0');
+    expect(line.children[1]).toHaveTextContent('· 16:00');
+    expect(card).not.toHaveTextContent('17:00');
+    const none = within(wed).getByRole('button', { name: /손님나/ });
+    expect(none.querySelector('[data-part="menu-time"]')).toHaveTextContent('메뉴 없음 · 16:00');
+  });
+
   it('폰 월 보기: ‹ ›가 없으니 달력을 왼쪽으로 밀면 다음 달, 오른쪽으로 밀면 이전 달(#66 리뷰)', async () => {
     setTestWidth(390);
     const router = renderAt('/calendar?view=month&date=2027-02-10');

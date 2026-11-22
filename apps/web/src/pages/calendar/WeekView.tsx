@@ -195,11 +195,17 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, p
         {phone ? (
           <>
             {labels}
-            {!overlap && a.status !== 'no_show' && <span className="truncate">{a.menuName ?? '메뉴 없음'}</span>}
-            {!tone && !overlap && <span>{`${shopTime(start)}–${shopTime(start + a.durationMin * MIN)}`}</span>}
+            {/* 둘째 줄은 "메뉴 · 시작 시각" 한 줄(디자인: "수분 관리 · 16:00"). 줄바꿈 없이 메뉴만 말줄임, 시각은 늘 보인다.
+                넘치는 줄은 칸 안에서 잘린다(overflow-hidden) — 30분 칸은 이름 한 줄만 보여도 된다. */}
+            {!overlap && a.status !== 'no_show' && (
+              <span data-part="menu-time" className="flex min-w-0 whitespace-nowrap">
+                <span className="min-w-0 truncate">{a.menuName ?? '메뉴 없음'}</span>
+                {!tone && <span className="shrink-0 tabular-nums">{` · ${shopTime(start)}`}</span>}
+              </span>
+            )}
           </>
         ) : (
-          <span className="truncate">
+          <span className="truncate whitespace-nowrap tabular-nums">
             {!tone && shopTime(start)}
             <span className="sr-only"> · {a.menuName ?? '메뉴 없음'}</span>
           </span>
