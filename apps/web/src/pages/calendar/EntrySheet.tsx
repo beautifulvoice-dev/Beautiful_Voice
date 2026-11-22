@@ -51,7 +51,17 @@ export function EntrySheet({ start, staff, businessHours = null, onClose, onSave
   // 입력을 바꿨으면 닫기 전에 묻는다(설계 06 D4). 저장 중에는 닫지 않는다.
   const [dirty, setDirty] = useState(false);
   const [asking, setAsking] = useState(false);
-  const close = () => (dirty ? setAsking(true) : onClose());
+  const saving = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const setSaving = (next: boolean) => {
+    saving.current = next;
+    setBusy(next);
+  };
+  const close = () => {
+    if (saving.current) return;
+    if (dirty) setAsking(true);
+    else onClose();
+  };
   const reset = () => {
     setDirty(false);
     setAsking(false);
@@ -65,7 +75,7 @@ export function EntrySheet({ start, staff, businessHours = null, onClose, onSave
               <ResponsiveSidePanel.Title className={cn(titleClass, 'text-xl font-bold tracking-[-0.02em]')}>
                 예약 넣기
               </ResponsiveSidePanel.Title>
-              <ActionButton variant="ghost" size="small" layout="iconOnly" aria-label="닫기" onClick={close}>
+              <ActionButton variant="ghost" size="small" layout="iconOnly" aria-label="닫기" disabled={busy} onClick={close}>
                 <Icon svg={<X />} />
               </ActionButton>
             </div>
@@ -75,6 +85,9 @@ export function EntrySheet({ start, staff, businessHours = null, onClose, onSave
             staff={staff}
             businessHours={businessHours}
             onDirty={setDirty}
+            busy={busy}
+            saving={saving}
+            setSaving={setSaving}
             onSaved={(d) => {
               reset();
               onSaved(d);
@@ -98,7 +111,9 @@ export function EntrySheet({ start, staff, businessHours = null, onClose, onSave
                     variant="criticalSolid"
                     size="large"
                     flexGrow={1}
+                    disabled={busy}
                     onClick={() => {
+                      if (saving.current) return;
                       reset();
                       onClose();
                     }}
@@ -135,12 +150,18 @@ function AppointmentForm({
   start,
   staff: allStaff,
   onDirty,
+  busy,
+  saving,
+  setSaving,
   businessHours,
   onSaved,
 }: {
   start: EntryStart;
   staff: Staff[];
   onDirty: (dirty: boolean) => void;
+  busy: boolean;
+  saving: { readonly current: boolean };
+  setSaving: (busy: boolean) => void;
   businessHours: CalendarData['businessHours'];
   onSaved: (date: string) => void;
 }) {
@@ -187,7 +208,6 @@ function AppointmentForm({
   }, [staff, staffId]);
   const [memo, setMemo] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   // 고객·예약은 서로 다른 키. 응답을 못 받으면 같은 내용·같은 키로 다시(설계 05 D5·06 D2).
   const customerKey = useRetryKey();
   const appointmentKey = useRetryKey();
@@ -252,8 +272,8 @@ function AppointmentForm({
   };
 
   const save = async (confirmedNew = false) => {
-    if (!picked || staffId === '' || !startAt) return;
-    setBusy(true);
+    if (saving.current || !picked || staffId === '' || !startAt) return;
+    setSaving(true);
     setError(null);
     const customerNote = () => (createdCustomer.current ? '고객은 등록됐어요. ' : '');
     try {
@@ -318,7 +338,7 @@ function AppointmentForm({
     } catch (err) {
       setError(err instanceof NetworkError ? NETWORK_TEXT : '저장하지 못했어요. 다시 시도해 주세요.');
     } finally {
-      setBusy(false);
+      setSaving(false);
     }
   };
 

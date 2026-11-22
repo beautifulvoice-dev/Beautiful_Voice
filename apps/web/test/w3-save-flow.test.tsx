@@ -196,6 +196,35 @@ describe('W3 저장 흐름(설계 06)', () => {
     expect(within(sheet).getByRole('group', { name: '준비 시간' })).toHaveTextContent('5분');
   });
 
+  it('예약 저장 중에는 닫기와 Escape를 막고 요청 한 건을 끝까지 처리한다', async () => {
+    const cal = calendarApi();
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    let requests = 0;
+    const calendar: CalendarApi = {
+      ...cal,
+      async createAppointment(input, options) {
+        requests++;
+        await pending;
+        return cal.createAppointment(input, options);
+      },
+    };
+    renderAt(calendar);
+    const sheet = await openSheet();
+    await fill(sheet, { name: '이서윤' });
+    await save(sheet);
+    await waitFor(() => expect(requests).toBe(1));
+    const close = within(sheet).getByRole('button', { name: '닫기' });
+    expect(close).toBeDisabled();
+    await userEvent.click(close);
+    await userEvent.keyboard('{Escape}');
+    expect(sheet).toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    release();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '예약 넣기' })).not.toBeInTheDocument());
+    expect(requests).toBe(1);
+  });
+
   it('입력을 바꾼 뒤 닫으면 한 번 묻고, 그대로 닫기를 고르면 닫힌다', async () => {
     renderAt(calendarApi());
     const sheet = await openSheet();
