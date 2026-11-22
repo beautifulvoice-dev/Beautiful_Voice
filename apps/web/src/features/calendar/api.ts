@@ -156,3 +156,8 @@ const defaultApi = createMemoryCalendarApi();
 export function useCalendarApi(): CalendarApi {
   return useContext(CalendarApiContext) ?? defaultApi;
 }
+
+/** 테스트는 Provider로 캘린더를 주입한다. */
+export function useHasCalendarApiProvider(): boolean {
+  return useContext(CalendarApiContext) !== null;
+}
