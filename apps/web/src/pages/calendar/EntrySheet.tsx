@@ -2,25 +2,17 @@
 // 폰은 큰 아래 시트, 웹은 오른쪽 패널(W2와 같은 틀). 저장 검사는 서버와 같은 @bv/scheduling checkBooking(절대 규칙 4) —
 // 거부되면 저장 버튼 위 빨간 알림(W3 거부 표).
 import { checkBooking } from '@bv/scheduling/booking';
-import {
-  ActionButton,
-  Icon,
-  Callout,
-  Chip,
-  Field,
-  RadioGroupItemHiddenInput,
-  ResponsiveSidePanel,
-  TextField,
-} from '@seed-design/react';
+import { ActionButton, Icon, Callout, Chip, Field, RadioGroupItemHiddenInput, ResponsiveSidePanel, TextField } from '@seed-design/react';
 import { CalendarDays, Minus, Plus, Search, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toBookingInputs, useCalendarApi } from '@/features/calendar/api';
 import { occupancyText, rejectText, shopIso } from '@/features/calendar/bookingText';
-import { addDays, shopDate, type Menu, type Staff } from '@/features/calendar/model';
+import { addDays, shopDate, startTimes, type CalendarData, type Menu, type Staff } from '@/features/calendar/model';
 import { useCustomerApi } from '@/features/customers/api';
 import type { Customer } from '@/features/customers/model';
 import { useIsPhone } from '@/lib/useLayout';
 import { cn } from '@/lib/utils';
+import { DateField, TimeField } from './DateTimeFields';
 import { CalendarSheet, sheetBodyClass, sheetFootClass, sheetHeadClass, titleClass } from './Sheet';
 
 export interface EntryStart {
@@ -34,12 +26,14 @@ export interface EntryStart {
 interface Props {
   start: EntryStart | null;
   staff: Staff[];
+  /** 시작 시각 목록(영업시간 안 15분)을 만드는 데 쓴다. 없으면 09:00~21:00. */
+  businessHours?: CalendarData['businessHours'];
   onClose: () => void;
   /** 저장했다 — 캘린더를 다시 불러오고 그 날로 간다. */
   onSaved: (date: string) => void;
 }
 
-export function EntrySheet({ start, staff, onClose, onSaved }: Props) {
+export function EntrySheet({ start, staff, businessHours = null, onClose, onSaved }: Props) {
   const phone = useIsPhone();
   return (
     <CalendarSheet open={start !== null} onClose={onClose} full>
@@ -57,7 +51,7 @@ export function EntrySheet({ start, staff, onClose, onSaved }: Props) {
               </ResponsiveSidePanel.CloseButton>
             </div>
           </ResponsiveSidePanel.Header>
-          <AppointmentForm start={start} staff={staff} onSaved={onSaved} />
+          <AppointmentForm start={start} staff={staff} businessHours={businessHours} onSaved={onSaved} />
         </>
       )}
     </CalendarSheet>
@@ -72,7 +66,17 @@ const DEFAULT_DURATION = 60;
 /** 메뉴가 없으면 준비 시간 기본 10분(PM 메모 닫힌 항목). */
 const DEFAULT_PREP = 10;
 
-function AppointmentForm({ start, staff, onSaved }: { start: EntryStart; staff: Staff[]; onSaved: (date: string) => void }) {
+function AppointmentForm({
+  start,
+  staff,
+  businessHours,
+  onSaved,
+}: {
+  start: EntryStart;
+  staff: Staff[];
+  businessHours: CalendarData['businessHours'];
+  onSaved: (date: string) => void;
+}) {
   const api = useCalendarApi();
   const customers = useCustomerApi();
   const phone = useIsPhone();
@@ -240,24 +244,20 @@ function AppointmentForm({ start, staff, onSaved }: { start: EntryStart; staff: 
           </div>
         )}
 
+        {/* 날짜·시작은 누르기만(11/22 옵마): 달력 팝업 / 영업시간 안 15분 목록(폰 휠, 웹 펼치는 목록) */}
         <div className="flex gap-2.5">
-          <Field.Root className="min-w-0 flex-1">
-            <Field.Header>
-              <Field.Label>날짜</Field.Label>
-            </Field.Header>
-            <TextField.Root size="large">
-              <TextField.Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-            </TextField.Root>
-          </Field.Root>
-          <Field.Root className="w-[45%]">
-            <Field.Header>
-              <Field.Label>시작</Field.Label>
-            </Field.Header>
-            <TextField.Root size="large">
-              {/* 15분 간격 [제안] */}
-              <TextField.Input type="time" step={900} value={time} onChange={(e) => setTime(e.target.value)} />
-            </TextField.Root>
-          </Field.Root>
+          <div className="grid min-w-0 flex-1 gap-1.5">
+            <label htmlFor="entry-date" className="text-sm font-bold text-ink">
+              날짜
+            </label>
+            <DateField id="entry-date" value={date} onChange={setDate} />
+          </div>
+          <div className="grid w-[45%] gap-1.5">
+            <label htmlFor="entry-time" className="text-sm font-bold text-ink">
+              시작
+            </label>
+            <TimeField id="entry-time" value={time} options={startTimes(date, businessHours)} onChange={setTime} phone={phone} />
+          </div>
         </div>
 
         <Stepper label="관리 시간" value={duration} step={10} min={10} onChange={setDuration} />
