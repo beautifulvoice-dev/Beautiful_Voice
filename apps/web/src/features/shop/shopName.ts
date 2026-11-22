@@ -2,6 +2,7 @@
 // 이름은 이미 있는 GET /api/shops/{shopId}(로그인 확인 #34, auth.openapi.yaml)로 받는다.
 import type { OwnerShopResponse } from '@bv/contracts';
 import { createContext, useContext } from 'react';
+import { DEV_SKIP_LOGIN } from '@/features/auth/session';
 
 export type ShopNameLoader = (shopId: string) => Promise<string>;
 
@@ -14,7 +15,10 @@ export async function fetchShopName(shopId: string): Promise<string> {
   return ((await response.json()) as OwnerShopResponse).name;
 }
 
-const ShopNameLoaderContext = createContext<ShopNameLoader>(fetchShopName);
+// 개발용 로그인 건너뛰기에서는 서버가 없거나 가짜 매장(dev-shop)이라 부르지 않는다(콘솔 오류 방지).
+// 이름은 디자인 장면과 같은 합성 매장(캘린더 가짜 데이터 seedDesignScene).
+const devShopName: ShopNameLoader = async () => '라온 뷰티 성수점';
+const ShopNameLoaderContext = createContext<ShopNameLoader>(DEV_SKIP_LOGIN ? devShopName : fetchShopName);
 /** 테스트에서 매장 이름을 바꿔 끼울 때 쓴다. */
 export const ShopNameLoaderProvider = ShopNameLoaderContext.Provider;
 export const useShopNameLoader = () => useContext(ShopNameLoaderContext);

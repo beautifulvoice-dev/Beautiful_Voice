@@ -11,6 +11,15 @@
 /* 밝은 모드만: shadcn 부품의 dark: 클래스가 OS 다크 모드를 따라가지 않게 .dark 클래스에만 묶어 둔다(쓰지 않음). */
 @custom-variant dark (&:is(.dark *));
 
+/* 화면 너비 기준 = SEED(@seed-design/css/breakpoints)·디자인 HTML과 같게(ADR-0008). Tailwind 기본(sm 640·lg 1024)은 쓰지 않는다. */
+@theme {
+    --breakpoint-sm: 480px;
+    --breakpoint-md: 768px;
+    --breakpoint-lg: 1280px;
+    --breakpoint-xl: 1440px;
+    --breakpoint-2xl: initial;
+}
+
 @theme inline {
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
@@ -41,6 +50,11 @@
     --color-paper: var(--paper);
     --color-ink: var(--ink);
     --color-ink-soft: var(--ink-soft);
+    --color-ink-subtle: var(--ink-subtle);
+    --color-ink-disabled: var(--ink-disabled);
+    --color-neutral-weak: var(--neutral-weak);
+    --color-disabled: var(--disabled);
+    --color-floating: var(--floating);
     --color-line: var(--line);
     --color-surface: var(--surface);
     --color-control-line: var(--control-line);
@@ -49,6 +63,17 @@
     --color-brand-weak: var(--brand-weak);
     --color-brand-text: var(--brand-text);
     --color-on-brand: var(--on-brand);
+    --color-cal-appt: var(--cal-appt);
+    --color-cal-appt-text: var(--cal-appt-text);
+    --color-cal-prep: var(--cal-prep);
+    --color-cal-block: var(--cal-block);
+    --color-cal-closed: var(--cal-closed);
+    --color-cal-overlap: var(--cal-overlap);
+    --color-cal-done: var(--cal-done);
+    --color-cal-done-text: var(--cal-done-text);
+    --color-cal-noshow: var(--cal-noshow);
+    --color-cal-noshow-text: var(--cal-noshow-text);
+    --color-cal-now: var(--cal-now);
 }
 
 :root {
@@ -83,4 +108,24 @@
     @apply bg-background text-foreground;
     font-family: var(--font-body);
     }
+}
+/* 웹 오른쪽 패널(SEED SidePanel, 예약 보기 W2)은 머리줄(h-16 = 64px) 아래부터 — 위쪽 탭을 가리지 않게.
+   SEED Positioner가 className을 받지 않아 레시피 클래스에 직접 건다(층 밖이라 seed-components보다 우선). */
+@media (min-width: 768px) {
+  .seed-side-panel__positioner {
+    top: 4rem;
+  }
+}
+
+/* 폰 아래 시트(SEED BottomSheet, 예약 보기 W2)는 아래 탭·+ 예약 버튼(z-30)보다 위에. SEED 기본 z-index는 2. */
+.seed-bottom-sheet__positioner,
+.seed-bottom-sheet__backdrop {
+  z-index: 40;
+}
+
+/* 배지는 SEED Badge size="large"를 쓰고 글자만 14px로 올린다(화면 설계서 §9.1, 레시피 기본 12px). 디자인 HTML .nb 보정과 같은 값. */
+.seed-badge__root--size_large {
+  font-size: 14px;
+  line-height: 20px;
+  min-height: 26px;
 }
