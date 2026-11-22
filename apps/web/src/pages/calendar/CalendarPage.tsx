@@ -11,6 +11,8 @@ import {
   RadioGroupItemHiddenInput,
   SegmentedControl,
   SegmentedControlItemHiddenInput,
+  Snackbar,
+  useSnackbarAdapter,
 } from '@seed-design/react';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
@@ -61,7 +63,30 @@ function title(view: View, date: string): string {
 const ALL = 'all';
 const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 
+/** 상태를 바꾼 뒤 스낵바 문구(설계서 W2 "완료로 표시했어요 · 되돌리기"). */
+const STATUS_DONE: Record<AppointmentStatus, string> = {
+  scheduled: '예정으로 되돌렸어요',
+  completed: '완료로 표시했어요',
+  no_show: '노쇼로 표시했어요',
+  cancelled: '예약을 취소했어요',
+  voided: '되돌렸어요', // 원장이 고르는 상태가 아님(업무 되돌리기 전용) — 형식을 맞추려고만
+};
+
 export function CalendarPage() {
+  // 스낵바(상태 바꾼 뒤 되돌리기)는 캘린더 화면 안에서만 쓴다.
+  return (
+    <Snackbar.RootProvider>
+      <CalendarScreen />
+      {/* 폰은 아래 탭(74px) 위에 띄운다 */}
+      <Snackbar.Region className="!bottom-[74px] md:!bottom-0">
+        <Snackbar.Renderer />
+      </Snackbar.Region>
+    </Snackbar.RootProvider>
+  );
+}
+
+function CalendarScreen() {
+  const snackbar = useSnackbarAdapter();
   const api = useCalendarApi();
   const hasApiProvider = useHasCalendarApiProvider();
   const canEnter = FAKE_API || hasApiProvider || api.persistsAppointments === true;
@@ -105,11 +130,37 @@ export function CalendarPage() {
     setEntry({ date: start?.date ?? date, time: start?.time ?? null, staffId: start?.staffId ?? (staffId === ALL ? null : staffId) });
 
   const changeStatus = async (a: CalendarAppointment, to: AppointmentStatus) => {
+    const reason = (r: { reason: Parameters<typeof rejectText>[0]; conflictingIds: string[] }) =>
+      data ? rejectText(r.reason, r.conflictingIds, { data, staffId: a.staffId, startAt: a.startAt }) : '바꾸지 못했어요.';
     const r = await api.setStatus(a.id, to);
-    if (!r.ok) return data ? rejectText(r.reason, r.conflictingIds, { data, staffId: a.staffId, startAt: a.startAt }) : '바꾸지 못했어요.';
-    // 취소하면 캘린더에서 빠지므로 패널을 닫는다(원칙: 취소 예약은 그리지 않음).
-    if (to === 'cancelled') setOpen(null);
+    if (!r.ok) return reason(r);
+    // 저장되면 패널을 닫고 스낵바로 알린다 — "되돌리기"는 이전 상태로(설계서 W2, 11/22 옵마).
+    const from = a.status;
+    setOpen(null);
     reload();
+    const show = (message: string, undo?: () => void) =>
+      snackbar.create({
+        render: () => (
+          <Snackbar.Root variant={undo ? 'default' : 'critical'}>
+            <Snackbar.Content>
+              <Snackbar.Message>{message}</Snackbar.Message>
+            </Snackbar.Content>
+            {undo && <Snackbar.ActionButton onClick={undo}>되돌리기</Snackbar.ActionButton>}
+          </Snackbar.Root>
+        ),
+      });
+    let undoStarted = false;
+    show(STATUS_DONE[to], async () => {
+      if (undoStarted) return;
+      undoStarted = true;
+      try {
+        const back = await api.setStatus(a.id, from);
+        if (!back.ok) show(`되돌리지 못했어요. ${reason(back)}`);
+      } catch {
+        show('되돌리지 못했어요. 잠시 뒤 다시 시도해 주세요.');
+      }
+      reload();
+    });
     return null;
   };
 
