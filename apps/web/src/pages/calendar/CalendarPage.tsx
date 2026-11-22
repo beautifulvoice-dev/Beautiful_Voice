@@ -97,7 +97,10 @@ export function CalendarPage() {
 
   const changeStatus = async (a: CalendarAppointment, to: AppointmentStatus) => {
     const r = await api.setStatus(a.id, to);
-    if (!r.ok) return data ? rejectText(r.reason, r.conflictingIds, { data, staffId: a.staffId, startAt: a.startAt }) : '바꾸지 못했어요.';
+    if (!r.ok) {
+      if (r.reason === 'VERSION_CONFLICT' || r.reason === 'NOT_FOUND') reload();
+      return data ? rejectText(r.reason, r.conflictingIds, { data, staffId: a.staffId, startAt: a.startAt }) : '바꾸지 못했어요.';
+    }
     // 취소하면 캘린더에서 빠지므로 패널을 닫는다(원칙: 취소 예약은 그리지 않음).
     if (to === 'cancelled') setOpen(null);
     reload();

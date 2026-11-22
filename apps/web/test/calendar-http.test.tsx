@@ -1,5 +1,5 @@
 // 설계 04 보강·05 D3·D5: 캘린더 실제 어댑터(조회·설정 실패 분리·담당자 열·상태 version·재시도 키·거부 이유). 합성 데이터만.
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
@@ -114,6 +114,41 @@ describe('상태 바꾸기', () => {
 });
 
 describe('처리하지 않은 서버 오류(#73 리뷰)', () => {
+  it('W2: 409 뒤 같은 예약을 다시 조회하고 최신 version으로 재시도한다', async () => {
+    const booking = appt('a1');
+    const response = (version: number) => json(200, {
+      staff: [staff('s1')], appointments: [{ ...booking, version }], blocks: [],
+    });
+    const { api, sent } = fake({
+      'GET /calendar': [response(1), response(2), response(3)],
+      'GET /settings/business-hours': [json(200, hours), json(200, hours), json(200, hours)],
+      'GET /closures': Array.from({ length: 3 }, () => json(200, { items: [] })),
+      'PUT /appointments/a1/status': [
+        fail(409, 'VERSION_CONFLICT', { currentVersion: 2 }),
+        json(200, { ...booking, version: 3, status: 'completed' }),
+      ],
+    });
+    const router = createMemoryRouter(routes, { initialEntries: ['/calendar?date=2026-12-01'] });
+    render(
+      <SessionLoaderProvider value={async () => ({ shopId: 'shop-1' })}>
+        <CalendarApiProvider value={api}>
+          <RouterProvider router={router} />
+        </CalendarApiProvider>
+      </SessionLoaderProvider>,
+    );
+    const day = await screen.findByRole('region', { name: '12월 1일' });
+    await userEvent.click(within(day).getByRole('button', { name: /합성 고객/ }));
+    const panel = await screen.findByRole('dialog', { name: '합성 고객' });
+    await userEvent.click(within(panel).getByRole('button', { name: '완료' }));
+    expect(await within(panel).findByText(/그사이 다른 곳에서 이 예약이 바뀌었어요/)).toBeInTheDocument();
+    await waitFor(() => expect(sent.filter((request) => request.url.includes('/calendar?'))).toHaveLength(2));
+    await userEvent.click(within(panel).getByRole('button', { name: '완료' }));
+    expect(sent.filter((request) => request.method === 'PUT').map((request) => request.body)).toEqual([
+      { status: 'completed', version: 1 },
+      { status: 'completed', version: 2 },
+    ]);
+  });
+
   it('500은 FAILED, 401은 UNAUTHENTICATED로 돌려준다 — 던지지 않는다', async () => {
     const { api } = fake({
       'GET /appointments/a1': [json(200, appt('a1'))],

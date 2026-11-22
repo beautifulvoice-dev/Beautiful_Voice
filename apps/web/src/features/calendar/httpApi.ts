@@ -58,6 +58,7 @@ export function createHttpCalendarApi(http: Http, shopId: string): CalendarApi {
   const statusKeys = new Map<string, string>();
 
   return {
+    persistsAppointments: true,
     async range(from, to) {
       const settings = Promise.all([
         http.get<BusinessHoursBody>(path('settings', 'business-hours')),

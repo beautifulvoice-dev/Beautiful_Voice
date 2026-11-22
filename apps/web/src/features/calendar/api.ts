@@ -63,6 +63,8 @@ export interface CalendarWriteOptions {
 }
 
 export interface CalendarApi {
+  /** 실제 예약 저장 API가 연결됐을 때만 true. */
+  readonly persistsAppointments?: true;
   /** 매장 날짜 from ~ to(마지막 날 포함). 즉 from 0시 ~ to 다음 날 0시 사이에 점유·차단이 걸치는 것. 예약 API 계약도 같은 뜻으로 둔다. */
   range(from: string, to: string): Promise<CalendarData>;
   menus(): Promise<Menu[]>;
