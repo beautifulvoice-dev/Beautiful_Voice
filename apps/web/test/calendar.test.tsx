@@ -466,12 +466,12 @@ describe('폰·웹 배치(캘린더 PR 2a) — 너비 기준 SEED md 768', () =>
     setTestWidth(390);
     const router = renderAt('/calendar?view=month&date=2027-02-10');
     expect(await screen.findByRole('heading', { level: 2, name: '2027년 2월' })).toBeInTheDocument();
-    const grid = screen.getAllByRole('columnheader')[0]!.parentElement!.parentElement!;
+    const grid = screen.getAllByRole('columnheader')[0]!; // 요일 머리에서 밀어도 달력까지 올라간다
     fireEvent.touchStart(grid, { touches: [{ clientX: 300, clientY: 100 }] });
     fireEvent.touchEnd(grid, { changedTouches: [{ clientX: 150, clientY: 110 }] });
     expect(await screen.findByRole('heading', { level: 2, name: '2027년 3월' })).toBeInTheDocument();
     expect(router.state.location.search).toBe('?view=month&date=2027-03-01'); // 달 이동은 그달 1일로
-    const grid2 = screen.getAllByRole('columnheader')[0]!.parentElement!.parentElement!;
+    const grid2 = screen.getAllByRole('columnheader')[0]!; // 요일 머리에서 밀어도 달력까지 올라간다
     fireEvent.touchStart(grid2, { touches: [{ clientX: 100, clientY: 100 }] });
     fireEvent.touchEnd(grid2, { changedTouches: [{ clientX: 260, clientY: 90 }] });
     expect(await screen.findByRole('heading', { level: 2, name: '2027년 2월' })).toBeInTheDocument();
