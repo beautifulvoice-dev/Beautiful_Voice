@@ -4,7 +4,7 @@
 // 문자 보내기(M3)·더보기(바꾸기·예약 취소)는 아직 꺼 둔다.
 import { ActionButton, AlertDialog, Icon, PrefixIcon, Badge, Callout, ResponsiveSidePanel } from '@seed-design/react';
 import { ChevronRight, Ellipsis, MessageSquare, X } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { shortDate } from '@/features/calendar/bookingText';
 import { Link } from 'react-router';
 import {
@@ -65,13 +65,22 @@ function Body({
   // 예약 취소는 캘린더에서 빠지므로 한 번 더 묻는다(설계서 W2 확인, 원칙 8 — #68 리뷰).
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [busy, setBusy] = useState(false);
+  const saving = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const size = phone ? 'large' : 'medium';
 
   const run = async (to: AppointmentStatus) => {
+    if (saving.current) return;
+    saving.current = true;
     setBusy(true);
-    setError(await onStatus(a, to));
-    setBusy(false);
+    try {
+      setError(await onStatus(a, to));
+    } catch {
+      setError('저장하지 못했어요. 잠시 뒤 다시 시도해 주세요.');
+    } finally {
+      saving.current = false;
+      setBusy(false);
+    }
   };
 
   const name = (
@@ -210,6 +219,7 @@ function Body({
       <AlertDialog.Root
         open={confirmCancel}
         onOpenChange={(open) => {
+          if (saving.current) return;
           setConfirmCancel(open);
           if (!open) onClose();
         }}
@@ -224,7 +234,7 @@ function Body({
             </AlertDialog.Header>
             <AlertDialog.Footer>
               <AlertDialog.Action asChild>
-                <ActionButton variant="neutralWeak" size="large" flexGrow={1}>
+                <ActionButton variant="neutralWeak" size="large" flexGrow={1} disabled={busy}>
                   그만두기
                 </ActionButton>
               </AlertDialog.Action>

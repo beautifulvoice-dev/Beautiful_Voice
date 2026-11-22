@@ -140,9 +140,16 @@ function CalendarScreen() {
           </Snackbar.Root>
         ),
       });
+    let undoStarted = false;
     show(STATUS_DONE[to], async () => {
-      const back = await api.setStatus(a.id, from);
-      if (!back.ok) show(`되돌리지 못했어요. ${reason(back)}`);
+      if (undoStarted) return;
+      undoStarted = true;
+      try {
+        const back = await api.setStatus(a.id, from);
+        if (!back.ok) show(`되돌리지 못했어요. ${reason(back)}`);
+      } catch {
+        show('되돌리지 못했어요. 잠시 뒤 다시 시도해 주세요.');
+      }
       reload();
     });
     return null;
