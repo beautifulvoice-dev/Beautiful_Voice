@@ -2,7 +2,7 @@
 // 완료 조건: 주·월 전환 / 관리·준비·차단을 다르게 표시 / 예약 카드에 고객·메뉴·담당자, 누르면 메모.
 // 보기와 날짜는 주소(?view=week|month&date=YYYY-MM-DD)에 둔다 — 개인정보가 아니고, 새로고침·뒤로 가기에도 유지된다.
 // 폰: 제목 위 매장 이름, 제목 + 주·월. ‹ ›가 없어 7일 띠·달력을 밀어 이동하고 제목을 누르면 오늘(11/21 옵마 결정). `+ 예약`은 떠 있는 버튼.
-// 웹: 제목 ‹ 오늘 › … 주·월 · `+ 예약`, 담당자 칩. `+ 예약`은 예약 넣기(W3) PR에서 연결한다.
+// 웹: 제목 ‹ 오늘 › … 주·월 · `+ 예약`, 담당자 칩. `+ 예약`·빈 칸 누르기 → 예약 넣기(W3).
 import {
   ActionButton,
   Icon,
@@ -11,13 +11,15 @@ import {
   RadioGroupItemHiddenInput,
   SegmentedControl,
   SegmentedControlItemHiddenInput,
+  Snackbar,
+  useSnackbarAdapter,
 } from '@seed-design/react';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useShopName } from '@/components/layout/AppShell';
 import { ErrorState } from '@/components/states/DataState';
-import { useCalendarApi } from '@/features/calendar/api';
+import { useCalendarApi, useHasCalendarApiProvider } from '@/features/calendar/api';
 import { rejectText } from '@/features/calendar/bookingText';
 import {
   addDays,
@@ -33,9 +35,11 @@ import {
   type Staff,
 } from '@/features/calendar/model';
 import { useIsPhone } from '@/lib/useLayout';
+import { FAKE_API } from '@/lib/apiMode';
 import { useLoad } from '@/lib/useLoad';
 import { cn } from '@/lib/utils';
 import { AppointmentPanel, PANEL_WIDTH } from './AppointmentPanel';
+import { EntrySheet, type EntryStart } from './EntrySheet';
 import { MonthView } from './MonthView';
 import { WeekStrip } from './WeekStrip';
 import { WeekView } from './WeekView';
@@ -57,9 +61,35 @@ function title(view: View, date: string): string {
 }
 
 const ALL = 'all';
+const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+
+/** 상태를 바꾼 뒤 스낵바 문구(설계서 W2 "완료로 표시했어요 · 되돌리기"). */
+const STATUS_DONE: Record<AppointmentStatus, string> = {
+  scheduled: '예정으로 되돌렸어요',
+  completed: '완료로 표시했어요',
+  no_show: '노쇼로 표시했어요',
+  cancelled: '예약을 취소했어요',
+  voided: '되돌렸어요', // 원장이 고르는 상태가 아님(업무 되돌리기 전용) — 형식을 맞추려고만
+};
 
 export function CalendarPage() {
+  // 스낵바(상태 바꾼 뒤 되돌리기)는 캘린더 화면 안에서만 쓴다.
+  return (
+    <Snackbar.RootProvider>
+      <CalendarScreen />
+      {/* 폰은 아래 탭(74px) 위에 띄운다 */}
+      <Snackbar.Region className="!bottom-[74px] md:!bottom-0">
+        <Snackbar.Renderer />
+      </Snackbar.Region>
+    </Snackbar.RootProvider>
+  );
+}
+
+function CalendarScreen() {
+  const snackbar = useSnackbarAdapter();
   const api = useCalendarApi();
+  const hasApiProvider = useHasCalendarApiProvider();
+  const entryPreview = FAKE_API || hasApiProvider;
   const shopName = useShopName();
   // 폰은 주 보기를 7일 띠 + 고른 날 하루 시간표로, 월 보기를 예약 수 + 아래 목록으로(설계 D4: 부품이 다른 곳만 JS로).
   const phone = useIsPhone();
@@ -75,6 +105,7 @@ export function CalendarPage() {
   const load = useCallback(() => api.range(from, to), [api, from, to]);
   const { state, reload } = useLoad<CalendarData>(load);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [entry, setEntry] = useState<EntryStart | null>(null);
   // 닫히면 누른 예약 칸으로 초점을 돌려준다(키보드 사용자, 설계 §6).
   const opener = useRef<HTMLElement | null>(null);
   const setOpen = (a: CalendarAppointment | null) => {
@@ -94,18 +125,48 @@ export function CalendarPage() {
   const step = (n: number) => go({ date: view === 'week' ? addDays(date, 7 * n) : addMonths(date, n) });
 
   const staffName = (id: string) => data?.staff.find((s) => s.id === id)?.name ?? '담당자 미상';
+  const newEntry = (start?: Partial<EntryStart>) =>
+    setEntry({ date: start?.date ?? date, time: start?.time ?? '10:00', staffId: start?.staffId ?? (staffId === ALL ? null : staffId) });
 
   const changeStatus = async (a: CalendarAppointment, to: AppointmentStatus) => {
+    const reason = (r: { reason: Parameters<typeof rejectText>[0]; conflictingIds: string[] }) =>
+      data ? rejectText(r.reason, r.conflictingIds, { data, staffId: a.staffId, startAt: a.startAt }) : '바꾸지 못했어요.';
     const r = await api.setStatus(a.id, to);
     if (!r.ok) {
+      // 그사이 바뀌었거나 없어졌으면 최신으로 다시 읽는다(설계 05 D4).
       if (r.reason === 'VERSION_CONFLICT' || r.reason === 'NOT_FOUND') reload();
-      return data ? rejectText(r.reason, r.conflictingIds, { data, staffId: a.staffId, startAt: a.startAt }) : '바꾸지 못했어요.';
+      return reason(r);
     }
-    // 취소하면 캘린더에서 빠지므로 패널을 닫는다(원칙: 취소 예약은 그리지 않음).
-    if (to === 'cancelled') setOpen(null);
+    // 저장되면 패널을 닫고 스낵바로 알린다 — "되돌리기"는 이전 상태로(설계서 W2, 11/22 옵마).
+    const from = a.status;
+    setOpen(null);
     reload();
+    const show = (message: string, undo?: () => void) =>
+      snackbar.create({
+        render: () => (
+          <Snackbar.Root variant={undo ? 'default' : 'critical'}>
+            <Snackbar.Content>
+              <Snackbar.Message>{message}</Snackbar.Message>
+            </Snackbar.Content>
+            {undo && <Snackbar.ActionButton onClick={undo}>되돌리기</Snackbar.ActionButton>}
+          </Snackbar.Root>
+        ),
+      });
+    let undoStarted = false;
+    show(STATUS_DONE[to], async () => {
+      if (undoStarted) return;
+      undoStarted = true;
+      try {
+        const back = await api.setStatus(a.id, from);
+        if (!back.ok) show(`되돌리지 못했어요. ${reason(back)}`);
+      } catch {
+        show('되돌리지 못했어요. 잠시 뒤 다시 시도해 주세요.');
+      }
+      reload();
+    });
     return null;
   };
+
   const segment = (
     // 세그먼트는 기본으로 줄 전체 폭 — 내용만큼만 쓰도록 감싼다(폭을 고정하면 표시 막대 위치가 어긋난다).
     <div className="w-fit">
@@ -125,7 +186,7 @@ export function CalendarPage() {
     // 웹 패널은 모달이 아니라 격자 위에 뜨므로, 열려 있는 동안 패널 폭만큼 오른쪽을 비워 격자를 좁힌다(설계 §6, 디자인 padding-right 424px).
     <div
       className={cn('flex flex-col', !phone && 'gap-[18px] p-6')}
-      style={open && !phone ? { paddingRight: PANEL_WIDTH + 24 } : undefined}
+      style={(open || entry) && !phone ? { paddingRight: PANEL_WIDTH + 24 } : undefined}
     >
       <h1 className="sr-only">캘린더</h1>
       {phone ? (
@@ -171,10 +232,12 @@ export function CalendarPage() {
           </ActionButton>
           <span className="flex-1" />
           {segment}
-          <ActionButton variant="brandSolid" size="medium" disabled aria-describedby="new-appointment-note">
-            <PrefixIcon svg={<Plus />} />
-            예약
-          </ActionButton>
+          {entryPreview && (
+            <ActionButton variant="brandSolid" size="medium" onClick={() => newEntry()}>
+              <PrefixIcon svg={<Plus />} />
+              예약
+            </ActionButton>
+          )}
         </div>
       )}
 
@@ -202,6 +265,7 @@ export function CalendarPage() {
             onOpen={setOpen}
             staffName={staffName}
             phone={phone}
+            onEmpty={entryPreview ? (d, minute, lane) => newEntry({ date: d, time: hhmm(minute), staffId: lane }) : undefined}
           />
         </>
       )}
@@ -227,21 +291,28 @@ export function CalendarPage() {
         onClose={() => setOpen(null)}
         onStatus={changeStatus}
       />
+      <EntrySheet
+        start={entry}
+        staff={data?.staff ?? []}
+        businessHours={data?.businessHours ?? null}
+        onClose={() => setEntry(null)}
+        onSaved={(d) => {
+          setEntry(null);
+          go({ date: d });
+          reload();
+        }}
+      />
       {/* + 예약: 폰은 오른쪽 아래 떠 있는 버튼(디자인 .fab — 탭 바 위 오른쪽 18px), 웹은 제목 줄 오른쪽(설계서 W1). */}
-      {phone && (
+      {phone && entryPreview && (
         <button
           type="button"
-          disabled
-          aria-describedby="new-appointment-note"
-          className="fixed right-[18px] bottom-24 z-20 inline-flex h-[52px] items-center gap-1.5 rounded-[26px] bg-brand pr-5 pl-4 text-base font-bold text-on-brand shadow-lg disabled:bg-disabled disabled:text-ink-disabled disabled:shadow-none"
+          onClick={() => newEntry()}
+          className="fixed right-[18px] bottom-24 z-20 inline-flex h-[52px] items-center gap-1.5 rounded-[26px] bg-brand pr-5 pl-4 text-base font-bold text-on-brand shadow-lg"
         >
           <Plus aria-hidden size={20} strokeWidth={2.25} />
           예약
         </button>
       )}
-      <p id="new-appointment-note" className="sr-only">
-        예약 넣기는 다음 단계에서 열려요.
-      </p>
     </div>
   );
 }

@@ -1,10 +1,10 @@
 // 예약 보기 W2 (화면 설계서 §5 W2, 디자인 w2.png·phase2-screens.html .panel/.sheet): 폰은 아래 시트, 웹은 오른쪽 패널.
-// 예정이면 주 버튼 완료, 보조 노쇼·문자 보내기, 더보기. 완료·노쇼·취소면 상태 고치기 하나(결정 S5).
-// 완료·노쇼·상태 고치기는 가짜 저장소에서 실제로 바뀐다(@bv/scheduling changeStatus, 11/21 옵마 결정).
+// 예정이면 주 버튼 "시술 완료"(11/22 옵마 결정 — 디자인 문구는 "완료"), 보조 노쇼·문자 보내기, 더보기. 완료·노쇼·취소면 상태 고치기 하나(결정 S5).
+// 완료·노쇼·상태 고치기는 가짜 저장소에서 실제로 바뀐다(@bv/scheduling changeStatus, 11/21 옵마 결정). 저장되면 패널을 닫고 스낵바 + 되돌리기(CalendarPage).
 // 문자 보내기(M3)·더보기(바꾸기·예약 취소)는 아직 꺼 둔다.
 import { ActionButton, AlertDialog, Icon, PrefixIcon, Badge, Callout, ResponsiveSidePanel } from '@seed-design/react';
 import { ChevronRight, Ellipsis, MessageSquare, X } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { shortDate } from '@/features/calendar/bookingText';
 import { Link } from 'react-router';
 import {
@@ -36,7 +36,7 @@ interface Props {
 export function AppointmentPanel({ appointment: a, staffName, blocks, onClose, onStatus }: Props) {
   return (
     <CalendarSheet open={a !== null} onClose={onClose}>
-      {a && <Body key={`${a.id}-${a.status}`} a={a} staffName={staffName} blocks={blocks} onStatus={onStatus} />}
+      {a && <Body key={`${a.id}-${a.status}`} a={a} staffName={staffName} blocks={blocks} onStatus={onStatus} onClose={onClose} />}
     </CalendarSheet>
   );
 }
@@ -49,11 +49,13 @@ function Body({
   staffName,
   blocks,
   onStatus,
+  onClose,
 }: {
   a: CalendarAppointment;
   staffName: string;
   blocks: readonly CalendarBlock[];
   onStatus: Props['onStatus'];
+  onClose: () => void;
 }) {
   const phone = useIsPhone();
   const [time, prep] = appointmentPanelTime(a);
@@ -63,13 +65,22 @@ function Body({
   // 예약 취소는 캘린더에서 빠지므로 한 번 더 묻는다(설계서 W2 확인, 원칙 8 — #68 리뷰).
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [busy, setBusy] = useState(false);
+  const saving = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const size = phone ? 'large' : 'medium';
 
   const run = async (to: AppointmentStatus) => {
+    if (saving.current) return;
+    saving.current = true;
     setBusy(true);
-    setError(await onStatus(a, to));
-    setBusy(false);
+    try {
+      setError(await onStatus(a, to));
+    } catch {
+      setError('저장하지 못했어요. 잠시 뒤 다시 시도해 주세요.');
+    } finally {
+      saving.current = false;
+      setBusy(false);
+    }
   };
 
   const name = (
@@ -94,13 +105,12 @@ function Body({
               </Badge.Root>
             )}
           </span>
-          {!phone && (
-            <ResponsiveSidePanel.CloseButton asChild>
-              <ActionButton variant="ghost" size="small" layout="iconOnly" aria-label="닫기">
-                <Icon svg={<X />} />
-              </ActionButton>
-            </ResponsiveSidePanel.CloseButton>
-          )}
+          {/* 닫기 ×는 폰 시트에도 늘 보인다(11/22 옵마) */}
+          <ResponsiveSidePanel.CloseButton asChild>
+            <ActionButton variant="ghost" size="small" layout="iconOnly" aria-label="닫기">
+              <Icon svg={<X />} />
+            </ActionButton>
+          </ResponsiveSidePanel.CloseButton>
         </div>
         <div className="flex items-center justify-between gap-2">
           <ResponsiveSidePanel.Title className={cn(titleClass, phone ? 'text-xl font-bold tracking-[-0.02em]' : 'text-[22px] font-bold')}>
@@ -176,7 +186,7 @@ function Body({
         ) : scheduled ? (
           <div className="flex w-full gap-2">
             <ActionButton variant="brandSolid" size={size} flexGrow={phone ? 2 : 1} loading={busy} onClick={() => run('completed')}>
-              완료
+              시술 완료
             </ActionButton>
             <ActionButton variant="neutralWeak" size={size} flexGrow={phone ? 1 : 0} disabled={busy} onClick={() => run('no_show')}>
               노쇼
@@ -204,7 +214,16 @@ function Body({
           </ActionButton>
         )}
       </ResponsiveSidePanel.Footer>
-      <AlertDialog.Root open={confirmCancel} onOpenChange={setConfirmCancel}>
+      {/* 그만두기(·Esc·바깥 누르기)는 아무것도 바꾸지 않고 패널까지 닫아 캘린더로 돌아간다(11/22 옵마).
+          "예약 취소"는 저장 뒤 CalendarPage가 패널을 닫는다 — 실패하면 확인 창만 닫고 패널에 이유를 보인다. */}
+      <AlertDialog.Root
+        open={confirmCancel}
+        onOpenChange={(open) => {
+          if (saving.current) return;
+          setConfirmCancel(open);
+          if (!open) onClose();
+        }}
+      >
         <AlertDialog.Backdrop />
         <AlertDialog.Positioner>
           <AlertDialog.Content>
@@ -215,7 +234,7 @@ function Body({
             </AlertDialog.Header>
             <AlertDialog.Footer>
               <AlertDialog.Action asChild>
-                <ActionButton variant="neutralWeak" size="large" flexGrow={1}>
+                <ActionButton variant="neutralWeak" size="large" flexGrow={1} disabled={busy}>
                   그만두기
                 </ActionButton>
               </AlertDialog.Action>

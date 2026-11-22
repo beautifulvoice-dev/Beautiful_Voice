@@ -139,10 +139,10 @@ describe('처리하지 않은 서버 오류(#73 리뷰)', () => {
     const day = await screen.findByRole('region', { name: '12월 1일' });
     await userEvent.click(within(day).getByRole('button', { name: /합성 고객/ }));
     const panel = await screen.findByRole('dialog', { name: '합성 고객' });
-    await userEvent.click(within(panel).getByRole('button', { name: '완료' }));
+    await userEvent.click(within(panel).getByRole('button', { name: '시술 완료' }));
     expect(await within(panel).findByText(/그사이 다른 곳에서 이 예약이 바뀌었어요/)).toBeInTheDocument();
     await waitFor(() => expect(sent.filter((request) => request.url.includes('/calendar?'))).toHaveLength(2));
-    await userEvent.click(within(panel).getByRole('button', { name: '완료' }));
+    await userEvent.click(within(panel).getByRole('button', { name: '시술 완료' }));
     expect(sent.filter((request) => request.method === 'PUT').map((request) => request.body)).toEqual([
       { status: 'completed', version: 1 },
       { status: 'completed', version: 2 },
@@ -174,10 +174,10 @@ describe('처리하지 않은 서버 오류(#73 리뷰)', () => {
     const tuesday = await screen.findByRole('region', { name: '11월 17일' });
     await userEvent.click(within(tuesday).getByRole('button', { name: /최유나/ }));
     const panel = await screen.findByRole('dialog', { name: '최유나' });
-    await userEvent.click(within(panel).getByRole('button', { name: '완료' }));
+    await userEvent.click(within(panel).getByRole('button', { name: '시술 완료' }));
     expect(await within(panel).findByText('저장하지 못했어요. 잠시 뒤 다시 시도해 주세요.')).toBeInTheDocument();
-    expect(within(panel).getByRole('button', { name: '완료' })).toBeEnabled();
-    await userEvent.click(within(panel).getByRole('button', { name: '완료' }));
+    expect(within(panel).getByRole('button', { name: '시술 완료' })).toBeEnabled();
+    await userEvent.click(within(panel).getByRole('button', { name: '시술 완료' }));
     expect(await within(panel).findByText('로그인이 끝났어요. 다시 로그인한 뒤 시도해 주세요.')).toBeInTheDocument();
   });
 });
