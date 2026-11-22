@@ -88,7 +88,8 @@ export function CalendarPage() {
   // 담당자 거르기(W1). 주소에 두지 않는다 — 화면 안 보기 상태.
   const [staffId, setStaffId] = useState<string>(ALL);
   const data = state.status === 'ok' ? state.data : null;
-  const shown = data ? forStaff(data, staffId === ALL ? null : staffId) : null;
+  // 폰 배치엔 담당자 칩이 없으므로 거르기를 쓰지 않는다 — 웹에서 고른 뒤 폭이 좁아져도 다른 담당자 예약이 숨지 않게(#66 리뷰).
+  const shown = data ? forStaff(data, phone || staffId === ALL ? null : staffId) : null;
   const open = data?.appointments.find((a) => a.id === openId) ?? null;
 
   const go = (next: Partial<{ view: View; date: string }>) =>
@@ -236,7 +237,7 @@ export function CalendarPage() {
         <button
           type="button"
           onClick={() => newEntry()}
-          className="fixed right-[18px] bottom-24 z-20 inline-flex h-[52px] items-center gap-1.5 rounded-[26px] bg-brand pr-5 pl-4 text-base font-bold text-on-brand shadow-[0_6px_16px_rgba(0,0,0,0.18)]"
+          className="fixed right-[18px] bottom-24 z-20 inline-flex h-[52px] items-center gap-1.5 rounded-[26px] bg-brand pr-5 pl-4 text-base font-bold text-on-brand shadow-lg"
         >
           <Plus aria-hidden size={20} strokeWidth={2.25} />
           예약
