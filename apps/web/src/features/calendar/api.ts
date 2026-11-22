@@ -10,7 +10,6 @@ import {
   type ShopHours,
 } from '@bv/scheduling/booking';
 import { createContext, useContext } from 'react';
-import { FAKE_API } from '@/lib/apiMode';
 import { seedDesignScene, SCENE_MENUS } from './mockData';
 import { dayStart, type AppointmentStatus, type CalendarAppointment, type CalendarBlock, type CalendarData, type Menu } from './model';
 
@@ -158,7 +157,7 @@ export function useCalendarApi(): CalendarApi {
   return useContext(CalendarApiContext) ?? defaultApi;
 }
 
-/** W3 시안은 임시 캘린더에만 저장한다. 실제 저장은 고객·예약을 함께 연결한 뒤 연다. */
-export function useCalendarEntryPreview(): boolean {
-  return useContext(CalendarApiContext) !== null || FAKE_API;
+/** 테스트는 Provider로 캘린더를 주입한다. */
+export function useHasCalendarApiProvider(): boolean {
+  return useContext(CalendarApiContext) !== null;
 }

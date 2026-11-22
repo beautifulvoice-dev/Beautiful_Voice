@@ -17,7 +17,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useShopName } from '@/components/layout/AppShell';
 import { ErrorState } from '@/components/states/DataState';
-import { useCalendarApi, useCalendarEntryPreview } from '@/features/calendar/api';
+import { useCalendarApi, useHasCalendarApiProvider } from '@/features/calendar/api';
 import { rejectText } from '@/features/calendar/bookingText';
 import {
   addDays,
@@ -33,6 +33,7 @@ import {
   type Staff,
 } from '@/features/calendar/model';
 import { useIsPhone } from '@/lib/useLayout';
+import { FAKE_API } from '@/lib/apiMode';
 import { useLoad } from '@/lib/useLoad';
 import { cn } from '@/lib/utils';
 import { AppointmentPanel, PANEL_WIDTH } from './AppointmentPanel';
@@ -62,7 +63,8 @@ const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:
 
 export function CalendarPage() {
   const api = useCalendarApi();
-  const entryPreview = useCalendarEntryPreview();
+  const hasApiProvider = useHasCalendarApiProvider();
+  const entryPreview = FAKE_API || hasApiProvider;
   const shopName = useShopName();
   // 폰은 주 보기를 7일 띠 + 고른 날 하루 시간표로, 월 보기를 예약 수 + 아래 목록으로(설계 D4: 부품이 다른 곳만 JS로).
   const phone = useIsPhone();
