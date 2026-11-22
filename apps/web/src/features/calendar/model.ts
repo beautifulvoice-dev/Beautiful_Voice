@@ -60,8 +60,9 @@ export interface Staff {
 export interface Menu {
   id: string;
   name: string;
-  durationMin: number;
-  prepMin: number;
+  /** 메뉴에 정해 둔 관리·준비 시간. null = 안 정함 → 고르면 지금 입력을 그대로 둔다(설계 06 D3). */
+  durationMin: number | null;
+  prepMin: number | null;
 }
 
 export interface CalendarData {

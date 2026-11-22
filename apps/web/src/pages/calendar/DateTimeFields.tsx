@@ -61,13 +61,23 @@ export function TimeField({
 }) {
   const [open, setOpen] = useState(false);
   // 빈 칸 누르기로 들어온 시각이 목록에 없으면(영업시간 밖 등) 그대로 보이도록 끼워 넣는다 — 저장 때 거부 문구가 나온다.
-  const list = options.includes(value) ? options : [...options, value].sort();
+  const list = value === '' || options.includes(value) ? options : [...options, value].sort();
+  // 빈 값 = `+ 예약`으로 열어 아직 시각을 안 고름(설계 06 D1). 자리 글자를 보이고, 목록에서 골라야 채워진다.
+  const shown = value || '시각 고르기';
   if (phone) {
     return (
-      <Popover.Root open={open} onOpenChange={setOpen} placement="bottom-end">
+      <Popover.Root
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          // 휠은 늘 한 칸을 가리키므로, 빈 값에서 열면 처음 보이는 시각을 고른 것으로 한다.
+          if (next && !value && list[0]) onChange(list[0]);
+        }}
+        placement="bottom-end"
+      >
         <Popover.Trigger asChild>
-          <button id={id} type="button" className={fieldButton} aria-label={`시작 ${value} · 시각 고르기`}>
-            <span>{value}</span>
+          <button id={id} type="button" className={fieldButton} aria-label={value ? `시작 ${value} · 시각 고르기` : '시작 · 시각 고르기'}>
+            <span className={cn(!value && 'text-ink-soft')}>{shown}</span>
             <Clock aria-hidden size={20} className="shrink-0 text-ink-soft" />
           </button>
         </Popover.Trigger>
@@ -82,9 +92,9 @@ export function TimeField({
     );
   }
   return (
-    <Select.Root value={[value]} onValueChange={(v) => v[0] && onChange(v[0])}>
-      <Select.Trigger id={id} aria-label={`시작 ${value}`} className={cn(fieldButton, 'justify-between')}>
-        <Select.Value>{value}</Select.Value>
+    <Select.Root value={value ? [value] : []} onValueChange={(v) => v[0] && onChange(v[0])}>
+      <Select.Trigger id={id} aria-label={value ? `시작 ${value}` : '시작 · 시각 고르기'} className={cn(fieldButton, 'justify-between')}>
+        {value ? <Select.Value>{value}</Select.Value> : <Select.Placeholder className="text-ink-soft">{shown}</Select.Placeholder>}
         <ChevronDown aria-hidden size={20} className="shrink-0 text-ink-soft" />
       </Select.Trigger>
       <Select.Positioner>

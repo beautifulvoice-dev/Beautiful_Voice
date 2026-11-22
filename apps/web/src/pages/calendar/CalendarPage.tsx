@@ -89,7 +89,7 @@ function CalendarScreen() {
   const snackbar = useSnackbarAdapter();
   const api = useCalendarApi();
   const hasApiProvider = useHasCalendarApiProvider();
-  const entryPreview = FAKE_API || hasApiProvider;
+  const canEnter = FAKE_API || hasApiProvider || api.persistsAppointments === true;
   const shopName = useShopName();
   // 폰은 주 보기를 7일 띠 + 고른 날 하루 시간표로, 월 보기를 예약 수 + 아래 목록으로(설계 D4: 부품이 다른 곳만 JS로).
   const phone = useIsPhone();
@@ -126,7 +126,8 @@ function CalendarScreen() {
 
   const staffName = (id: string) => data?.staff.find((s) => s.id === id)?.name ?? '담당자 미상';
   const newEntry = (start?: Partial<EntryStart>) =>
-    setEntry({ date: start?.date ?? date, time: start?.time ?? '10:00', staffId: start?.staffId ?? (staffId === ALL ? null : staffId) });
+    // `+ 예약`은 보고 있는 날짜만 채우고 시각은 원장이 고른다. 빈 칸은 그 날짜·시각·담당자 열(설계 06 D1).
+    setEntry({ date: start?.date ?? date, time: start?.time ?? null, staffId: start?.staffId ?? (staffId === ALL ? null : staffId) });
 
   const changeStatus = async (a: CalendarAppointment, to: AppointmentStatus) => {
     const reason = (r: { reason: Parameters<typeof rejectText>[0]; conflictingIds: string[] }) =>
@@ -232,7 +233,7 @@ function CalendarScreen() {
           </ActionButton>
           <span className="flex-1" />
           {segment}
-          {entryPreview && (
+          {canEnter && (
             <ActionButton variant="brandSolid" size="medium" onClick={() => newEntry()}>
               <PrefixIcon svg={<Plus />} />
               예약
@@ -265,7 +266,7 @@ function CalendarScreen() {
             onOpen={setOpen}
             staffName={staffName}
             phone={phone}
-            onEmpty={entryPreview ? (d, minute, lane) => newEntry({ date: d, time: hhmm(minute), staffId: lane }) : undefined}
+            onEmpty={canEnter ? (d, minute, lane) => newEntry({ date: d, time: hhmm(minute), staffId: lane }) : undefined}
           />
         </>
       )}
@@ -303,7 +304,7 @@ function CalendarScreen() {
         }}
       />
       {/* + 예약: 폰은 오른쪽 아래 떠 있는 버튼(디자인 .fab — 탭 바 위 오른쪽 18px), 웹은 제목 줄 오른쪽(설계서 W1). */}
-      {phone && entryPreview && (
+      {phone && canEnter && (
         <button
           type="button"
           onClick={() => newEntry()}

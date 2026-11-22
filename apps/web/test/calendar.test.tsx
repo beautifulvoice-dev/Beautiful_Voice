@@ -784,13 +784,14 @@ describe('예약 넣기 W3', () => {
     expect(within(tuesday).getByRole('button', { name: /이서윤/ })).toHaveTextContent('14:00');
   });
 
-  it('시작 시각 목록은 그날 영업시간 안 15분 단위, 빈 칸을 눌러 들어오면 그 시각이 골라져 있다', async () => {
+  it('시작 시각 목록은 그날 영업시간 안 15분 단위, + 예약으로 열면 시각은 비어 있다', async () => {
     renderAt('/calendar?date=2026-11-18');
     const monday = await screen.findByRole('region', { name: '11월 16일' });
     // 빈 칸 누르기(15분 단위로 맞춤) — 테스트에선 칸 크기가 없어 위치 계산 대신 + 예약으로 열고 기본 시각을 본다
     await userEvent.click(screen.getByRole('button', { name: '예약' }));
     const sheet = await screen.findByRole('dialog', { name: '예약 넣기' });
-    expect(sheet.querySelector('#entry-time')).toHaveTextContent('10:00');
+    // `+ 예약`은 시각을 비워 둔다(설계 06 D1) — 목록에서 골라야 채워진다.
+    expect(sheet.querySelector('#entry-time')).toHaveTextContent('시각 고르기');
     await userEvent.click(sheet.querySelector<HTMLElement>('#entry-time')!);
     const options = (await screen.findAllByRole('option')).map((o) => o.textContent);
     expect(options[0]).toBe('10:00');
@@ -812,6 +813,8 @@ describe('예약 넣기 W3', () => {
     await screen.findByRole('region', { name: '11월 16일' });
     await userEvent.type(within(sheet).getByPlaceholderText('이름 두 글자'), '이서윤');
     await userEvent.click(await within(sheet).findByRole('button', { name: /^이서윤/ }));
+    // `+ 예약`은 시각을 비워 둔다(설계 06 D1) — 시각만 고르면 담당자는 도착한 1명으로 이미 정해져 있다.
+    await pickTime(sheet, '10:00');
     await waitFor(() => expect(within(sheet).getByRole('button', { name: '저장' })).toBeEnabled());
   });
 
@@ -847,8 +850,11 @@ describe('예약 넣기 W3', () => {
     await userEvent.click(screen.getByRole('button', { name: '예약' }));
     const sheet = await screen.findByRole('dialog', { name: '예약 넣기' });
     await userEvent.type(within(sheet).getByPlaceholderText('이름 두 글자'), '나새봄');
-    await userEvent.click(within(sheet).getByRole('button', { name: '"나새봄" 새 고객으로 넣기' }));
+    await userEvent.click(await within(sheet).findByRole('button', { name: '"나새봄" 새 고객으로 넣기' }));
     await pickDate(sheet, '2026-11-17');
+    // `+ 예약`은 시각을 비워 둔다 — 고르기 전에는 저장할 수 없다(설계 06 D1).
+    expect(within(sheet).getByRole('button', { name: '저장' })).toBeDisabled();
+    await pickTime(sheet, '10:00');
     await userEvent.click(within(sheet).getByRole('button', { name: '저장' }));
     const tuesday = await screen.findByRole('region', { name: '11월 17일' });
     await waitFor(() => expect(within(tuesday).getByRole('button', { name: /나새봄/ })).toBeInTheDocument());
