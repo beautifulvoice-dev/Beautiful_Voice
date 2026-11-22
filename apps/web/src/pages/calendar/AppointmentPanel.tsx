@@ -2,13 +2,15 @@
 // 예정이면 주 버튼 완료, 보조 노쇼·문자 보내기, 더보기. 완료·노쇼·취소면 상태 고치기 하나(결정 S5).
 // 완료·노쇼·상태 고치기는 가짜 저장소에서 실제로 바뀐다(@bv/scheduling changeStatus, 11/21 옵마 결정).
 // 문자 보내기(M3)·더보기(바꾸기·예약 취소)는 아직 꺼 둔다.
-import { ActionButton, Icon, PrefixIcon, Badge, Callout, ResponsiveSidePanel } from '@seed-design/react';
+import { ActionButton, AlertDialog, Icon, PrefixIcon, Badge, Callout, ResponsiveSidePanel } from '@seed-design/react';
 import { ChevronRight, Ellipsis, MessageSquare, X } from 'lucide-react';
 import { useState } from 'react';
+import { shortDate } from '@/features/calendar/bookingText';
 import { Link } from 'react-router';
 import {
   appointmentPanelTime,
   overlappingBlocks,
+  shopDate,
   shopTime,
   STATUS_TEXT,
   type AppointmentStatus,
@@ -58,6 +60,8 @@ function Body({
   const overlaps = overlappingBlocks(a, blocks);
   const scheduled = a.status === 'scheduled';
   const [fixing, setFixing] = useState(false);
+  // 예약 취소는 캘린더에서 빠지므로 한 번 더 묻는다(설계서 W2 확인, 원칙 8 — #68 리뷰).
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const size = phone ? 'large' : 'medium';
@@ -157,7 +161,14 @@ function Body({
             {(['scheduled', 'completed', 'no_show', 'cancelled'] as const)
               .filter((s) => s !== a.status)
               .map((s) => (
-                <ActionButton key={s} variant="neutralWeak" size={size} flexGrow={1} loading={busy} onClick={() => run(s)}>
+                <ActionButton
+                  key={s}
+                  variant="neutralWeak"
+                  size={size}
+                  flexGrow={1}
+                  loading={busy}
+                  onClick={() => (s === 'cancelled' ? setConfirmCancel(true) : run(s))}
+                >
                   {STATUS_TEXT[s]}
                 </ActionButton>
               ))}
@@ -193,6 +204,37 @@ function Body({
           </ActionButton>
         )}
       </ResponsiveSidePanel.Footer>
+      <AlertDialog.Root open={confirmCancel} onOpenChange={setConfirmCancel}>
+        <AlertDialog.Backdrop />
+        <AlertDialog.Positioner>
+          <AlertDialog.Content>
+            <AlertDialog.Header>
+              <AlertDialog.Title>
+                {shortDate(shopDate(Date.parse(a.startAt)))} {shopTime(a.startAt)} {a.customerName} 님 예약을 취소할까요?
+              </AlertDialog.Title>
+            </AlertDialog.Header>
+            <AlertDialog.Footer>
+              <AlertDialog.Action asChild>
+                <ActionButton variant="neutralWeak" size="large" flexGrow={1}>
+                  그만두기
+                </ActionButton>
+              </AlertDialog.Action>
+              <ActionButton
+                variant="criticalSolid"
+                size="large"
+                flexGrow={1}
+                loading={busy}
+                onClick={async () => {
+                  await run('cancelled');
+                  setConfirmCancel(false);
+                }}
+              >
+                예약 취소
+              </ActionButton>
+            </AlertDialog.Footer>
+          </AlertDialog.Content>
+        </AlertDialog.Positioner>
+      </AlertDialog.Root>
     </>
   );
 }
