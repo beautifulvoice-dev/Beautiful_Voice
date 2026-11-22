@@ -226,6 +226,7 @@ export function CalendarPage() {
       <EntrySheet
         start={entry}
         staff={data?.staff ?? []}
+        businessHours={data?.businessHours ?? null}
         onClose={() => setEntry(null)}
         onSaved={(d) => {
           setEntry(null);

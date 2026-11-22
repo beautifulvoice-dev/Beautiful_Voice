@@ -18,13 +18,14 @@ import { CalendarDays, Minus, Plus, Search, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toBookingInputs, useCalendarApi } from '@/features/calendar/api';
 import { occupancyText, rejectText, shopIso } from '@/features/calendar/bookingText';
-import { addDays, shopDate, type Menu, type Staff } from '@/features/calendar/model';
+import { addDays, shopDate, startTimes, type CalendarData, type Menu, type Staff } from '@/features/calendar/model';
 import { CustomerValidationError, useCustomerApi } from '@/features/customers/api';
 import type { Customer } from '@/features/customers/model';
 import { NetworkError } from '@/lib/http';
 import { useRetryKey } from '@/lib/retryKey';
 import { useIsPhone } from '@/lib/useLayout';
 import { cn } from '@/lib/utils';
+import { DateField, TimeField } from './DateTimeFields';
 import { CalendarSheet, sheetBodyClass, sheetFootClass, sheetHeadClass, titleClass } from './Sheet';
 
 export interface EntryStart {
@@ -38,12 +39,14 @@ export interface EntryStart {
 interface Props {
   start: EntryStart | null;
   staff: Staff[];
+  /** 시작 시각 목록(영업시간 안 15분)을 만드는 데 쓴다. 없으면 09:00~21:00. */
+  businessHours?: CalendarData['businessHours'];
   onClose: () => void;
   /** 저장했다 — 캘린더를 다시 불러오고 그 날로 간다. */
   onSaved: (date: string) => void;
 }
 
-export function EntrySheet({ start, staff, onClose, onSaved }: Props) {
+export function EntrySheet({ start, staff, businessHours = null, onClose, onSaved }: Props) {
   const phone = useIsPhone();
   // 입력을 바꿨으면 닫기 전에 묻는다(설계 06 D4). 저장 중에는 닫지 않는다.
   const [dirty, setDirty] = useState(false);
@@ -71,6 +74,7 @@ export function EntrySheet({ start, staff, onClose, onSaved }: Props) {
             key={`${start.date}-${start.time}-${start.staffId}`}
             start={start}
             staff={staff}
+            businessHours={businessHours}
             onDirty={setDirty}
             onSaved={(d) => {
               reset();
@@ -130,11 +134,13 @@ function AppointmentForm({
   start,
   staff: allStaff,
   onDirty,
+  businessHours,
   onSaved,
 }: {
   start: EntryStart;
   staff: Staff[];
   onDirty: (dirty: boolean) => void;
+  businessHours: CalendarData['businessHours'];
   onSaved: (date: string) => void;
 }) {
   const api = useCalendarApi();
@@ -367,24 +373,20 @@ function AppointmentForm({
           </div>
         )}
 
+        {/* 날짜·시작은 누르기만(11/22 옵마): 달력 팝업 / 영업시간 안 15분 목록(폰 휠, 웹 펼치는 목록) */}
         <div className="flex gap-2.5">
-          <Field.Root className="min-w-0 flex-1">
-            <Field.Header>
-              <Field.Label>날짜</Field.Label>
-            </Field.Header>
-            <TextField.Root size="large">
-              <TextField.Input type="date" value={date} onChange={(e) => touched(setDate)(e.target.value)} />
-            </TextField.Root>
-          </Field.Root>
-          <Field.Root className="w-[45%]">
-            <Field.Header>
-              <Field.Label>시작</Field.Label>
-            </Field.Header>
-            <TextField.Root size="large">
-              {/* 15분 간격은 고르기 편의만 — 분 단위로 저장한다(06 D1) */}
-              <TextField.Input type="time" step={900} value={time} onChange={(e) => touched(setTime)(e.target.value)} />
-            </TextField.Root>
-          </Field.Root>
+          <div className="grid min-w-0 flex-1 gap-1.5">
+            <label htmlFor="entry-date" className="text-sm font-bold text-ink">
+              날짜
+            </label>
+            <DateField id="entry-date" value={date} onChange={touched(setDate)} />
+          </div>
+          <div className="grid w-[45%] gap-1.5">
+            <label htmlFor="entry-time" className="text-sm font-bold text-ink">
+              시작
+            </label>
+            <TimeField id="entry-time" value={time} options={startTimes(date, businessHours)} onChange={touched(setTime)} phone={phone} />
+          </div>
         </div>
 
         <Stepper label="관리 시간" value={duration} step={10} min={10} onChange={touched(setDuration)} />

@@ -34,10 +34,14 @@ async function fill(sheet: HTMLElement, { name, newCustomer = false, date = '202
   await userEvent.click(
     await within(sheet).findByRole('button', { name: newCustomer ? `"${name}" 새 고객으로 넣기` : new RegExp(`^${name}`) }),
   );
-  const d = sheet.querySelector<HTMLInputElement>('input[type=date]')!;
-  await userEvent.clear(d);
-  await userEvent.type(d, date);
-  await userEvent.type(sheet.querySelector<HTMLInputElement>('input[type=time]')!, time);
+  // 날짜는 달력 팝업, 시작은 15분 목록에서 고른다(#69 고르기 부품).
+  await userEvent.click(within(sheet).getByRole('button', { name: /달력 열기/ }));
+  const [y, m, d] = date.split('-').map(Number);
+  await userEvent.click(await screen.findByRole('button', { name: new RegExp(`^${y}년 ${m}월 ${d}일`) }));
+  await waitFor(() => expect(within(sheet).getByRole('button', { name: /달력 열기/ })).toHaveTextContent(`${m}/${d}(`));
+  await userEvent.click(sheet.querySelector<HTMLElement>('#entry-time')!);
+  await userEvent.click(await screen.findByRole('option', { name: time }));
+  await waitFor(() => expect(sheet.querySelector('#entry-time')).toHaveTextContent(time));
 }
 const save = (sheet: HTMLElement) => userEvent.click(within(sheet).getByRole('button', { name: '저장' }));
 
