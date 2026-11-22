@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SessionLoaderProvider } from '@/features/auth/session';
 import { CalendarApiProvider, createMemoryCalendarApi, type CalendarApi } from '@/features/calendar/api';
 import { seedCalendar } from '@/features/calendar/mockData';
+import { createMemoryCustomerApi, CustomerApiProvider } from '@/features/customers/api';
 import {
   appointmentTimeText,
   forStaff,
@@ -22,6 +23,7 @@ import {
   weekTitle,
   type CalendarAppointment,
   type CalendarBlock,
+  startTimes,
 } from '@/features/calendar/model';
 import { validDate } from '@/pages/calendar/CalendarPage';
 import { routes } from '@/routes';
@@ -35,7 +37,9 @@ function renderAt(path: string, api: CalendarApi = API()) {
   render(
     <SessionLoaderProvider value={async () => ({ shopId: 'shop-1' })}>
       <CalendarApiProvider value={api}>
-        <RouterProvider router={router} />
+        <CustomerApiProvider value={createMemoryCustomerApi()}>
+          <RouterProvider router={router} />
+        </CustomerApiProvider>
       </CalendarApiProvider>
     </SessionLoaderProvider>,
   );
@@ -170,6 +174,21 @@ describe('W1 디자인 규칙(SEED 옮기기)', () => {
     expect(segmentsForDay('2026-11-18', onlyA).filter((g) => g.kind === 'block').map((g) => g.staffId)).toEqual(['s1']);
     expect([s1.staff.map((s) => s.id), s1.appointments.map((a) => a.id), s1.blocks.map((b) => b.id)]).toEqual([['s1'], ['a1'], ['all']]);
     expect(forStaff(data, null)).toBe(data);
+  });
+});
+
+describe('예약 넣기 시작 시각 목록(startTimes)', () => {
+  it('영업시간이 없으면 09:00~20:45, 있으면 그 요일 구간 안 15분 단위(끝 시각은 빼고)', () => {
+    const none = startTimes('2026-11-16', null);
+    expect([none[0], none.at(-1), none.length]).toEqual(['09:00', '20:45', 48]);
+    const split = startTimes('2026-11-16', {
+      '1': [
+        { open: '10:00', close: '12:00' },
+        { open: '13:30', close: '14:30' },
+      ],
+    } as never);
+    expect(split).toEqual(['10:00', '10:15', '10:30', '10:45', '11:00', '11:15', '11:30', '11:45', '13:30', '13:45', '14:00', '14:15']);
+    expect(startTimes('2026-11-17', { '1': [{ open: '10:00', close: '11:00' }] } as never)[0]).toBe('09:00'); // 그 요일 구간이 없으면 기본
   });
 });
 
@@ -683,13 +702,155 @@ describe('예약 보기 W2 — 웹 오른쪽 패널 / 폰 아래 시트 (캘린�
     expect(await api.setStatus('live', 'completed')).toMatchObject({ ok: true, value: { status: 'completed' } });
   });
 
-  it('폰: 같은 내용이 아래 시트로 열리고, "+ 예약"은 떠 있는 버튼 자리', async () => {
+  it('폰: 같은 내용이 아래 시트로 열리고, "+ 예약"은 떠 있는 버튼', async () => {
     setTestWidth(390);
     renderAt('/calendar?date=2026-11-16');
     const monday = await screen.findByRole('region', { name: '11월 16일' });
-    expect(screen.getByRole('button', { name: '예약' })).toBeDisabled(); // 떠 있는 + 예약(W3 전까지 꺼짐) — 시트가 열리면 뒤 화면은 가려지므로 먼저 확인
+    expect(screen.getByRole('button', { name: '예약' })).toBeEnabled(); // 떠 있는 + 예약 — 시트가 열리면 뒤 화면은 가려지므로 먼저 확인
     await userEvent.click(within(monday).getByRole('button', { name: /이서윤/ }));
     const sheet = await screen.findByRole('dialog', { name: '이서윤' });
     expect(sheet).toHaveTextContent('준비 20분 · 13:40부터 일정이 잡혀요');
+  });
+});
+
+describe('예약 넣기 W3', () => {
+  /** 웹 + 예약 → 고객·날짜·시작을 채운다. 담당자는 1명이라 칸이 없다(F1-4). */
+  async function openEntry(name: string, date: string, time: string) {
+    await screen.findByRole('region', { name: '11월 16일' });
+    await userEvent.click(screen.getByRole('button', { name: '예약' }));
+    const sheet = await screen.findByRole('dialog', { name: '예약 넣기' });
+    await userEvent.type(within(sheet).getByPlaceholderText('이름 두 글자'), name);
+    await userEvent.click(
+      await within(sheet).findByRole('button', {
+        name: new RegExp(`^${name}`),
+      }),
+    );
+    await pickDate(sheet, date);
+    await pickTime(sheet, time);
+    return sheet;
+  }
+
+  /** 날짜 칸을 눌러 달력 팝업에서 그날을 누른다(키보드 입력 없음, 11/22 옵마). */
+  async function pickDate(sheet: HTMLElement, iso: string) {
+    await userEvent.click(within(sheet).getByRole('button', { name: /달력 열기/ }));
+    const [y, m, d] = iso.split('-').map(Number);
+    await userEvent.click(await screen.findByRole('button', { name: new RegExp(`^${y}년 ${m}월 ${d}일`) }));
+    await waitFor(() => expect(within(sheet).getByRole('button', { name: /달력 열기/ })).toHaveTextContent(`${m}/${d}(`));
+  }
+
+  /** 시작 칸(웹: 펼치는 목록)에서 15분 단위 시각을 고른다. */
+  async function pickTime(sheet: HTMLElement, hhmm: string) {
+    await userEvent.click(sheet.querySelector<HTMLElement>('#entry-time')!);
+    await userEvent.click(await screen.findByRole('option', { name: hhmm }));
+    await waitFor(() => expect(sheet.querySelector('#entry-time')).toHaveTextContent(hhmm));
+  }
+
+  it('겹침·관리 불가·영업시간 밖·휴무일이면 저장 버튼 위 빨간 알림과 거부 문구, 저장되지 않는다', async () => {
+    renderAt('/calendar?date=2026-11-18');
+    const sheet = await openEntry('이서윤', '2026-11-16', '14:30');
+    expect(within(sheet).queryByRole('radiogroup', { name: '담당자' })).not.toBeInTheDocument();
+    const save = within(sheet).getByRole('button', { name: '저장' });
+    const reason = async () => (await within(sheet).findByRole('alert')).textContent;
+
+    await userEvent.click(save);
+    expect(await reason()).toContain('원장은 14:00–15:00에 이서윤 님 예약이 있어요.');
+
+    await pickTime(sheet, '12:00');
+    await pickDate(sheet, '2026-11-19');
+    await userEvent.click(save);
+    await waitFor(async () => expect(await reason()).toContain('12:00–13:00은 관리 불가 시간(점심)이에요.'));
+
+    await pickTime(sheet, '21:30');
+    await userEvent.click(save);
+    await waitFor(async () => expect(await reason()).toContain('영업시간(10:00–22:00) 밖이에요.'));
+
+    await pickDate(sheet, '2026-11-22');
+    await pickTime(sheet, '12:00');
+    await userEvent.click(save);
+    await waitFor(async () => expect(await reason()).toContain('11/22(일)은 휴무일이에요.'));
+    expect(screen.getByRole('dialog', { name: '예약 넣기' })).toBeInTheDocument();
+  });
+
+  it('메뉴 칩을 고르면 관리·준비 시간이 채워지고, 점유 미리보기가 보인다. 저장하면 캘린더에 생긴다', async () => {
+    renderAt('/calendar?date=2026-11-18');
+    const sheet = await openEntry('이서윤', '2026-11-17', '14:00');
+    await userEvent.click(within(sheet).getByText('리프팅 관리'));
+    expect(within(sheet).getByRole('group', { name: '관리 시간' })).toHaveTextContent('90분');
+    expect(within(sheet).getByRole('group', { name: '준비 시간' })).toHaveTextContent('10분');
+    expect(sheet).toHaveTextContent('13:50부터 15:30까지 원장 일정이 잡혀요');
+    await userEvent.click(within(sheet).getByRole('button', { name: '저장' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '예약 넣기' })).not.toBeInTheDocument());
+    const tuesday = await screen.findByRole('region', { name: '11월 17일' });
+    expect(within(tuesday).getByRole('button', { name: /이서윤/ })).toHaveTextContent('14:00');
+  });
+
+  it('시작 시각 목록은 그날 영업시간 안 15분 단위, 빈 칸을 눌러 들어오면 그 시각이 골라져 있다', async () => {
+    renderAt('/calendar?date=2026-11-18');
+    const monday = await screen.findByRole('region', { name: '11월 16일' });
+    // 빈 칸 누르기(15분 단위로 맞춤) — 테스트에선 칸 크기가 없어 위치 계산 대신 + 예약으로 열고 기본 시각을 본다
+    await userEvent.click(screen.getByRole('button', { name: '예약' }));
+    const sheet = await screen.findByRole('dialog', { name: '예약 넣기' });
+    expect(sheet.querySelector('#entry-time')).toHaveTextContent('10:00');
+    await userEvent.click(sheet.querySelector<HTMLElement>('#entry-time')!);
+    const options = (await screen.findAllByRole('option')).map((o) => o.textContent);
+    expect(options[0]).toBe('10:00');
+    expect(options.at(-1)).toBe('21:45'); // 가짜 데이터 영업 10~22시
+    expect(options).toContain('10:15');
+    expect(options).not.toContain('10:10');
+    expect(monday).toBeInTheDocument();
+  });
+
+  it('캘린더를 불러오는 중에 + 예약을 열어도, 담당자 1명이 도착하면 그 사람으로 정해져 저장할 수 있다(#69 리뷰)', async () => {
+    const base = createMemoryCalendarApi(seedCalendar('2026-11-18'));
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    renderAt('/calendar?date=2026-11-18', { ...base, range: async (f, t) => (await gate, base.range(f, t)) });
+    await userEvent.click(await screen.findByRole('button', { name: '예약' }));
+    expect(screen.getByText('불러오는 중…')).toBeInTheDocument(); // 아직 담당자 없음
+    const sheet = await screen.findByRole('dialog', { name: '예약 넣기' });
+    act(() => release());
+    await screen.findByRole('region', { name: '11월 16일' });
+    await userEvent.type(within(sheet).getByPlaceholderText('이름 두 글자'), '이서윤');
+    await userEvent.click(await within(sheet).findByRole('button', { name: /^이서윤/ }));
+    await waitFor(() => expect(within(sheet).getByRole('button', { name: '저장' })).toBeEnabled());
+  });
+
+  it('패널이 열린 채 다른 빈 칸을 누르면 그 날짜·시각으로 바뀌고, 손으로 바꾼 뒤면 먼저 묻는다(#69 리뷰)', async () => {
+    renderAt('/calendar?date=2026-11-18');
+    await screen.findByRole('region', { name: '11월 16일' });
+    await userEvent.click(screen.getByRole('button', { name: '예약' }));
+    const sheet = await screen.findByRole('dialog', { name: '예약 넣기' });
+    /** 빈 칸 누르기: jsdom엔 크기가 없어 칸 크기를 정해 주고 누른다(웹 48px/시간, 격자는 9시부터). */
+    const clickEmpty = (day: string, hhmm: string) => {
+      const layer = screen.getByRole('region', { name: day }).querySelector<HTMLElement>('[data-kind="empty"]')!;
+      layer.getBoundingClientRect = () => ({ top: 0, left: 0, width: 100, height: 48 * 13, right: 100, bottom: 48 * 13, x: 0, y: 0, toJSON: () => ({}) });
+      const min = Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3)) - 9 * 60;
+      fireEvent.click(layer, { clientX: 10, clientY: (min * 48) / 60 + 1 });
+    };
+    clickEmpty('11월 20일', '14:00');
+    await waitFor(() => expect(within(sheet).getByRole('button', { name: /달력 열기/ })).toHaveTextContent('11/20(금)'));
+    expect(sheet.querySelector('#entry-time')).toHaveTextContent('14:00');
+
+    await pickTime(sheet, '11:00'); // 손으로 바꿈
+    clickEmpty('11월 19일', '15:00');
+    const ask = await within(sheet).findByText(/새로 누른 칸\(11\/19\(목\) 15:00\)으로 바꿀까요\?/);
+    expect(sheet.querySelector('#entry-time')).toHaveTextContent('11:00'); // 묻기 전엔 그대로
+    await userEvent.click(within(sheet).getByRole('button', { name: '바꾸기' }));
+    await waitFor(() => expect(sheet.querySelector('#entry-time')).toHaveTextContent('15:00'));
+    expect(within(sheet).getByRole('button', { name: /달력 열기/ })).toHaveTextContent('11/19(목)');
+    expect(ask).not.toBeInTheDocument();
+  });
+
+  it('없는 이름은 "새 고객으로 넣기"로 이름만 등록해 예약한다', async () => {
+    renderAt('/calendar?date=2026-11-18');
+    await screen.findByRole('region', { name: '11월 16일' });
+    await userEvent.click(screen.getByRole('button', { name: '예약' }));
+    const sheet = await screen.findByRole('dialog', { name: '예약 넣기' });
+    await userEvent.type(within(sheet).getByPlaceholderText('이름 두 글자'), '나새봄');
+    await userEvent.click(within(sheet).getByRole('button', { name: '"나새봄" 새 고객으로 넣기' }));
+    await pickDate(sheet, '2026-11-17');
+    await userEvent.click(within(sheet).getByRole('button', { name: '저장' }));
+    const tuesday = await screen.findByRole('region', { name: '11월 17일' });
+    await waitFor(() => expect(within(tuesday).getByRole('button', { name: /나새봄/ })).toBeInTheDocument());
   });
 });
