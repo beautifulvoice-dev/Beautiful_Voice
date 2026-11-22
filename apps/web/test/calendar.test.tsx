@@ -1,6 +1,6 @@
 // BEA-175 수용 기준: 주·월 전환 / 관리·준비·차단이 다르게 보임 / 예약 카드에 고객·메뉴·담당자, 누르면 메모.
 // 데이터는 합성(절대 규칙 8). 날짜는 주소로 고정해 언제 돌려도 같은 결과가 나오게 한다.
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
@@ -181,22 +181,23 @@ describe('캘린더 화면', () => {
     const friday = await screen.findByRole('region', { name: '11월 20일' });
     const overlapped = within(friday).getByRole('button', { name: /한예린/ });
     expect(overlapped).toHaveAttribute('data-overlap', 'true');
-    expect(overlapped).toHaveTextContent('겹침');
+    expect(within(overlapped).getByText('겹침').closest('.seed-badge__root--size_large')).toHaveClass('seed-badge__root--tone_critical');
     const done = within(screen.getByRole('region', { name: '11월 16일' })).getByRole('button', { name: /김하늘/ });
     expect(done).toHaveAttribute('data-status', 'completed');
-    expect(done).toHaveTextContent('완료');
+    expect(within(done).getByText('완료').closest('.seed-badge__root--size_large')).toHaveClass('seed-badge__root--tone_positive');
     expect(done).not.toHaveTextContent('겹침');
-    expect(within(screen.getByRole('region', { name: '11월 18일' })).getByRole('button', { name: /김하늘/ })).toHaveTextContent('노쇼');
+    const noShow = within(screen.getByRole('region', { name: '11월 18일' })).getByRole('button', { name: /김하늘/ });
+    expect(within(noShow).getByText('노쇼').closest('.seed-badge__root--size_large')).toHaveClass('seed-badge__root--tone_critical');
   });
 
   it('영업시간 밖과 휴무일은 회색으로 덮는다', async () => {
     renderAt('/calendar?date=2026-11-18');
     const monday = await screen.findByRole('region', { name: '11월 16일' });
     expect(monday.querySelectorAll('[data-kind="closed"]').length).toBeGreaterThan(0); // 10시 전
+    // 휴무일(웹)은 칸 전체가 회색 + 가운데 "정기 휴무"(디자인 .day.off)
     const sunday = screen.getByRole('region', { name: '11월 22일' });
-    const cover = sunday.querySelector<HTMLElement>('[data-kind="closed"]')!;
-    expect(cover.style.top).toBe('0px');
-    expect(cover.style.height).toBe(sunday.style.height); // 하루 전체
+    expect(sunday).toHaveClass('bg-cal-closed');
+    expect(sunday.querySelector('[data-kind="closed"]')).toHaveTextContent('정기 휴무');
   });
 
   it('담당자가 1명이면 칩이 없다', async () => {
@@ -221,7 +222,7 @@ describe('캘린더 화면', () => {
     expect(within(wed).getByRole('button', { name: /손님가/ })).toHaveTextContent('원장');
     await userEvent.click(within(chips).getByRole('radio', { name: '보조' }));
     expect(within(wed).queryByRole('button', { name: /손님가/ })).not.toBeInTheDocument();
-    expect(within(wed).getByRole('button', { name: /손님나/ }).style.width).toBe('100%');
+    expect(within(wed).getByRole('button', { name: /손님나/ }).style.width).toBe('calc(100% - 6px)'); // 한 줄이면 좌우 3px만 띄운다
   });
 
   it('오늘 칸에 지금 시각 빨간 줄이 있다', async () => {
@@ -235,10 +236,17 @@ describe('캘린더 화면', () => {
   });
 
   it('주간 보기: 요일 7칸과 관리·준비·차단이 서로 다른 모양으로 보인다', async () => {
+    // 오늘이 이 주에 들면 날 머리가 "· 오늘"로 바뀌므로 시계를 수요일로 고정한다
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-18T05:30:00Z')); // 서울 수 14:30
     renderAt('/calendar?date=2026-11-18');
     expect(await screen.findByRole('heading', { level: 2, name: '11월 셋째 주' })).toBeInTheDocument();
     await screen.findByRole('region', { name: '11월 16일' });
-    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['월 16', '화 17', '수 18', '목 19', '금 20', '토 21', '일 22 · 휴무']);
+    // 날 머리 두 줄(요일 / 날짜), 휴무는 "일 · 정기 휴무"(디자인 .dh)
+    const heads = screen.getAllByRole('columnheader').map((h) => h.textContent);
+    expect(heads).toHaveLength(7);
+    expect(heads[0]).toBe('월16');
+    expect(heads[6]).toBe('일 · 정기 휴무22');
     expect(screen.getByRole('radio', { name: '주' })).toBeChecked();
     const kinds = new Set(Array.from(document.querySelectorAll('[data-kind]')).map((e) => e.getAttribute('data-kind')));
     for (const k of ['care', 'prep', 'block', 'closed']) expect(kinds).toContain(k);
@@ -248,7 +256,9 @@ describe('캘린더 화면', () => {
     renderAt('/calendar?date=2026-11-18');
     const monday = await screen.findByRole('region', { name: '11월 16일' });
     const card = within(monday).getByRole('button', { name: /이서윤/ });
-    expect(card).toHaveTextContent('이서윤등 관리'); // 담당자가 1명이면 담당자 이름은 숨긴다(W1)
+    // 웹 칸은 이름 + 시작 시각(디자인), 메뉴는 화면 읽기용으로 함께. 담당자가 1명이면 담당자 이름은 없다(W1)
+    expect(card).toHaveTextContent('이서윤14:00');
+    expect(card).toHaveTextContent('등 관리');
     expect(card).not.toHaveTextContent('원장');
     await userEvent.click(card);
     const dialog = await screen.findByRole('dialog', { name: '이서윤' });
@@ -283,14 +293,15 @@ describe('캘린더 화면', () => {
     renderAt('/calendar?date=2026-11-18');
     const monday = await screen.findByRole('region', { name: '11월 16일' });
     const card = within(monday).getByRole('button', { name: /이서윤/ });
-    expect(card.style.width).toBe('100%');
+    expect(card.style.width).toBe('calc(100% - 6px)');
   });
 
   it('취소된 예약은 캘린더에 없다', async () => {
     renderAt('/calendar?date=2026-11-18');
     const thursday = await screen.findByRole('region', { name: '11월 19일' });
     expect(within(thursday).queryByRole('button')).not.toBeInTheDocument();
-    expect(within(thursday).getByText('관리 불가 · 점심')).toBeInTheDocument();
+    expect(within(thursday).getByText('관리 불가')).toBeInTheDocument();
+    expect(within(thursday).getByText('점심')).toBeInTheDocument();
   });
 
   it('주 ↔ 월 전환과 이전·다음 이동은 주소에 남는다', async () => {
@@ -361,7 +372,7 @@ describe('폰·웹 배치(캘린더 PR 2a) — 너비 기준 SEED md 768', () =>
     const strip = await screen.findByRole('group', { name: '날짜 고르기' });
     expect(within(strip).getAllByRole('button')).toHaveLength(7);
     expect(within(strip).getByRole('button', { name: /11월 18일 수요일/ })).toHaveAttribute('aria-pressed', 'true');
-    expect(within(strip).getByRole('button', { name: /11월 16일 월요일 · 예약 3건/ })).toBeInTheDocument();
+    expect(within(strip).getByRole('button', { name: /11월 16일 월요일 · 예약 03건/ })).toBeInTheDocument();
     expect(within(strip).getByRole('button', { name: /11월 22일 일요일 · 휴무/ })).toBeInTheDocument();
     // 하루 시간표 = 그날 칸 하나
     expect(screen.getAllByRole('region', { name: /^11월 \d+일$/ })).toHaveLength(1);
@@ -385,7 +396,7 @@ describe('폰·웹 배치(캘린더 PR 2a) — 너비 기준 SEED md 768', () =>
       }),
     );
     const wed = await screen.findByRole('region', { name: '11월 18일' });
-    expect(screen.getByRole('columnheader')).toHaveTextContent('원장보조');
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['원장', '보조']);
     const a = within(wed).getByRole('button', { name: /손님가/ });
     const b = within(wed).getByRole('button', { name: /손님나/ });
     expect(a.style.left).not.toBe(b.style.left);
@@ -437,6 +448,38 @@ describe('폰·웹 배치(캘린더 PR 2a) — 너비 기준 SEED md 768', () =>
     expect(within(wed).getByText('+2')).toBeInTheDocument();
     expect(screen.queryByRole('group', { name: '날짜 고르기' })).not.toBeInTheDocument();
   });
+  it('폰 월 보기: ‹ ›가 없으니 달력을 왼쪽으로 밀면 다음 달, 오른쪽으로 밀면 이전 달(#66 리뷰)', async () => {
+    setTestWidth(390);
+    const router = renderAt('/calendar?view=month&date=2027-02-10');
+    expect(await screen.findByRole('heading', { level: 2, name: '2027년 2월' })).toBeInTheDocument();
+    const grid = screen.getAllByRole('columnheader')[0]!.parentElement!.parentElement!;
+    fireEvent.touchStart(grid, { touches: [{ clientX: 300, clientY: 100 }] });
+    fireEvent.touchEnd(grid, { changedTouches: [{ clientX: 150, clientY: 110 }] });
+    expect(await screen.findByRole('heading', { level: 2, name: '2027년 3월' })).toBeInTheDocument();
+    expect(router.state.location.search).toBe('?view=month&date=2027-03-01'); // 달 이동은 그달 1일로
+    const grid2 = screen.getAllByRole('columnheader')[0]!.parentElement!.parentElement!;
+    fireEvent.touchStart(grid2, { touches: [{ clientX: 100, clientY: 100 }] });
+    fireEvent.touchEnd(grid2, { changedTouches: [{ clientX: 260, clientY: 90 }] });
+    expect(await screen.findByRole('heading', { level: 2, name: '2027년 2월' })).toBeInTheDocument();
+  });
+
+  it('웹에서 담당자를 거른 뒤 폰 폭으로 바뀌면 칩이 없으니 거르기를 풀어 모든 담당자 예약을 보인다(#66 리뷰)', async () => {
+    renderAt(
+      '/calendar?date=2026-11-18',
+      createMemoryCalendarApi({
+        staff: [{ id: 's1', name: '원장' }, { id: 's2', name: '보조' }],
+        appointments: [appt({ id: 'p1', customerName: '손님가', staffId: 's1' }), appt({ id: 'p2', customerName: '손님나', staffId: 's2' })],
+        blocks: [],
+      }),
+    );
+    const chips = await screen.findByRole('radiogroup', { name: '담당자' });
+    await userEvent.click(within(chips).getByRole('radio', { name: '보조' }));
+    expect(screen.queryByRole('button', { name: /손님가/ })).not.toBeInTheDocument();
+    act(() => setTestWidth(390));
+    await waitFor(() => expect(screen.queryByRole('radiogroup', { name: '담당자' })).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /손님가/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /손님나/ })).toBeInTheDocument();
+  });
 });
 
 describe('예약 보기 W2 — 웹 오른쪽 패널 / 폰 아래 시트 (캘린더 PR 2b)', () => {
@@ -480,7 +523,7 @@ describe('예약 보기 W2 — 웹 오른쪽 패널 / 폰 아래 시트 (캘린�
     setTestWidth(390);
     renderAt('/calendar?date=2026-11-16');
     const monday = await screen.findByRole('region', { name: '11월 16일' });
-    expect(screen.getByRole('button', { name: '+ 예약' })).toBeDisabled(); // 시트가 열리면 뒤 화면은 가려지므로 먼저 확인
+    expect(screen.getByRole('button', { name: '예약' })).toBeDisabled(); // 떠 있는 + 예약(W3 전까지 꺼짐) — 시트가 열리면 뒤 화면은 가려지므로 먼저 확인
     await userEvent.click(within(monday).getByRole('button', { name: /이서윤/ }));
     const sheet = await screen.findByRole('dialog', { name: '이서윤' });
     expect(sheet).toHaveTextContent('준비 20분 · 13:40부터 일정이 잡혀요');
