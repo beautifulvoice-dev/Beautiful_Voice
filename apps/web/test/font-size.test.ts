@@ -16,10 +16,20 @@ function files(dir: string): string[] {
   });
 }
 
-/** 한 파일에서 14px보다 작은 글자 지정을 "줄: 찾은 글자"로 돌려준다. */
-export function smallFonts(text: string): string[] {
+/**
+ * 14px 예외는 이것 하나뿐(카본 11/22 B안 승인): 캘린더 주 보기의 작은 칸 12px.
+ * WeekView.tsx의 SMALL_CARD_TEXT·SMALL_CARD_BADGE 두 상수 줄만 허용한다 — 같은 파일의 다른 줄이나 다른 파일의 12px는 계속 실패.
+ */
+export const SMALL_FONT_EXCEPTIONS: readonly { file: string; line: RegExp }[] = [
+  { file: join('pages', 'calendar', 'WeekView.tsx'), line: /^const SMALL_CARD_(TEXT|BADGE) = / },
+];
+
+/** 한 파일에서 14px보다 작은 글자 지정을 "줄: 찾은 글자"로 돌려준다. file(src 기준 경로)을 주면 예외 줄은 뺀다. */
+export function smallFonts(text: string, file?: string): string[] {
   const found: string[] = [];
+  const allowed = SMALL_FONT_EXCEPTIONS.filter((e) => e.file === file);
   text.split('\n').forEach((line, i) => {
+    if (allowed.some((e) => e.line.test(line))) return;
     const hits = [
       ...line.matchAll(/\btext-(?:xs|2xs)\b/g),
       ...[...line.matchAll(/\btext-\[(\d+(?:\.\d+)?)px\]/g)].filter((m) => Number(m[1]) < MIN_PX),
@@ -40,10 +50,18 @@ describe('가장 작은 글자 14px(설계서 §9.1)', () => {
     ]);
   });
 
-  it('apps/web/src에 14px보다 작은 글자 지정이 없다', () => {
+  it('예외는 WeekView의 작은 칸 상수 두 줄뿐 — 같은 파일 다른 줄·다른 파일의 12px는 잡는다', () => {
+    const file = join('pages', 'calendar', 'WeekView.tsx');
+    const ok = "const SMALL_CARD_TEXT = 'text-xs leading-[15px]';\nconst SMALL_CARD_BADGE = '!text-xs !leading-[15px]';";
+    expect(smallFonts(ok, file)).toEqual([]);
+    expect(smallFonts("<b className='text-xs'>", file)).toEqual(['1: text-xs']);
+    expect(smallFonts(ok, join('pages', 'calendar', 'MonthView.tsx'))).toEqual(['1: text-xs', '2: text-xs']);
+  });
+
+  it('apps/web/src에 14px보다 작은 글자 지정이 없다(위 예외 하나 빼고)', () => {
     const all = files(SRC);
     expect(all.length).toBeGreaterThan(20); // 경로가 틀려 아무것도 안 훑는 일이 없게
-    const bad = all.flatMap((f) => smallFonts(readFileSync(f, 'utf8')).map((hit) => `${relative(SRC, f)}:${hit}`));
+    const bad = all.flatMap((f) => smallFonts(readFileSync(f, 'utf8'), relative(SRC, f)).map((hit) => `${relative(SRC, f)}:${hit}`));
     expect(bad).toEqual([]);
   });
 });
