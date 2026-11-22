@@ -167,6 +167,8 @@ function AddClosureSheet({
   }
 
   function close(next: boolean) {
+    // 저장 중에는 닫지 않는다 — 응답 전에 닫으면 결과를 모른 채 입력·키가 초기화돼 같은 휴무가 두 번 생길 수 있다(#59 옵마 리뷰).
+    if (!next && save.saving) return;
     onOpenChange(next);
     if (next) return;
     if (save.problem?.kind === 'failed') {

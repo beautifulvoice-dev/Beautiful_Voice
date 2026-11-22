@@ -204,6 +204,31 @@ describe('휴무·휴가 화면', () => {
     expect(texts(await section('다가오는 휴무')).filter((t) => t?.startsWith('12월 25일'))).toHaveLength(1);
   });
 
+  it('저장 중에는 시트를 닫을 수 없고, 응답이 오면 한 번만 저장된다(#59 옵마 리뷰)', async () => {
+    const api = createMemorySettingsApi();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const slow: SettingsApi = {
+      ...api,
+      addClosure: async (input, o) => {
+        await gate; // 응답이 늦다
+        return api.addClosure(input, o);
+      },
+    };
+    renderAt('/settings/closures', slow);
+    const sheet = await openSheet();
+    await userEvent.click(within(sheet).getByRole('radio', { name: '공휴일' }));
+    await userEvent.type(within(sheet).getByLabelText('시작일'), '2026-12-25');
+    await userEvent.click(within(sheet).getByRole('button', { name: '추가' }));
+
+    await userEvent.keyboard('{Escape}'); // 응답 전에 닫으려 해도
+    expect(screen.getByRole('dialog', { name: '휴무 추가' })).toBeInTheDocument(); // 그대로 열려 있다
+
+    release();
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect((await api.listClosures()).filter((c) => c.kind === 'holiday')).toHaveLength(1);
+  });
+
   it('지우기가 끊기면 같은 항목은 같은 키로, 다른 항목은 새 키로 보낸다', async () => {
     const api = createMemorySettingsApi();
     const keys: (string | undefined)[] = [];
