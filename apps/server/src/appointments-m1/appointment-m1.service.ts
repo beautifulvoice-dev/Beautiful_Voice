@@ -1,5 +1,5 @@
-import type { Appointment, AppointmentStatus } from '@bv/contracts';
-import { OCCUPYING } from '@bv/scheduling/appointment-status';
+import type { Appointment, AppointmentStatus, CalendarResponse, Staff } from '@bv/contracts';
+import { changeStatus, OCCUPYING } from '@bv/scheduling/appointment-status';
 import { type BookingReject, checkBooking, type Closure, type ExistingBooking, type Interval, minutesIn, occupiedOf, type ShopHours } from '@bv/scheduling/booking';
 import { Injectable } from '@nestjs/common';
 import type { PoolClient } from 'pg';
@@ -13,15 +13,60 @@ import type { DatabaseService } from '../database.service';
 export class AppointmentM1Service {
   async find(client: PoolClient, shopId: string, id: string): Promise<Appointment> {
     if (!UUID.test(id)) throw appointmentNotFound();
-    const { rows: [row] } = await client.query<ViewRow>(
-      `SELECT a.id, a.customer_id, a.menu_id, a.staff_id, a.start_at, a.duration_min, a.prep_min, a.memo, a.status,
-              a.version, a.created_at, a.updated_at, c.name AS customer_name, m.name AS menu_name
-         FROM crm.appointment_m1 a
-         JOIN crm.customer c ON c.shop_id = a.shop_id AND c.id = a.customer_id
-         LEFT JOIN crm.menu m ON m.shop_id = a.shop_id AND m.id = a.menu_id
-        WHERE a.shop_id = $1 AND a.id = $2`, [shopId, id]);
+    const { rows: [row] } = await client.query<ViewRow>(`${VIEW_SELECT} WHERE a.shop_id = $1 AND a.id = $2`, [shopId, id]);
     if (!row) throw appointmentNotFound();
     return toAppointment(row);
+  }
+
+  /**
+   * 캘린더 한 화면치(#42 GET …/calendar, 설계 04 보강 D5~D7). from·to는 매장 날짜(양 끝 포함, 1~42일).
+   * 점유 [시작−준비, 시작+관리)가 [from 0시, to 다음 날 0시)와 겹치는 예약 — 경계에 닿기만 하면 빠진다.
+   * 취소·무효도 보낸다(D6, 화면이 뺀다). 담당자는 활성 + 응답 예약이 가리키는 비활성(D7). 차단은 BEA-179 전까지 빈 배열.
+   */
+  async calendar(client: PoolClient, shopId: string, query: { from?: unknown; to?: unknown }): Promise<CalendarResponse> {
+    const range = readRange(query.from, query.to);
+    // ASSUMPTION: M1 매장 시간대는 Asia/Seoul 고정(설계 04, 운영 중 시간대 변경은 범위 밖).
+    const { rows } = await client.query<ViewRow>(
+      `${VIEW_SELECT}
+        WHERE a.shop_id = $1
+          AND a.occupied && tstzrange($2::date::timestamp AT TIME ZONE '${SHOP_TIME_ZONE}',
+                                      ($3::date + 1)::timestamp AT TIME ZONE '${SHOP_TIME_ZONE}', '[)')
+        ORDER BY a.start_at, a.id`, [shopId, range.from, range.to]);
+    const appointments = rows.map(toAppointment);
+    const { rows: staff } = await client.query<Staff>(
+      `SELECT id, version, created_at AS "createdAt", updated_at AS "updatedAt", name, active
+         FROM crm.staff WHERE shop_id = $1 AND (active OR id = ANY($2::uuid[])) ORDER BY created_at, id`,
+      [shopId, [...new Set(appointments.map((a) => a.staffId))]]);
+    return { staff, appointments, blocks: [] };
+  }
+
+  /**
+   * 상태 바꾸기·정정(#42 PUT …/status, 설계 04 보강 §예약 취소와 상태 API). 판정은 @bv/scheduling changeStatus(결정 S5).
+   * 취소를 되살리면 같은 담당자 점유 겹침만 다시 본다(Q2) — 영업시간·휴무·차단으로는 거부하지 않는다.
+   * 지갑·문자는 건드리지 않는다.
+   */
+  async setStatus(client: PoolClient, shopId: string, id: string, input: unknown): Promise<Appointment> {
+    if (!UUID.test(id)) throw appointmentNotFound();
+    const { version, status } = readStatusInput(input);
+    const { rows: [current] } = await client.query<StoredRow>(
+      `SELECT customer_id, menu_id, staff_id, start_at, duration_min, prep_min, memo, status, version
+         FROM crm.appointment_m1 WHERE shop_id = $1 AND id = $2 FOR UPDATE`, [shopId, id]);
+    if (!current) throw appointmentNotFound();
+    if (current.version !== version) throw versionConflict(current.version);
+    const change = changeStatus(current.status, status, { undoOfTask: false });
+    if (!change.ok) {
+      throw change.error === 'NO_CHANGE'
+        ? new ApiError(409, 'NO_CHANGE', '이미 같은 상태입니다.')
+        : new ApiError(409, 'INVALID_TRANSITION', '이 상태로 바꿀 수 없습니다.', { current: current.status });
+    }
+    const fields = toFields(current);
+    if (change.needsOverlapCheck) {
+      const clash = await occupyingRows(client, shopId, fields.staffId, occupiedOf(toRequest(fields)), id);
+      if (clash.length > 0) throw staffOverlap(clash.map((r) => r.id));
+    }
+    await rejectOverlapRace(fields, id, () => client.query(
+      'UPDATE crm.appointment_m1 SET status = $3 WHERE shop_id = $1 AND id = $2', [shopId, id, status]));
+    return this.find(client, shopId, id);
   }
 
   async create(client: PoolClient, shopId: string, input: unknown): Promise<Appointment> {
@@ -44,9 +89,7 @@ export class AppointmentM1Service {
       `SELECT customer_id, menu_id, staff_id, start_at, duration_min, prep_min, memo, status, version
          FROM crm.appointment_m1 WHERE shop_id = $1 AND id = $2 FOR UPDATE`, [shopId, id]);
     if (!current) throw appointmentNotFound();
-    if (current.version !== version) {
-      throw new ApiError(409, 'VERSION_CONFLICT', '다른 곳에서 먼저 고쳤습니다. 새로 불러와 주세요.', { currentVersion: current.version });
-    }
+    if (current.version !== version) throw versionConflict(current.version);
     const before = toFields(current);
     const after: Fields = { ...before, ...values };
     const changed = (KEYS as readonly (keyof Fields)[]).filter((k) => (k === 'start'
@@ -231,7 +274,58 @@ function parseInstant(value: unknown): Date | null {
   return Number.isNaN(at.getTime()) ? null : at;
 }
 
+const SHOP_TIME_ZONE = 'Asia/Seoul';
+const MAX_RANGE_DAYS = 42;
+const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const SETTABLE: readonly AppointmentStatus[] = ['scheduled', 'completed', 'cancelled', 'no_show'];
+
+/** 매장 날짜 'YYYY-MM-DD'를 날짜 번호(1970-01-01부터 며칠째)로. 없는 날짜·다른 모양은 null. */
+function dayNumber(value: unknown): number | null {
+  if (typeof value !== 'string') return null;
+  const m = DATE.exec(value);
+  if (!m) return null;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const day = new Date(Date.UTC(y, mo - 1, d));
+  if (day.getUTCFullYear() !== y || day.getUTCMonth() !== mo - 1 || day.getUTCDate() !== d) return null;
+  return day.getTime() / 86_400_000;
+}
+
+/** 빠짐·없는 날짜·역순·42일 초과는 400 INVALID_RANGE(설계 04 보강 §캘린더 기간 조회). */
+function readRange(from: unknown, to: unknown): { from: string; to: string } {
+  const [f, t] = [dayNumber(from), dayNumber(to)];
+  if (f === null || t === null || t < f || t - f + 1 > MAX_RANGE_DAYS) {
+    throw new ApiError(400, 'INVALID_RANGE', `조회 기간은 매장 날짜 from~to(양 끝 포함) 1~${MAX_RANGE_DAYS}일이어야 합니다.`);
+  }
+  return { from: from as string, to: to as string };
+}
+
+function readStatusInput(input: unknown): { version: number; status: AppointmentStatus } {
+  if (input === null || typeof input !== 'object' || Array.isArray(input)) throw invalid([{ field: '', code: 'INVALID_SHAPE' }]);
+  const body = input as Record<string, unknown>;
+  const errors: FieldError[] = [];
+  for (const k of Object.keys(body)) if (k !== 'version' && k !== 'status') errors.push({ field: k, code: 'UNKNOWN_FIELD' });
+  const { version, status } = body;
+  if (!(typeof version === 'number' && Number.isInteger(version) && version >= 1)) {
+    errors.push({ field: 'version', code: version === undefined ? 'REQUIRED' : 'INVALID_VERSION' });
+  }
+  // 무효(voided)는 업무 되돌리기 전용이라 여기서 고를 수 없다(#42 enum).
+  if (!SETTABLE.includes(status as AppointmentStatus)) {
+    errors.push({ field: 'status', code: status === undefined ? 'REQUIRED' : 'INVALID_STATUS' });
+  }
+  if (errors.length > 0) throw invalid(errors);
+  return { version: version as number, status: status as AppointmentStatus };
+}
+
 // ── 출력·오류 ──
+const VIEW_SELECT = `SELECT a.id, a.customer_id, a.menu_id, a.staff_id, a.start_at, a.duration_min, a.prep_min, a.memo, a.status,
+              a.version, a.created_at, a.updated_at, c.name AS customer_name, m.name AS menu_name
+         FROM crm.appointment_m1 a
+         JOIN crm.customer c ON c.shop_id = a.shop_id AND c.id = a.customer_id
+         LEFT JOIN crm.menu m ON m.shop_id = a.shop_id AND m.id = a.menu_id`;
+
+function versionConflict(currentVersion: number): ApiError<'VERSION_CONFLICT'> {
+  return new ApiError(409, 'VERSION_CONFLICT', '다른 곳에서 먼저 고쳤습니다. 새로 불러와 주세요.', { currentVersion });
+}
 interface StoredRow {
   customer_id: string; menu_id: string | null; staff_id: string; start_at: Date; duration_min: number; prep_min: number;
   memo: string | null; status: AppointmentStatus; version: number;
