@@ -64,6 +64,20 @@ describe('공통 요청부', () => {
   });
 });
 
+describe('성공 응답 본문 유실', () => {
+  it('201 헤더 뒤 본문 수신이 끊기면 NetworkError — 같은 키로 다시 보내게 한다', async () => {
+    const broken = new ReadableStream({
+      start(c) {
+        c.enqueue(new TextEncoder().encode('{"id":"c-'));
+        c.error(new TypeError('network error'));
+      },
+    });
+    const { fetcher } = fakeFetch(new Response(broken, { status: 201 }));
+    const err = await createHttp(fetcher).send('POST', '/x', { body: {}, idempotencyKey: 'k' }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(NetworkError);
+  });
+});
+
 describe('저장 키', () => {
   it('같은 요청은 같은 키, 내용이 바뀌거나 결과가 확정되면 새 키', () => {
     let n = 0;
