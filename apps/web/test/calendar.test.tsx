@@ -235,6 +235,9 @@ describe('캘린더 화면', () => {
   });
 
   it('주간 보기: 요일 7칸과 관리·준비·차단이 서로 다른 모양으로 보인다', async () => {
+    // 오늘이 이 주에 들면 날 머리가 "· 오늘"로 바뀌므로 시계를 수요일로 고정한다
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-18T05:30:00Z')); // 서울 수 14:30
     renderAt('/calendar?date=2026-11-18');
     expect(await screen.findByRole('heading', { level: 2, name: '11월 셋째 주' })).toBeInTheDocument();
     await screen.findByRole('region', { name: '11월 16일' });
