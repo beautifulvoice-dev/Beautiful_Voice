@@ -10,9 +10,13 @@ import {
   type FieldError,
 } from '@bv/customers';
 import { checkSameName, type SameNameCheck, type Subject } from '@bv/customers/duplicates';
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useMemo } from 'react';
+import { useOptionalSession } from '@/features/auth/session';
+import { FAKE_API } from '@/lib/apiMode';
+import { http } from '@/lib/http';
+import { createHttpCustomerApi } from './httpApi';
 import type { Customer, CustomerDetail, Visit } from './model';
-import { seedCustomers } from './mockData';
+import { seedCustomers, seedCustomersWithScene } from './mockData';
 
 export class CustomerValidationError extends Error {
   readonly errors: FieldError[];
@@ -22,13 +26,26 @@ export class CustomerValidationError extends Error {
   }
 }
 
+/** 409 VERSION_CONFLICT — 그사이 다른 곳에서 고쳤다. 입력은 두고 최신 값을 다시 불러와 확인한다(설계 05 D4). */
+export class CustomerConflictError extends Error {
+  constructor() {
+    super('VERSION_CONFLICT');
+  }
+}
+
+/** 쓰기 요청 옵션. 실제 API는 Idempotency-Key 헤더와 읽은 version을 보낸다(절대 규칙 6, 계약 #42). */
+export interface CustomerWriteOptions {
+  idempotencyKey?: string;
+  version?: number;
+}
+
 export interface CustomerApi {
   /** 이름(띄어쓰기 무시) 또는 전화번호 숫자 일부로 찾는다. 빈 검색어는 전체. */
   list(query: string): Promise<Customer[]>;
   get(id: string): Promise<CustomerDetail | null>;
   checkSameName(subject: Subject): Promise<SameNameCheck>;
-  create(input: CustomerInput): Promise<Customer>;
-  update(id: string, patch: CustomerPatch): Promise<Customer>;
+  create(input: CustomerInput, options?: CustomerWriteOptions): Promise<Customer>;
+  update(id: string, patch: CustomerPatch, options?: CustomerWriteOptions): Promise<Customer>;
 }
 
 export interface MemorySeed {
@@ -84,7 +101,15 @@ export function createMemoryCustomerApi(seed: MemorySeed = seedCustomers()): Cus
 const CustomerApiContext = createContext<CustomerApi | null>(null);
 export const CustomerApiProvider = CustomerApiContext.Provider;
 
-const defaultApi = createMemoryCustomerApi();
+let fakeApi: CustomerApi | null = null;
+/** 주입한 것(테스트) → 명시적 가짜 모드면 메모리 → 아니면 로그인한 매장의 실제 API(설계 05 D2). */
 export function useCustomerApi(): CustomerApi {
-  return useContext(CustomerApiContext) ?? defaultApi;
+  const injected = useContext(CustomerApiContext);
+  const shopId = useOptionalSession()?.shopId;
+  return useMemo(() => {
+    if (injected) return injected;
+    if (FAKE_API) return (fakeApi ??= createMemoryCustomerApi(seedCustomersWithScene()));
+    if (!shopId) throw new Error('useCustomerApi는 RequireSession 안에서만 쓴다');
+    return createHttpCustomerApi(http, shopId);
+  }, [injected, shopId]);
 }

@@ -2,6 +2,7 @@ import type { Customer, Page, SameNameCheckResponse } from '@bv/contracts';
 import {
   applyPatch, type CustomerPatch as PatchValues, type CustomerValues, nameKey, normalizePhone, validateCustomerPatch, validateNewCustomer,
 } from '@bv/customers';
+import { changeActive } from '@bv/customers/activation';
 import { checkSameName } from '@bv/customers/duplicates';
 import { Injectable } from '@nestjs/common';
 import type { PoolClient } from 'pg';
@@ -115,6 +116,25 @@ export class CustomerService {
       `UPDATE crm.customer SET name = $3, phone = $4, notes = $5, birthdate = $6, address = $7
         WHERE shop_id = $1 AND id = $2 RETURNING ${COLUMNS}`,
       [shopId, customerId, after.name, after.phone, after.memo, after.birthdate ?? null, after.address ?? null]);
+    return row!;
+  }
+
+  /**
+   * 비활성화(삭제 대신)·재활성화(BEA-173, 결정 R30·S4). **고객 행만 바꾼다** — 예약·지갑은 건드리지 않아
+   * 예약이 자동 취소되지 않고(AC-CRM-4) 기록·잔액이 그대로 보인다. 이미 그 상태면 409 NO_CHANGE.
+   */
+  async setActive(client: PoolClient, shopId: string, customerId: string, input: unknown): Promise<Customer> {
+    const body = objectOf(input);
+    const current = await this.lock(client, shopId, customerId, body.version);
+    if (typeof body.active !== 'boolean') throw invalid([{ field: 'active', code: 'INVALID_BOOLEAN' }]);
+    const deactivatedAt = current.deactivatedAt === null ? null : new Date(current.deactivatedAt);
+    const change = changeActive({ active: current.active, deactivatedAt }, body.active, new Date());
+    if (!change.ok) throw new ApiError(409, 'NO_CHANGE', body.active ? '이미 활성 고객입니다.' : '이미 비활성 고객입니다.');
+    // 시각은 DB 시계로 남긴다(서버마다 시계가 조금씩 달라도 created_at·updated_at과 같은 기준).
+    const { rows: [row] } = await client.query<Customer>(
+      `UPDATE crm.customer SET active = $3, deactivated_at = CASE WHEN $3 THEN NULL ELSE now() END
+        WHERE shop_id = $1 AND id = $2 RETURNING ${COLUMNS}`,
+      [shopId, customerId, change.value.active]);
     return row!;
   }
 
