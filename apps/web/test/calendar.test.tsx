@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SessionLoaderProvider } from '@/features/auth/session';
 import { CalendarApiProvider, createMemoryCalendarApi, type CalendarApi } from '@/features/calendar/api';
 import { seedCalendar } from '@/features/calendar/mockData';
+import { createMemoryCustomerApi, CustomerApiProvider } from '@/features/customers/api';
 import {
   appointmentTimeText,
   forStaff,
@@ -36,7 +37,9 @@ function renderAt(path: string, api: CalendarApi = API()) {
   render(
     <SessionLoaderProvider value={async () => ({ shopId: 'shop-1' })}>
       <CalendarApiProvider value={api}>
-        <RouterProvider router={router} />
+        <CustomerApiProvider value={createMemoryCustomerApi()}>
+          <RouterProvider router={router} />
+        </CustomerApiProvider>
       </CalendarApiProvider>
     </SessionLoaderProvider>,
   );
