@@ -124,7 +124,10 @@ function AppointmentForm({
     const q = query.trim();
     if (picked || !q) return setCandidates([]);
     let alive = true;
-    customers.list(q).then((list) => alive && setCandidates(list.slice(0, 5)));
+    customers.list(q).then(
+      (list) => alive && setCandidates(list.slice(0, 5)),
+      () => alive && setCandidates([]),
+    );
     return () => {
       alive = false;
     };
@@ -172,16 +175,8 @@ function AppointmentForm({
           }),
         );
       // 2) 새 고객이면 이름만으로 등록(01 §2.3)
-      const customer = picked.id
-        ? picked
-        : {
-            ...(await customers.create({
-              name: picked.name,
-              phone: null,
-              memo: null,
-            })),
-            phone: null,
-          };
+      const customer = picked.id ? picked : await customers.create({ name: picked.name, phone: null, memo: null });
+      if (!picked.id) setPicked({ id: customer.id, name: customer.name, phone: customer.phone });
       const menu = menus.find((m) => m.id === menuId);
       const r = await api.createAppointment({
         customerId: customer.id,
@@ -196,6 +191,8 @@ function AppointmentForm({
       });
       if (!r.ok) return setError(rejectText(r.reason, r.conflictingIds, { data, staffId, startAt }));
       onSaved(day);
+    } catch {
+      setError('저장하지 못했어요. 잠시 뒤 다시 시도해 주세요.');
     } finally {
       setBusy(false);
     }
