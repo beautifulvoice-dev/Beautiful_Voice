@@ -36,7 +36,7 @@ interface Props {
 export function AppointmentPanel({ appointment: a, staffName, blocks, onClose, onStatus }: Props) {
   return (
     <CalendarSheet open={a !== null} onClose={onClose}>
-      {a && <Body key={`${a.id}-${a.status}`} a={a} staffName={staffName} blocks={blocks} onStatus={onStatus} />}
+      {a && <Body key={`${a.id}-${a.status}`} a={a} staffName={staffName} blocks={blocks} onStatus={onStatus} onClose={onClose} />}
     </CalendarSheet>
   );
 }
@@ -49,11 +49,13 @@ function Body({
   staffName,
   blocks,
   onStatus,
+  onClose,
 }: {
   a: CalendarAppointment;
   staffName: string;
   blocks: readonly CalendarBlock[];
   onStatus: Props['onStatus'];
+  onClose: () => void;
 }) {
   const phone = useIsPhone();
   const [time, prep] = appointmentPanelTime(a);
@@ -203,7 +205,15 @@ function Body({
           </ActionButton>
         )}
       </ResponsiveSidePanel.Footer>
-      <AlertDialog.Root open={confirmCancel} onOpenChange={setConfirmCancel}>
+      {/* 그만두기(·Esc·바깥 누르기)는 아무것도 바꾸지 않고 패널까지 닫아 캘린더로 돌아간다(11/22 옵마).
+          "예약 취소"는 저장 뒤 CalendarPage가 패널을 닫는다 — 실패하면 확인 창만 닫고 패널에 이유를 보인다. */}
+      <AlertDialog.Root
+        open={confirmCancel}
+        onOpenChange={(open) => {
+          setConfirmCancel(open);
+          if (!open) onClose();
+        }}
+      >
         <AlertDialog.Backdrop />
         <AlertDialog.Positioner>
           <AlertDialog.Content>

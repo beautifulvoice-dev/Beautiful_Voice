@@ -611,7 +611,7 @@ describe('예약 보기 W2 — 웹 오른쪽 패널 / 폰 아래 시트 (캘린�
     expect(wide).not.toHaveClass('text-xs');
   });
 
-  it('상태 고치기 → 취소는 확인을 한 번 더 묻고, 그만두면 그대로다(설계서 W2, #68 리뷰)', async () => {
+  it('상태 고치기 → 취소는 확인을 한 번 더 묻고, 그만두면 아무것도 바꾸지 않고 패널까지 닫아 캘린더로(설계서 W2, 11/22 옵마)', async () => {
     renderAt('/calendar?date=2026-11-18');
     const monday = await screen.findByRole('region', { name: '11월 16일' });
     await userEvent.click(within(monday).getByRole('button', { name: /김하늘/ }));
@@ -623,7 +623,8 @@ describe('예약 보기 W2 — 웹 오른쪽 패널 / 폰 아래 시트 (캘린�
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
     const card = within(screen.getByRole('region', { name: '11월 16일' })).getByRole('button', { name: /김하늘/ });
     expect(card).toHaveAttribute('data-status', 'completed');
-    expect(screen.getByRole('dialog', { name: '김하늘' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '김하늘' })).not.toBeInTheDocument());
+    expect(screen.queryByText(/표시했어요|취소했어요/)).not.toBeInTheDocument(); // 바뀐 것이 없으니 스낵바도 없다
   });
 
   it('취소 확인에서 "예약 취소"를 누르면 취소되어 캘린더에서 빠지고 패널이 닫힌다', async () => {
