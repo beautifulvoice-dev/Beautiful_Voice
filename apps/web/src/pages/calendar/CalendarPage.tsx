@@ -192,6 +192,7 @@ export function CalendarPage() {
           selected={date}
           onPick={(d) => go({ date: d })}
           onStep={step}
+          staffName={shown.staff.length > 1 ? staffName : undefined}
         />
       )}
 
