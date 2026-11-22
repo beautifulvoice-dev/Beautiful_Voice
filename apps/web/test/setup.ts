@@ -15,10 +15,13 @@ globalThis.ResizeObserver ??= NoopResizeObserver as unknown as typeof ResizeObse
 // jsdom에는 matchMedia가 없다 — SEED 너비 판정(useBreakpoint·ResponsiveSidePanel)이 쓴다.
 // 화면 너비는 setTestWidth(폭)으로 바꾼다. 기본은 매장 노트북 1280px(웹 배치).
 // 테스트 파일에서 이 파일을 다시 import해도 같은 값을 보도록 globalThis에 둔다.
-const state = globalThis as typeof globalThis & { __testWidth?: number };
+const state = globalThis as typeof globalThis & { __testWidth?: number; __mediaListeners?: Set<() => void> };
 state.__testWidth = 1280;
+state.__mediaListeners ??= new Set();
+/** 화면 폭을 바꾼다. 그려진 화면이 있으면 SEED 너비 판정에 바뀜을 알린다(테스트 안에서는 act로 감싼다). */
 export function setTestWidth(width: number) {
   state.__testWidth = width;
+  for (const fn of state.__mediaListeners!) fn();
 }
 afterEach(() => {
   state.__testWidth = 1280;
@@ -31,8 +34,12 @@ globalThis.matchMedia ??= ((query: string) => {
     },
     media: query,
     onchange: null,
-    addEventListener() {},
-    removeEventListener() {},
+    addEventListener(_type: string, fn: () => void) {
+      state.__mediaListeners!.add(fn);
+    },
+    removeEventListener(_type: string, fn: () => void) {
+      state.__mediaListeners!.delete(fn);
+    },
     addListener() {},
     removeListener() {},
     dispatchEvent: () => false,
