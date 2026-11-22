@@ -30,7 +30,7 @@ export function CustomerDetailPage() {
 }
 
 function CustomerCard({ customer: c }: { customer: CustomerDetail }) {
-  const visits = visitHistory(c.visits);
+  const visits = c.visits && visitHistory(c.visits);
 
   return (
     <>
@@ -63,7 +63,9 @@ function CustomerCard({ customer: c }: { customer: CustomerDetail }) {
         </Section>
 
         <Section title="예약·방문 이력" className="md:col-span-2">
-          {visits.length === 0 ? (
+          {visits === null ? (
+            <p className="text-sm text-muted-foreground">예약·방문 이력은 준비 중이에요</p>
+          ) : visits.length === 0 ? (
             <p className="text-sm text-muted-foreground">예약·방문 이력이 없어요</p>
           ) : (
             <ul aria-label="예약·방문 이력" className="divide-y text-sm">

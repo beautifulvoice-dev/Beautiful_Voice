@@ -48,8 +48,8 @@ export function createHttpCustomerApi(http: Http, shopId: string): CustomerApi {
     },
     async get(id) {
       try {
-        // ASSUMPTION: M1에는 고객별 방문 이력 API가 없다(#42) — 이력은 빈 목록으로 둔다.
-        return { ...toCustomer(await http.get<ContractCustomer>(path(id))), visits: [] };
+        // ASSUMPTION: M1에는 고객별 방문 이력 API가 없다(#42) — "이력 없음"으로 보이지 않게 null(준비 중)로 둔다.
+        return { ...toCustomer(await http.get<ContractCustomer>(path(id))), visits: null };
       } catch (err) {
         if (err instanceof HttpError && err.status === 404) return null;
         throw err;
