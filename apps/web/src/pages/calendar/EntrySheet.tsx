@@ -17,7 +17,7 @@ import {
 import { CalendarDays, Minus, Plus, Search, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toBookingInputs, useCalendarApi, type NewAppointment } from '@/features/calendar/api';
-import { occupancyText, rejectText, shopIso } from '@/features/calendar/bookingText';
+import { occupancyText, rejectText, shopIso, shortDate } from '@/features/calendar/bookingText';
 import { addDays, shopDate, startTimes, type CalendarData, type Menu, type Staff } from '@/features/calendar/model';
 import { CustomerValidationError, useCustomerApi } from '@/features/customers/api';
 import type { Customer } from '@/features/customers/model';
@@ -71,7 +71,6 @@ export function EntrySheet({ start, staff, businessHours = null, onClose, onSave
             </div>
           </ResponsiveSidePanel.Header>
           <AppointmentForm
-            key={`${start.date}-${start.time}-${start.staffId}`}
             start={start}
             staff={staff}
             businessHours={businessHours}
@@ -164,6 +163,28 @@ function AppointmentForm({
   const [prep, setPrep] = useState(DEFAULT_PREP);
   const lane = start.staffId && staff.some((s) => s.id === start.staffId) ? start.staffId : '';
   const [staffId, setStaffId] = useState<string>(staff.length === 1 ? staff[0]!.id : lane);
+  // 날짜·시각·담당자를 손으로 바꿨는가 — 패널이 열린 채 다른 빈 칸을 누르면 덮어쓰기 전에 묻는다(#69 리뷰).
+  const [startEdited, setStartEdited] = useState(false);
+  const [pendingStart, setPendingStart] = useState<EntryStart | null>(null);
+  const shownStart = useRef(start);
+  const applyStart = (s: EntryStart) => {
+    setDate(s.date);
+    setTime(s.time ?? '');
+    if (s.staffId && staff.some((x) => x.id === s.staffId)) setStaffId(s.staffId);
+    setStartEdited(false);
+    setPendingStart(null);
+  };
+  useEffect(() => {
+    // 웹 패널은 모달이 아니라 열린 채 다른 칸을 누를 수 있다: 새 칸의 날짜·시각·담당자로 바꾼다(손으로 바꿨으면 먼저 묻기).
+    if (start === shownStart.current) return;
+    shownStart.current = start;
+    if (startEdited) setPendingStart(start);
+    else applyStart(start);
+  }, [start]);
+  useEffect(() => {
+    // 캘린더를 불러오는 중에 열면 담당자가 아직 없다 — 도착한 담당자가 1명이면 그 사람으로(F1-4, #69 리뷰).
+    if (staffId === '' && staff.length === 1) setStaffId(staff[0]!.id);
+  }, [staff, staffId]);
   const [memo, setMemo] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -401,19 +422,53 @@ function AppointmentForm({
           </div>
         )}
 
+        {pendingStart && (
+          // 새로 누른 칸으로 바꿀지 묻기(손으로 바꾼 날짜·시각·담당자를 그냥 덮어쓰지 않게)
+          <div role="status" className="grid gap-2 rounded-xl bg-neutral-weak p-3 text-sm">
+            <p>
+              새로 누른 칸({shortDate(pendingStart.date)} {pendingStart.time}
+              {pendingStart.staffId && staff.length > 1 ? ` · ${staff.find((x) => x.id === pendingStart.staffId)?.name ?? ''}` : ''})으로
+              바꿀까요? 고른 날짜·시각·담당자가 바뀌어요.
+            </p>
+            <div className="flex gap-2">
+              <ActionButton variant="neutralSolid" size="small" onClick={() => applyStart(pendingStart)}>
+                바꾸기
+              </ActionButton>
+              <ActionButton variant="neutralWeak" size="small" onClick={() => setPendingStart(null)}>
+                그대로 두기
+              </ActionButton>
+            </div>
+          </div>
+        )}
         {/* 날짜·시작은 누르기만(11/22 옵마): 달력 팝업 / 영업시간 안 15분 목록(폰 휠, 웹 펼치는 목록) */}
         <div className="flex gap-2.5">
           <div className="grid min-w-0 flex-1 gap-1.5">
             <label htmlFor="entry-date" className="text-sm font-bold text-ink">
               날짜
             </label>
-            <DateField id="entry-date" value={date} onChange={touched(setDate)} />
+            <DateField
+              id="entry-date"
+              value={date}
+              onChange={(d) => {
+                touched(setDate)(d);
+                setStartEdited(true);
+              }}
+            />
           </div>
           <div className="grid w-[45%] gap-1.5">
             <label htmlFor="entry-time" className="text-sm font-bold text-ink">
               시작
             </label>
-            <TimeField id="entry-time" value={time} options={startTimes(date, businessHours)} onChange={touched(setTime)} phone={phone} />
+            <TimeField
+              id="entry-time"
+              value={time}
+              options={startTimes(date, businessHours)}
+              onChange={(t) => {
+                touched(setTime)(t);
+                setStartEdited(true);
+              }}
+              phone={phone}
+            />
           </div>
         </div>
 
@@ -435,7 +490,10 @@ function AppointmentForm({
             <Chip.RadioRoot
               aria-labelledby="staff-label"
               value={staffId}
-              onValueChange={touched(setStaffId)}
+              onValueChange={(id) => {
+                touched(setStaffId)(id);
+                setStartEdited(true);
+              }}
               className="flex flex-wrap gap-2"
             >
               {staff.map((s) => (
