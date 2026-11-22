@@ -1,5 +1,6 @@
 // 설계 04 보강·05 D3·D5: 캘린더 실제 어댑터(조회·설정 실패 분리·담당자 열·상태 version·재시도 키·거부 이유). 합성 데이터만.
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
 import { describe, expect, it } from 'vitest';
@@ -109,6 +110,40 @@ describe('상태 바꾸기', () => {
     expect(puts.map((s) => s.body)).toEqual([{ version: 2, status: 'scheduled' }, { version: 2, status: 'scheduled' }]);
     expect(await api.setStatus('a9', 'scheduled')).toMatchObject({ ok: false, reason: 'VERSION_CONFLICT' });
     expect(sent.filter((s) => s.method === 'PUT')[2]!.key).not.toBe(puts[0]!.key);
+  });
+});
+
+describe('처리하지 않은 서버 오류(#73 리뷰)', () => {
+  it('500은 FAILED, 401은 UNAUTHENTICATED로 돌려준다 — 던지지 않는다', async () => {
+    const { api } = fake({
+      'GET /appointments/a1': [json(200, appt('a1'))],
+      'PUT /appointments/a1/status': [fail(500, 'INTERNAL'), fail(401, 'UNAUTHENTICATED')],
+    });
+    expect(await api.setStatus('a1', 'completed')).toEqual({ ok: false, reason: 'FAILED', conflictingIds: [] });
+    expect(await api.setStatus('a1', 'completed')).toEqual({ ok: false, reason: 'UNAUTHENTICATED', conflictingIds: [] });
+  });
+
+  it('W2: 서버 오류면 저장 중에서 풀리고 다시 시도할 수 있다는 안내, 401이면 다시 로그인 안내', async () => {
+    const base = createMemoryCalendarApi(seedCalendar('2026-11-18'));
+    const replies = ['FAILED', 'UNAUTHENTICATED'] as const;
+    let i = 0;
+    const api: CalendarApi = { ...base, setStatus: async () => ({ ok: false, reason: replies[i++]!, conflictingIds: [] }) };
+    const router = createMemoryRouter(routes, { initialEntries: ['/calendar?view=week&date=2026-11-18'] });
+    render(
+      <SessionLoaderProvider value={async () => ({ shopId: 'shop-1' })}>
+        <CalendarApiProvider value={api}>
+          <RouterProvider router={router} />
+        </CalendarApiProvider>
+      </SessionLoaderProvider>,
+    );
+    const tuesday = await screen.findByRole('region', { name: '11월 17일' });
+    await userEvent.click(within(tuesday).getByRole('button', { name: /최유나/ }));
+    const panel = await screen.findByRole('dialog', { name: '최유나' });
+    await userEvent.click(within(panel).getByRole('button', { name: '완료' }));
+    expect(await within(panel).findByText('저장하지 못했어요. 잠시 뒤 다시 시도해 주세요.')).toBeInTheDocument();
+    expect(within(panel).getByRole('button', { name: '완료' })).toBeEnabled();
+    await userEvent.click(within(panel).getByRole('button', { name: '완료' }));
+    expect(await within(panel).findByText('로그인이 끝났어요. 다시 로그인한 뒤 시도해 주세요.')).toBeInTheDocument();
   });
 });
 

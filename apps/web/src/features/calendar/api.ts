@@ -42,7 +42,17 @@ export type NewBlock = Omit<CalendarBlock, 'id'>;
  * 저장이 안 된 이유. 예약 규칙(@bv/scheduling) + 계약 #42의 상태·동시 수정 오류 + 응답을 못 받음(NETWORK).
  * NETWORK는 저장됐는지 모른다 — 같은 내용으로 다시 보내면 같은 키라 두 번 저장되지 않는다(설계 05 D5).
  */
-export type SaveReject = BookingReject | 'INVALID_TRANSITION' | 'NO_CHANGE' | 'VERSION_CONFLICT' | 'NOT_FOUND' | 'NETWORK';
+export type SaveReject =
+  | BookingReject
+  | 'INVALID_TRANSITION'
+  | 'NO_CHANGE'
+  | 'VERSION_CONFLICT'
+  | 'NOT_FOUND'
+  | 'NETWORK'
+  /** 로그인 만료(401) — 다시 로그인해야 한다. */
+  | 'UNAUTHENTICATED'
+  /** 그 밖의 서버 오류(500 등). 저장되지 않았다 — 다시 시도할 수 있다. */
+  | 'FAILED';
 
 /** 저장 결과. 거부면 이유와 걸린 예약·차단 id(문구에 쓴다, W3 거부 표). */
 export type SaveResult<T> = { ok: true; value: T } | { ok: false; reason: SaveReject; conflictingIds: string[] };

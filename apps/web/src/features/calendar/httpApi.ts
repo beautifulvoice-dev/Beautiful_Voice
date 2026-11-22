@@ -32,14 +32,18 @@ const toAppointment = (a: Appointment): CalendarAppointment => ({
   version: a.version,
 });
 
-/** 서버 거절 → 저장 결과. 응답을 못 받으면 NETWORK, 그 밖의 서버 오류는 던진다("다시 시도"). */
+/**
+ * 서버 거절 → 저장 결과. 던지지 않는다 — 화면(W2·W3)이 저장 중 상태에서 멈추지 않게(#73 리뷰).
+ * 응답을 못 받으면 NETWORK, 로그인 만료는 UNAUTHENTICATED, 그 밖(500 등)은 FAILED(다시 시도할 수 있음).
+ */
 function toReject(err: unknown): SaveResult<never> {
   if (err instanceof NetworkError) return { ok: false, reason: 'NETWORK', conflictingIds: [] };
   if (err instanceof HttpError && REJECTS.includes(err.code)) {
     const ids = err.details.conflictingIds;
     return { ok: false, reason: err.code as SaveReject, conflictingIds: Array.isArray(ids) ? (ids as string[]) : [] };
   }
-  throw err;
+  if (err instanceof HttpError && err.status === 401) return { ok: false, reason: 'UNAUTHENTICATED', conflictingIds: [] };
+  return { ok: false, reason: 'FAILED', conflictingIds: [] };
 }
 
 export function createHttpCalendarApi(http: Http, shopId: string): CalendarApi {
