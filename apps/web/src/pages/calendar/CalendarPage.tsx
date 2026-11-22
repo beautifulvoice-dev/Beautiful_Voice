@@ -17,7 +17,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useShopName } from '@/components/layout/AppShell';
 import { ErrorState } from '@/components/states/DataState';
-import { useCalendarApi } from '@/features/calendar/api';
+import { useCalendarApi, useCalendarEntryPreview } from '@/features/calendar/api';
 import { rejectText } from '@/features/calendar/bookingText';
 import {
   addDays,
@@ -62,6 +62,8 @@ const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:
 
 export function CalendarPage() {
   const api = useCalendarApi();
+  const entryPreview = useCalendarEntryPreview();
+  const canEnter = entryPreview || api.persistsAppointments === true;
   const shopName = useShopName();
   // 폰은 주 보기를 7일 띠 + 고른 날 하루 시간표로, 월 보기를 예약 수 + 아래 목록으로(설계 D4: 부품이 다른 곳만 JS로).
   const phone = useIsPhone();
@@ -175,10 +177,12 @@ export function CalendarPage() {
           </ActionButton>
           <span className="flex-1" />
           {segment}
-          <ActionButton variant="brandSolid" size="medium" onClick={() => newEntry()}>
-            <PrefixIcon svg={<Plus />} />
-            예약
-          </ActionButton>
+          {canEnter && (
+            <ActionButton variant="brandSolid" size="medium" onClick={() => newEntry()}>
+              <PrefixIcon svg={<Plus />} />
+              예약
+            </ActionButton>
+          )}
         </div>
       )}
 
@@ -197,7 +201,7 @@ export function CalendarPage() {
             onOpen={setOpen}
             staffName={staffName}
             phone={phone}
-            onEmpty={(d, minute, lane) => newEntry({ date: d, time: hhmm(minute), staffId: lane })}
+            onEmpty={canEnter ? (d, minute, lane) => newEntry({ date: d, time: hhmm(minute), staffId: lane }) : undefined}
           />
         </>
       )}
@@ -235,7 +239,7 @@ export function CalendarPage() {
         }}
       />
       {/* + 예약: 폰은 오른쪽 아래 떠 있는 버튼(디자인 .fab — 탭 바 위 오른쪽 18px), 웹은 제목 줄 오른쪽(설계서 W1). */}
-      {phone && (
+      {phone && canEnter && (
         <button
           type="button"
           onClick={() => newEntry()}

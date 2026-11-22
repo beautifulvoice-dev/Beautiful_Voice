@@ -6,8 +6,10 @@ import { useCallback, useRef, useState, type ReactElement, type SyntheticEvent }
 import { Link, useNavigate, useParams } from 'react-router';
 import { EmptyState, ErrorState } from '@/components/states/DataState';
 import { Button } from '@/components/ui/button';
-import { CustomerValidationError, useCustomerApi } from '@/features/customers/api';
+import { CustomerConflictError, CustomerValidationError, useCustomerApi } from '@/features/customers/api';
 import { formatPhone, shopToday, type Customer } from '@/features/customers/model';
+import { NetworkError } from '@/lib/http';
+import { useRetryKey } from '@/lib/retryKey';
 import { useLoad } from '@/lib/useLoad';
 
 const ERROR_TEXT: Record<CustomerErrorCode, string> = {
@@ -19,6 +21,13 @@ const ERROR_TEXT: Record<CustomerErrorCode, string> = {
 
 /** 달력 칸에 날짜를 덜 입력하면 브라우저가 값을 빈 문자열로 준다 — 지운 것과 구분해 저장을 막는다(#52 리뷰). */
 const BIRTHDATE_INCOMPLETE_TEXT = '생년월일을 끝까지 입력하거나, 지우려면 칸을 비워 주세요.';
+
+/** 저장 실패 문구(설계 05 오류와 문구). 응답을 못 받았으면 같은 내용으로 다시 시도 — 같은 키라 두 번 저장되지 않는다. */
+const FAILED_TEXT = {
+  failed: '저장 결과를 확인하지 못했어요. 같은 내용으로 다시 시도해 주세요.',
+  conflict: '그사이 다른 곳에서 바뀌었어요. 다시 불러와 확인해 주세요.',
+  rejected: '저장하지 못했어요. 다시 시도해 주세요.',
+} as const;
 
 const HINT_TEXT: Record<Candidate['hint'], string> = {
   same_phone: '전화번호도 같아요 — 이미 등록된 고객일 수 있어요',
@@ -39,7 +48,12 @@ export function CustomerFormPage() {
   return <CustomerForm key={id ?? 'new'} initial={state.data} />;
 }
 
-function CustomerForm({ initial }: { initial: Customer | null }) {
+const FIELD_LABEL = { name: '이름', phone: '전화번호', memo: '특이사항', birthdate: '생년월일', address: '거주지' } as const;
+
+function CustomerForm({ initial: loaded }: { initial: Customer | null }) {
+  // 충돌 뒤 다시 불러온 최신 행. 입력(초안)은 그대로 두고, 다음 저장은 이 행의 version으로 보낸다(설계 05 D4).
+  const [latest, setLatest] = useState<Customer | null>(null);
+  const initial = latest ?? loaded;
   const api = useCustomerApi();
   const navigate = useNavigate();
   const [name, setName] = useState(initial?.name ?? '');
@@ -53,12 +67,28 @@ function CustomerForm({ initial }: { initial: Customer | null }) {
   // 동명이인 후보는 어떤 입력으로 조회했는지와 묶어 둔다 — 그 입력 그대로일 때만 "다른 고객이에요, 저장"이 통한다(#32 리뷰).
   const [sameName, setSameName] = useState<{ candidates: Candidate[]; name: string; phone: string | null } | null>(null);
   const [saving, setSaving] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<keyof typeof FAILED_TEXT | null>(null);
+  const retryKey = useRetryKey();
+  async function reloadLatest() {
+    if (!loaded) return;
+    try {
+      const fresh = await api.get(loaded.id);
+      if (!fresh) return setFailed('rejected');
+      setLatest(fresh);
+      setFailed(null);
+    } catch {
+      setFailed('conflict');
+    }
+  }
+  const draft = { name, phone: phone.replace(/\D/g, '') || null, memo: memo || null, birthdate: birthdate || null, address: address || null };
+  const changedFields = latest
+    ? (Object.keys(FIELD_LABEL) as (keyof typeof FIELD_LABEL)[]).filter((f) => (latest[f] ?? null) !== (draft[f] ?? null))
+    : [];
   const errorOf = (field: CustomerField) => errors.find((e) => e.field === field);
 
   async function submit(e: SyntheticEvent, confirmedSameName = false) {
     e.preventDefault();
-    setFailed(false);
+    setFailed(null);
     const incomplete = birthdateInput.current?.validity.badInput ?? false;
     setBirthdateIncomplete(incomplete);
     const checked = validateNewCustomer({ name, phone, memo, birthdate, address });
@@ -74,11 +104,19 @@ function CustomerForm({ initial }: { initial: Customer | null }) {
         const r = await api.checkSameName({ id: initial?.id, name: checkedName, phone: checkedPhone });
         if (r.needsReview) return setSameName({ candidates: r.candidates, name: checkedName, phone: checkedPhone });
       }
-      const saved = initial ? await api.update(initial.id, { name, phone, memo, birthdate, address }) : await api.create({ name, phone, memo, birthdate, address });
+      const values = { name, phone, memo, birthdate, address };
+      const idempotencyKey = retryKey.keyFor(JSON.stringify([initial?.id ?? null, initial?.version ?? null, values]));
+      const saved = initial
+        ? await api.update(initial.id, values, { version: initial.version, idempotencyKey })
+        : await api.create(values, { idempotencyKey });
+      retryKey.settle();
       navigate(`/customers/${saved.id}`, { replace: !!initial });
     } catch (err) {
+      // 응답을 못 받았을 때만 키를 남긴다 — 같은 내용으로 다시 보내면 서버가 처음 결과를 돌려준다.
+      if (!(err instanceof NetworkError)) retryKey.settle();
       if (err instanceof CustomerValidationError) setErrors(err.errors);
-      else setFailed(true);
+      else if (err instanceof CustomerConflictError) setFailed('conflict');
+      else setFailed(err instanceof NetworkError ? 'failed' : 'rejected');
     } finally {
       setSaving(false);
     }
@@ -131,7 +169,23 @@ function CustomerForm({ initial }: { initial: Customer | null }) {
           </Button>
         </div>
       )}
-      {failed && <p role="alert" className="text-sm text-destructive">저장하지 못했어요. 다시 시도해 주세요.</p>}
+      {failed && (
+        <p role="alert" className="text-sm text-destructive">
+          {FAILED_TEXT[failed]}
+          {/* 충돌: 입력은 그대로 두고 최신 값을 다시 불러온다(설계 05 D4). 다음 저장은 최신 version으로 보낸다. */}
+          {failed === 'conflict' && (
+            <button type="button" className="ml-2 underline" onClick={reloadLatest}>
+              다시 불러오기
+            </button>
+          )}
+        </p>
+      )}
+      {latest && !failed && (
+        <p role="status" className="text-sm text-muted-foreground">
+          최신 값을 불러왔어요. 입력은 그대로 두었으니 확인한 뒤 다시 저장해 주세요.
+          {changedFields.map((f) => ` ${FIELD_LABEL[f]}: ${(f === 'phone' && latest.phone ? formatPhone(latest.phone) : latest[f]) || '(비어 있음)'}.`)}
+        </p>
+      )}
 
       <div className="flex gap-2">
         <Button type="submit" disabled={saving}>

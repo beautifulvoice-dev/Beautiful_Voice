@@ -77,7 +77,14 @@ export function createHttp(fetcher: Fetcher = (input, init) => fetch(input, init
       const details = body?.details && typeof body.details === 'object' ? (body.details as Record<string, unknown>) : {};
       throw new HttpError(response.status, code, details);
     }
-    return (await response.json()) as T;
+    try {
+      return (await response.json()) as T;
+    } catch (err) {
+      if ((err as { name?: unknown } | null)?.name === 'AbortError') throw err;
+      // 성공 헤더는 왔지만 본문을 끝까지 못 받음 — 서버는 저장했을 수 있다. 결과 모름으로 보고
+      // 같은 경로·본문·키로 다시 보내게 한다(설계 05 D5: 서버가 처음 응답을 재생한다).
+      throw new NetworkError();
+    }
   }
   return {
     get: (path, options) => request('GET', path, options),

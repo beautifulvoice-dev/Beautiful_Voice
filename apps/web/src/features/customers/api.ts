@@ -10,7 +10,11 @@ import {
   type FieldError,
 } from '@bv/customers';
 import { checkSameName, type SameNameCheck, type Subject } from '@bv/customers/duplicates';
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useMemo } from 'react';
+import { useOptionalSession } from '@/features/auth/session';
+import { FAKE_API } from '@/lib/apiMode';
+import { http } from '@/lib/http';
+import { createHttpCustomerApi } from './httpApi';
 import type { Customer, CustomerDetail, Visit } from './model';
 import { seedCustomers, seedCustomersWithScene } from './mockData';
 
@@ -97,7 +101,15 @@ export function createMemoryCustomerApi(seed: MemorySeed = seedCustomers()): Cus
 const CustomerApiContext = createContext<CustomerApi | null>(null);
 export const CustomerApiProvider = CustomerApiContext.Provider;
 
-const defaultApi = createMemoryCustomerApi(seedCustomersWithScene());
+let fakeApi: CustomerApi | null = null;
+/** 주입한 것(테스트) → 명시적 가짜 모드면 메모리 → 아니면 로그인한 매장의 실제 API(설계 05 D2). */
 export function useCustomerApi(): CustomerApi {
-  return useContext(CustomerApiContext) ?? defaultApi;
+  const injected = useContext(CustomerApiContext);
+  const shopId = useOptionalSession()?.shopId;
+  return useMemo(() => {
+    if (injected) return injected;
+    if (FAKE_API) return (fakeApi ??= createMemoryCustomerApi(seedCustomersWithScene()));
+    if (!shopId) throw new Error('useCustomerApi는 RequireSession 안에서만 쓴다');
+    return createHttpCustomerApi(http, shopId);
+  }, [injected, shopId]);
 }

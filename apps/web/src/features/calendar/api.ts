@@ -10,6 +10,7 @@ import {
   type ShopHours,
 } from '@bv/scheduling/booking';
 import { createContext, useContext } from 'react';
+import { FAKE_API } from '@/lib/apiMode';
 import { seedDesignScene, SCENE_MENUS } from './mockData';
 import { dayStart, type AppointmentStatus, type CalendarAppointment, type CalendarBlock, type CalendarData, type Menu } from './model';
 
@@ -59,6 +60,8 @@ export interface CalendarWriteOptions {
 }
 
 export interface CalendarApi {
+  /** 실제 예약 저장 API가 연결됐을 때만 true. */
+  readonly persistsAppointments?: true;
   /** 매장 날짜 from ~ to(마지막 날 포함). 즉 from 0시 ~ to 다음 날 0시 사이에 점유·차단이 걸치는 것. 예약 API 계약도 같은 뜻으로 둔다. */
   range(from: string, to: string): Promise<CalendarData>;
   menus(): Promise<Menu[]>;
@@ -178,4 +181,9 @@ export const CalendarApiProvider = CalendarApiContext.Provider;
 const defaultApi = createMemoryCalendarApi();
 export function useCalendarApi(): CalendarApi {
   return useContext(CalendarApiContext) ?? defaultApi;
+}
+
+/** W3 시안은 임시 캘린더에만 저장한다. 실제 저장은 고객·예약을 함께 연결한 뒤 연다. */
+export function useCalendarEntryPreview(): boolean {
+  return useContext(CalendarApiContext) !== null || FAKE_API;
 }
