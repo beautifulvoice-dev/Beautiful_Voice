@@ -70,6 +70,7 @@ describe('W2 바꾸기', () => {
     renderAt(api);
     const sheet = await openEdit();
     expect(within(sheet).getByPlaceholderText('이름 두 글자')).toHaveValue('최유나');
+    expect(within(sheet).queryByRole('radio', { name: '관리 불가 시간' })).not.toBeInTheDocument();
     expect(within(sheet).getByRole('group', { name: '관리 시간' })).toHaveTextContent('90분');
     await pickTime(sheet, '15:00');
     await save(sheet);

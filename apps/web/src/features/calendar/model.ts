@@ -236,14 +236,21 @@ export function outsideHours(date: string, hours: BusinessHours | null): [number
   return out;
 }
 
+const DEFAULT_BUSINESS_WINDOWS = [{ open: '09:00', close: '21:00' }];
+
+export function businessWindowsForDate(date: string, hours: BusinessHours | null) {
+  const key = String(weekdayIndex(date) + 1) as keyof BusinessHours;
+  return hours ? hours[key] ?? [] : DEFAULT_BUSINESS_WINDOWS;
+}
+
 /**
  * 예약 넣기(W3) 시작 시각 목록: 그날 영업시간 안의 15분 단위(설계서 W3 "15분 간격").
  * 영업시간을 안 넣었거나 그 요일 구간이 없으면 09:00~21:00. 끝나는 시각 자체는 시작으로 고를 수 없다.
  */
 export function startTimes(date: string, hours: BusinessHours | null, stepMin = 15): string[] {
   const toMin = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
-  const key = String(weekdayIndex(date) + 1) as keyof BusinessHours;
-  const windows = hours?.[key]?.length ? hours[key]!.map((w) => [toMin(w.open), toMin(w.close)] as const) : [[9 * 60, 21 * 60] as const];
+  const configured = businessWindowsForDate(date, hours);
+  const windows = (configured.length ? configured : DEFAULT_BUSINESS_WINDOWS).map(({ open, close }) => [toMin(open), toMin(close)] as const);
   const out = new Set<number>();
   for (const [o, c] of windows) for (let m = Math.ceil(o / stepMin) * stepMin; m < c; m += stepMin) out.add(m);
   return [...out].sort((a, b) => a - b).map((m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
