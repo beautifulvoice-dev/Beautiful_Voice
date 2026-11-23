@@ -40,12 +40,20 @@ export interface CustomerWriteOptions {
 }
 
 export interface CustomerApi {
-  /** 이름(띄어쓰기 무시) 또는 전화번호 숫자 일부로 찾는다. 빈 검색어는 전체. */
-  list(query: string): Promise<Customer[]>;
+  /**
+   * 이름(띄어쓰기 무시) 또는 전화번호 숫자 일부로 찾는다. 빈 검색어는 전체.
+   * 기본은 활성 고객만. includeInactive면 비활성도 **포함**한다(서버 #48 includeInactive와 같은 뜻) — 비활성만 보기는 화면이 거른다.
+   */
+  list(query: string, options?: { includeInactive?: boolean }): Promise<Customer[]>;
   get(id: string): Promise<CustomerDetail | null>;
   checkSameName(subject: Subject): Promise<SameNameCheck>;
   create(input: CustomerInput, options?: CustomerWriteOptions): Promise<Customer>;
   update(id: string, patch: CustomerPatch, options?: CustomerWriteOptions): Promise<Customer>;
+  /**
+   * 비활성화(삭제 대신)·재활성화(BEA-173, 서버 #48 PUT …/active). 예약·지갑 기록은 그대로, 예약은 취소되지 않는다(결정 R30·S4).
+   * 이미 그 상태면(409 NO_CHANGE) 최신 행을 돌려준다 — 다른 기기에서 먼저 바꾼 경우.
+   */
+  setActive(id: string, active: boolean, options?: CustomerWriteOptions): Promise<Customer>;
 }
 
 export interface MemorySeed {
@@ -63,11 +71,12 @@ export function createMemoryCustomerApi(seed: MemorySeed = seedCustomers()): Cus
   const find = (id: string) => customers.find((c) => c.id === id);
 
   return {
-    async list(query) {
+    async list(query, options) {
       const q = query.trim();
       const key = nameKey(q);
       const digits = q.replace(/\D/g, '');
       return customers
+        .filter((c) => options?.includeInactive || c.active !== false)
         .filter((c) => !q || nameKey(c.name).includes(key) || (digits.length >= 3 && (c.phone ?? '').includes(digits)))
         .sort((a, b) => a.name.localeCompare(b.name, 'ko'))
         .map((c) => ({ ...c }));
@@ -93,6 +102,12 @@ export function createMemoryCustomerApi(seed: MemorySeed = seedCustomers()): Cus
       const r = validateCustomerPatch(patch);
       if (!r.ok) throw new CustomerValidationError(r.errors);
       Object.assign(c, applyPatch(c, r.value));
+      return { ...c };
+    },
+    async setActive(id, active) {
+      const c = find(id);
+      if (!c) throw new Error('CUSTOMER_NOT_FOUND');
+      c.active = active;
       return { ...c };
     },
   };

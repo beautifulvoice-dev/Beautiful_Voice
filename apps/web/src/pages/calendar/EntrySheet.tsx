@@ -23,7 +23,7 @@ import { CalendarDays, Minus, Plus, Search, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toBookingInputs, useCalendarApi, type AppointmentChange, type NewAppointment } from '@/features/calendar/api';
 import { occupancyText, rejectText, shopIso, shortDate } from '@/features/calendar/bookingText';
-import { addDays, shopDate, shopTime, startTimes, type CalendarAppointment, type CalendarData, type Menu, type Staff } from '@/features/calendar/model';
+import { addDays, businessWindowsForDate, shopDate, shopTime, startTimes, type CalendarAppointment, type CalendarData, type Menu, type Staff } from '@/features/calendar/model';
 import { CustomerValidationError, useCustomerApi } from '@/features/customers/api';
 import type { Customer } from '@/features/customers/model';
 import { NetworkError } from '@/lib/http';
@@ -39,12 +39,15 @@ export interface EntryStart {
   /** 'HH:MM'. null = `+ 예약`으로 열었다 — 시각은 원장이 직접 고른다(설계 06 D1). */
   time: string | null;
   staffId: string | null;
+  /** 고객 상세(W6)의 `예약 넣기`로 열면 그 고객이 골라져 있다. */
+  customer?: { id: string; name: string; phone: string | null };
   /** 있으면 W2 "바꾸기" — 이 예약의 최신 상세를 읽어 편집한다(설계 06 ①·D4). */
   editId?: string;
 }
 
 interface Props {
   start: EntryStart | null;
+  suspended?: boolean;
   staff: Staff[];
   /** 시작 시각 목록(영업시간 안 15분)을 만드는 데 쓴다. 없으면 09:00~21:00. */
   businessHours?: CalendarData['businessHours'];
@@ -55,7 +58,7 @@ interface Props {
 
 type Kind = 'appointment' | 'block';
 
-export function EntrySheet({ start, staff, businessHours = null, onClose, onSaved }: Props) {
+export function EntrySheet({ start, suspended = false, staff, businessHours = null, onClose, onSaved }: Props) {
   const phone = useIsPhone();
   const api = useCalendarApi();
   const blocksOn = api.supportsBlocks === true;
@@ -92,7 +95,7 @@ export function EntrySheet({ start, staff, businessHours = null, onClose, onSave
     setKind('appointment');
   };
   return (
-    <CalendarSheet open={start !== null} onClose={close} full>
+    <CalendarSheet open={start !== null && !suspended} onClose={close} full keepMounted={start !== null}>
       {start && (
         <>
           <ResponsiveSidePanel.Header className={sheetHeadClass(phone)}>
@@ -191,7 +194,7 @@ export function EntrySheet({ start, staff, businessHours = null, onClose, onSave
                 <AlertDialog.Header>
                   <AlertDialog.Title>입력한 내용이 저장되지 않았어요. 닫을까요?</AlertDialog.Title>
                 </AlertDialog.Header>
-                <AlertDialog.Footer>
+                <AlertDialog.Footer className="gap-[5px]">
                   <AlertDialog.Action asChild>
                     <ActionButton variant="neutralWeak" size="large" flexGrow={1}>
                       계속 입력
@@ -263,13 +266,14 @@ function AppointmentForm({
   const api = useCalendarApi();
   const customers = useCustomerApi();
   const phone = useIsPhone();
+  const datePopoverContainer = useRef<HTMLDivElement>(null);
   // 새 예약에는 사용 중인 담당자만(설계 04 D3·06 ⑤). 1명이면 자동, 0명이면 저장할 수 없다.
   // 바꾸기에서는 이 예약의 기존 담당자가 숨김이어도 그대로 둘 수 있다(06 ⑤).
   const [base, setBase] = useState<CalendarAppointment | null>(null);
   const staff = allStaff.filter((s) => s.active !== false || s.id === base?.staffId);
   const [menus, setMenus] = useState<Menu[]>([]);
   const [query, setQuery] = useState('');
-  const [picked, setPicked] = useState<Picked | null>(null);
+  const [picked, setPicked] = useState<Picked | null>(start.customer ?? null);
   /** 검색 결과. null = 아직 결과를 받지 못함(새 고객 제안은 결과가 비었을 때만, 06 ③). */
   const [candidates, setCandidates] = useState<Customer[] | null>(null);
   /** 새 고객 등록 전 같은 이름 후보 — 고르거나 "새 고객이 맞아요"로 확인한다(06 ③). */
@@ -721,6 +725,7 @@ function AppointmentForm({
             </label>
             <DateField
               id="entry-date"
+              popoverContainer={phone ? datePopoverContainer : undefined}
               value={date}
               onChange={(d) => {
                 touched(setDate)(d);
@@ -856,6 +861,8 @@ function AppointmentForm({
           </ActionButton>
         </div>
       </ResponsiveSidePanel.Footer>
+      {/* 폰에서는 팝업을 모달 안에 두되 스크롤 영역 밖에 렌더링한다. */}
+      {phone && <div ref={datePopoverContainer} />}
     </>
   );
 }
@@ -906,7 +913,20 @@ function Stepper({
 // ── W4 관리 불가 시간 ─────────────────────────────────────────
 
 const toMinutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
-const toHhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+function blockTimeChoices(date: string, hours: CalendarData['businessHours']) {
+  const windows = businessWindowsForDate(date, hours);
+  const starts = windows.length ? startTimes(date, hours) : [];
+  const ends = [...new Set([...starts, ...windows.map(({ close }) => close)])].sort();
+  return { starts, ends };
+}
+
+function fitBlockTimes(choices: ReturnType<typeof blockTimeChoices>, from: string, to: string, duration: number) {
+  const start = choices.starts.filter((time) => time <= from).at(-1) ?? choices.starts[0] ?? '';
+  const ends = start ? choices.ends.filter((time) => time > start) : [];
+  const limit = toMinutes(start) + duration;
+  const end = ends.includes(to) ? to : ends.filter((time) => toMinutes(time) <= limit).at(-1) ?? ends[0] ?? '';
+  return { times: { from: start, to: end }, ends };
+}
 
 /**
  * 관리 불가 시간(W4): 날짜 + 시작·끝(누르기만 — W3와 같은 달력 팝업·15분 목록), 모든 담당자 / 누구, 메모.
@@ -934,21 +954,9 @@ function BlockForm({
 }) {
   const api = useCalendarApi();
   const phone = useIsPhone();
-  /** 그날 시작 f 뒤에 고를 수 있는 끝 시각: 시작보다 늦은 15분 단위, 마지막은 그날 마지막 시작 + 15분(영업 마감). */
-  const endsFor = (d: string, f: string) => {
-    const st = startTimes(d, businessHours);
-    const list = [...st.slice(1), toHhmm(toMinutes(st.at(-1) ?? '20:45') + 15)].filter((t) => toMinutes(t) > toMinutes(f));
-    return list.length > 0 ? list : [toHhmm(Math.min(24 * 60 - 15, toMinutes(f) + 15))];
-  };
-  /** 끝을 그 목록 안에서 — 원하는 길이(want분) 이하에서 가장 늦은 끝, 없으면 첫 끝. 마감을 넘는 끝이 저장되지 않게(#76 리뷰). */
-  const fitEnd = (d: string, f: string, want: number) => {
-    const list = endsFor(d, f);
-    const limit = toMinutes(f) + want;
-    return list.filter((t) => toMinutes(t) <= limit).at(-1) ?? list[0]!;
-  };
+  const datePopoverContainer = useRef<HTMLDivElement>(null);
   const [date, setDate] = useState(start.date);
-  const [from, setFrom] = useState(start.time ?? '10:00');
-  const [to, setTo] = useState(() => fitEnd(start.date, start.time ?? '10:00', 120));
+  const [times, setTimes] = useState({ from: start.time ?? '10:00', to: '' });
   const [allStaff, setAllStaff] = useState(false);
   const [who, setWho] = useState<string[]>(start.staffId ? [start.staffId] : staff.length === 1 ? [staff[0]!.id] : []);
   const [memo, setMemo] = useState('');
@@ -956,13 +964,12 @@ function BlockForm({
   const [around, setAround] = useState<CalendarData | null>(null);
   const touch = () => onDirty(true);
 
-  const starts = startTimes(date, businessHours);
-  // 끝: 시작보다 늦은 15분 단위, 마지막은 그날 마지막 시작 + 15분(영업 마감)
-  const ends = endsFor(date, from);
-  const startAt = shopIso(date, from);
-  const endAt = shopIso(date, to);
-  const valid = Date.parse(startAt) < Date.parse(endAt);
-  const ready = valid && (allStaff || who.length > 0);
+  const choices = blockTimeChoices(date, businessHours);
+  const { times: fitted, ends } = fitBlockTimes(choices, times.from, times.to, 120);
+  const { from, to } = fitted;
+  const startAt = from ? shopIso(date, from) : null;
+  const endAt = to ? shopIso(date, to) : null;
+  const ready = !!startAt && !!endAt && (allStaff || who.length > 0);
 
   useEffect(() => {
     let alive = true;
@@ -977,7 +984,7 @@ function BlockForm({
 
   // 겹치는 예약 미리 알림(결정 R50) — 서버와 같은 blockedAppointmentIds
   const overlapping = useMemo(() => {
-    if (!around || !valid) return [];
+    if (!around || !startAt || !endAt) return [];
     const ids = new Set(
       blockedAppointmentIds(
         { id: 'new', start: new Date(startAt), end: new Date(endAt), allStaff, staffIds: who },
@@ -990,11 +997,10 @@ function BlockForm({
       ),
     );
     return around.appointments.filter((a) => ids.has(a.id));
-  }, [around, valid, startAt, endAt, allStaff, who]);
+  }, [around, startAt, endAt, allStaff, who]);
 
   const save = async () => {
-    if (saving.current) return;
-    if (!valid) return setError('끝이 시작보다 늦어야 해요.');
+    if (saving.current || !ready || !startAt || !endAt) return;
     setSaving(true);
     setError(null);
     try {
@@ -1016,47 +1022,51 @@ function BlockForm({
           </label>
           <DateField
             id="block-date"
+            popoverContainer={phone ? datePopoverContainer : undefined}
             value={date}
             onChange={(d) => {
               setDate(d);
-              if (!endsFor(d, from).includes(to)) setTo(fitEnd(d, from, 60));
+              setTimes(fitBlockTimes(blockTimeChoices(d, businessHours), from, to, 60).times);
               touch();
             }}
           />
         </div>
-        <div className="flex gap-2.5">
-          <div className="grid min-w-0 flex-1 gap-1.5">
-            <label htmlFor="block-from" className="text-sm font-bold text-ink">
-              시작
-            </label>
-            <TimeField
-              id="block-from"
-              value={from}
-              options={starts}
-              phone={phone}
-              onChange={(t) => {
-                setFrom(t);
-                if (!endsFor(date, t).includes(to)) setTo(fitEnd(date, t, 60));
-                touch();
-              }}
-            />
+        {from && to ? (
+          <div className="flex gap-2.5">
+            <div className="grid min-w-0 flex-1 gap-1.5">
+              <label htmlFor="block-from" className="text-sm font-bold text-ink">
+                시작
+              </label>
+              <TimeField
+                id="block-from"
+                value={from}
+                options={choices.starts}
+                phone={phone}
+                onChange={(t) => {
+                  setTimes(fitBlockTimes(choices, t, to, 60).times);
+                  touch();
+                }}
+              />
+            </div>
+            <div className="grid min-w-0 flex-1 gap-1.5">
+              <label htmlFor="block-to" className="text-sm font-bold text-ink">
+                끝
+              </label>
+              <TimeField
+                id="block-to"
+                value={to}
+                options={ends}
+                phone={phone}
+                onChange={(t) => {
+                  setTimes({ from, to: t });
+                  touch();
+                }}
+              />
+            </div>
           </div>
-          <div className="grid min-w-0 flex-1 gap-1.5">
-            <label htmlFor="block-to" className="text-sm font-bold text-ink">
-              끝
-            </label>
-            <TimeField
-              id="block-to"
-              value={to}
-              options={ends}
-              phone={phone}
-              onChange={(t) => {
-                setTo(t);
-                touch();
-              }}
-            />
-          </div>
-        </div>
+        ) : (
+          <p role="status" className="text-sm text-ink-soft">이 날짜에는 선택할 수 있는 시간이 없어요.</p>
+        )}
         {staff.length > 1 && (
           <>
             <Switch.Root
@@ -1141,6 +1151,7 @@ function BlockForm({
           저장
         </ActionButton>
       </ResponsiveSidePanel.Footer>
+      {phone && <div ref={datePopoverContainer} />}
     </>
   );
 }

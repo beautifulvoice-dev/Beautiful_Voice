@@ -33,13 +33,14 @@ interface Props {
   onStatus: (a: CalendarAppointment, to: AppointmentStatus) => Promise<string | null>;
   /** 예약 바꾸기(W3 편집)를 연다. 없으면 더보기가 꺼진다(저장할 곳이 없는 시안). */
   onEdit?: (a: CalendarAppointment) => void;
+  editDisabled?: boolean;
 }
 
-export function AppointmentPanel({ appointment: a, staffName, blocks, onClose, onStatus, onEdit }: Props) {
+export function AppointmentPanel({ appointment: a, staffName, blocks, onClose, onStatus, onEdit, editDisabled = false }: Props) {
   return (
     <CalendarSheet open={a !== null} onClose={onClose}>
       {a && (
-        <Body key={`${a.id}-${a.status}`} a={a} staffName={staffName} blocks={blocks} onStatus={onStatus} onClose={onClose} onEdit={onEdit} />
+        <Body key={`${a.id}-${a.status}`} a={a} staffName={staffName} blocks={blocks} onStatus={onStatus} onClose={onClose} onEdit={onEdit} editDisabled={editDisabled} />
       )}
     </CalendarSheet>
   );
@@ -55,6 +56,7 @@ function Body({
   onStatus,
   onClose,
   onEdit,
+  editDisabled,
 }: {
   a: CalendarAppointment;
   staffName: string;
@@ -62,6 +64,7 @@ function Body({
   onStatus: Props['onStatus'];
   onClose: () => void;
   onEdit: Props['onEdit'];
+  editDisabled: boolean;
 }) {
   const phone = useIsPhone();
   const [time, prep] = appointmentPanelTime(a);
@@ -184,7 +187,7 @@ function Body({
       <ResponsiveSidePanel.Footer className={sheetFootClass(phone)}>
         {more && scheduled && onEdit ? (
           <div role="group" aria-label="더보기" className="flex w-full gap-2">
-            <ActionButton variant="neutralWeak" size={size} flexGrow={1} onClick={() => onEdit(a)}>
+            <ActionButton variant="neutralWeak" size={size} flexGrow={1} disabled={editDisabled} onClick={() => onEdit(a)}>
               바꾸기
             </ActionButton>
             <ActionButton variant="neutralWeak" size={size} flexGrow={1} disabled={busy} onClick={() => setConfirmCancel(true)}>
@@ -245,6 +248,7 @@ function Body({
           "예약 취소"는 저장 뒤 CalendarPage가 패널을 닫는다 — 실패하면 확인 창만 닫고 패널에 이유를 보인다. */}
       <AlertDialog.Root
         open={confirmCancel}
+        closeOnInteractOutside={!busy}
         onOpenChange={(open) => {
           if (saving.current) return;
           setConfirmCancel(open);
@@ -259,7 +263,7 @@ function Body({
                 {shortDate(shopDate(Date.parse(a.startAt)))} {shopTime(a.startAt)} {a.customerName} 님 예약을 취소할까요?
               </AlertDialog.Title>
             </AlertDialog.Header>
-            <AlertDialog.Footer>
+            <AlertDialog.Footer className="gap-[5px]">
               <AlertDialog.Action asChild>
                 <ActionButton variant="neutralWeak" size="large" flexGrow={1} disabled={busy}>
                   그만두기

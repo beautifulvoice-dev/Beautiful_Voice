@@ -634,7 +634,7 @@ describe('예약 보기 W2 — 웹 오른쪽 패널 / 폰 아래 시트 (캘린�
     expect(wide).not.toHaveClass('text-xs');
   });
 
-  it('상태 고치기 → 취소는 확인을 한 번 더 묻고, 그만두면 아무것도 바꾸지 않고 패널까지 닫아 캘린더로(설계서 W2, 11/22 옵마)', async () => {
+  it.each(['그만두기', '바깥 누르기'] as const)('취소 확인에서 %s: 예약 상태를 유지하고 패널을 닫는다', async (action) => {
     renderAt('/calendar?date=2026-11-18');
     const monday = await screen.findByRole('region', { name: '11월 16일' });
     await userEvent.click(within(monday).getByRole('button', { name: /김하늘/ }));
@@ -642,7 +642,8 @@ describe('예약 보기 W2 — 웹 오른쪽 패널 / 폰 아래 시트 (캘린�
     await userEvent.click(within(panel).getByRole('button', { name: '상태 고치기' }));
     await userEvent.click(within(panel).getByRole('button', { name: '취소' }));
     const confirm = await screen.findByRole('alertdialog', { name: '11/16(월) 10:00 김하늘 님 예약을 취소할까요?' });
-    await userEvent.click(within(confirm).getByRole('button', { name: '그만두기' }));
+    if (action === '그만두기') await userEvent.click(within(confirm).getByRole('button', { name: action }));
+    else await userEvent.click(confirm.parentElement!);
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
     const card = within(screen.getByRole('region', { name: '11월 16일' })).getByRole('button', { name: /김하늘/ });
     expect(card).toHaveAttribute('data-status', 'completed');
@@ -808,6 +809,41 @@ describe('예약 넣기 W3', () => {
     await waitFor(() => expect(within(sheet).getByRole('button', { name: '저장' })).toBeEnabled());
   });
 
+  it('날짜 칸에 연도를 표시하고, 달력 제목을 누르면 연도와 월을 고를 수 있다', async () => {
+    renderAt('/calendar?date=2026-11-18');
+    await userEvent.click(await screen.findByRole('button', { name: '예약' }));
+    const sheet = await screen.findByRole('dialog', { name: '예약 넣기' });
+    const date = within(sheet).getByRole('button', { name: /2026년.*달력 열기/ });
+    expect(date).toHaveTextContent('2026년');
+    await userEvent.click(date);
+    await userEvent.click(await screen.findByRole('button', { name: '2026년 11월' }));
+    expect(await screen.findByRole('spinbutton', { name: '연도' })).toBeInTheDocument();
+    expect(screen.getByRole('spinbutton', { name: '월' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: '완료' }));
+    expect(screen.queryByRole('spinbutton', { name: '연도' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: /^2026년 11월 30일/ }));
+    expect(date).toHaveTextContent('11/30(월)');
+  });
+
+  it('입력 중 다른 예약을 보면 상세를 먼저 보여 주고, 닫으면 입력을 이어 간다', async () => {
+    renderAt('/calendar?date=2026-11-18');
+    const tuesday = await screen.findByRole('region', { name: '11월 17일' });
+    await userEvent.click(screen.getByRole('button', { name: '예약' }));
+
+    const sheet = () => screen.getByRole('dialog', { name: '예약 넣기' });
+    await userEvent.type(within(sheet()).getByRole('textbox', { name: /메모/ }), '시연 메모');
+    await pickTime(sheet(), '11:00');
+    await userEvent.click(within(tuesday).getByRole('button', { name: /최유나/ }));
+
+    const details = await screen.findByRole('dialog', { name: '최유나' });
+    expect(screen.queryByRole('dialog', { name: '예약 넣기' })).toBeNull();
+    await userEvent.click(within(details).getByRole('button', { name: '닫기' }));
+
+    const resumed = await screen.findByRole('dialog', { name: '예약 넣기' });
+    expect(within(resumed).getByRole('textbox', { name: /메모/ })).toHaveValue('시연 메모');
+    expect(resumed.querySelector('#entry-time')).toHaveTextContent('11:00');
+  });
+
   it('패널이 열린 채 다른 빈 칸을 누르면 그 날짜·시각으로 바뀌고, 손으로 바꾼 뒤면 먼저 묻는다(#69 리뷰)', async () => {
     renderAt('/calendar?date=2026-11-18');
     await screen.findByRole('region', { name: '11월 16일' });
@@ -890,6 +926,42 @@ describe('관리 불가 시간 W4', () => {
     await userEvent.click(within(sheet).getByRole('radio', { name: '관리 불가 시간' }));
     await pick(sheet, 'block-from', '21:45');
     expect(sheet.querySelector('#block-to')).toHaveTextContent('22:00'); // 22:45가 아니라 영업 마감 22:00
+  });
+
+  it('날짜를 짧은 영업일로 바꾸면 시작·끝을 새 마감 안으로 맞춰 저장한다', async () => {
+    const seed = seedCalendar('2026-11-18');
+    const api = createMemoryCalendarApi({
+      ...seed,
+      businessHours: { ...seed.businessHours, '7': [{ open: '10:00', close: '17:00' }] },
+      closures: [],
+    });
+    const createBlock = vi.spyOn(api, 'createBlock');
+    const sheet = await openBlock(api);
+    await userEvent.click(within(sheet).getByRole('radio', { name: '관리 불가 시간' }));
+    await pick(sheet, 'block-from', '21:45');
+    await userEvent.click(within(sheet).getByRole('button', { name: /달력 열기/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /^2026년 11월 22일/ }));
+
+    expect(sheet.querySelector('#block-from')).toHaveTextContent('16:45');
+    expect(sheet.querySelector('#block-to')).toHaveTextContent('17:00');
+    await userEvent.click(within(sheet).getByRole('button', { name: '저장' }));
+    expect(createBlock).toHaveBeenCalledWith(expect.objectContaining({
+      startAt: '2026-11-22T07:45:00.000Z',
+      endAt: '2026-11-22T08:00:00.000Z',
+    }));
+  });
+
+  it('날짜를 고른 날에 유효한 시간 후보가 없으면 저장을 막는다', async () => {
+    const api = API();
+    const createBlock = vi.spyOn(api, 'createBlock');
+    const sheet = await openBlock(api);
+    await userEvent.click(within(sheet).getByRole('radio', { name: '관리 불가 시간' }));
+    await userEvent.click(within(sheet).getByRole('button', { name: /달력 열기/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /^2026년 11월 22일/ }));
+    const save = within(sheet).getByRole('button', { name: '저장' });
+    expect(save).toBeDisabled();
+    await userEvent.click(save);
+    expect(createBlock).not.toHaveBeenCalled();
   });
 
   it('입력이 있으면 예약 ↔ 관리 불가를 바꾸기 전에 묻고, 계속 입력하면 그대로 둔다(#76 리뷰)', async () => {
