@@ -14,20 +14,24 @@ interface Props {
   onClose: () => void;
   /** 폰에서 화면 위 52px까지 채우는 큰 시트(디자인 .sheet.full — 예약 넣기). */
   full?: boolean;
+  /** 상세를 잠시 보는 동안 입력 폼을 유지한다. */
+  keepMounted?: boolean;
   children: ReactNode;
 }
 
-export function CalendarSheet({ open, onClose, full = false, children }: Props) {
+export function CalendarSheet({ open, onClose, full = false, keepMounted = false, children }: Props) {
   const phone = useIsPhone();
+  const hidden = keepMounted && !open;
   return (
     <ResponsiveSidePanel.Root
       open={open}
       onOpenChange={(o) => !o && onClose()}
-      sidePanelRootProps={{ modal: false, closeOnInteractOutside: false }}
+      sidePanelRootProps={{ modal: false, closeOnInteractOutside: false, unmountOnExit: !keepMounted }}
+      bottomSheetRootProps={{ unmountOnExit: !keepMounted }}
     >
       {/* 폰 시트만 뒤를 어둡게 — 웹 패널은 격자를 보며 쓰므로 배경막 없음 */}
       {phone && <ResponsiveSidePanel.Backdrop />}
-      <ResponsiveSidePanel.Positioner>
+      <ResponsiveSidePanel.Positioner hidden={hidden} className={hidden ? '!hidden' : undefined}>
         <ResponsiveSidePanel.Content
           width={`${PANEL_WIDTH}px`}
           maxWidth="full"
