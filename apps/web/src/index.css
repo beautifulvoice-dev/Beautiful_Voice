@@ -60,6 +60,8 @@
     --color-control-line: var(--control-line);
     --color-critical-text: var(--critical-text);
     --color-brand: var(--brand);
+    --color-kakao: var(--kakao);
+    --color-on-kakao: var(--on-kakao);
     --color-brand-weak: var(--brand-weak);
     --color-brand-text: var(--brand-text);
     --color-on-brand: var(--on-brand);

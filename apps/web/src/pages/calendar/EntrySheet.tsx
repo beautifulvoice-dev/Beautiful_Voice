@@ -16,9 +16,9 @@ import {
 } from '@seed-design/react';
 import { CalendarDays, Minus, Plus, Search, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { toBookingInputs, useCalendarApi, type NewAppointment } from '@/features/calendar/api';
+import { toBookingInputs, useCalendarApi, type AppointmentChange, type NewAppointment } from '@/features/calendar/api';
 import { occupancyText, rejectText, shopIso, shortDate } from '@/features/calendar/bookingText';
-import { addDays, shopDate, startTimes, type CalendarData, type Menu, type Staff } from '@/features/calendar/model';
+import { addDays, shopDate, shopTime, startTimes, type CalendarAppointment, type CalendarData, type Menu, type Staff } from '@/features/calendar/model';
 import { CustomerValidationError, useCustomerApi } from '@/features/customers/api';
 import type { Customer } from '@/features/customers/model';
 import { NetworkError } from '@/lib/http';
@@ -36,6 +36,8 @@ export interface EntryStart {
   staffId: string | null;
   /** 고객 상세(W6)의 `예약 넣기`로 열면 그 고객이 골라져 있다. */
   customer?: { id: string; name: string; phone: string | null };
+  /** 있으면 W2 "바꾸기" — 이 예약의 최신 상세를 읽어 편집한다(설계 06 ①·D4). */
+  editId?: string;
 }
 
 interface Props {
@@ -75,7 +77,7 @@ export function EntrySheet({ start, staff, businessHours = null, onClose, onSave
           <ResponsiveSidePanel.Header className={sheetHeadClass(phone)}>
             <div className="flex items-center justify-between gap-2">
               <ResponsiveSidePanel.Title className={cn(titleClass, 'text-xl font-bold tracking-[-0.02em]')}>
-                예약 넣기
+                {start.editId ? '예약 바꾸기' : '예약 넣기'}
               </ResponsiveSidePanel.Title>
               <ActionButton variant="ghost" size="small" layout="iconOnly" aria-label="닫기" disabled={busy} onClick={close}>
                 <Icon svg={<X />} />
@@ -83,6 +85,7 @@ export function EntrySheet({ start, staff, businessHours = null, onClose, onSave
             </div>
           </ResponsiveSidePanel.Header>
           <AppointmentForm
+            key={start.editId ?? 'new'}
             start={start}
             staff={staff}
             businessHours={businessHours}
@@ -147,6 +150,11 @@ const CUSTOMER_SAVED_TEXT = '고객은 등록됐어요. 예약은 저장되지 �
 /** 예약 응답을 못 받음 — 저장됐을 수도 있다. 단정하지 않고, 다시 저장하면 같은 요청으로 확인한다(#74 리뷰). */
 const APPOINTMENT_UNKNOWN_TEXT = '예약이 저장됐는지 확인하지 못했어요. 다시 저장하면 같은 요청으로 확인해요.';
 const NETWORK_TEXT = '저장 결과를 확인하지 못했어요. 같은 내용으로 다시 시도해 주세요.';
+/** 바꾸기: 그사이 다른 곳에서 바뀜(409). 입력은 두고 최신 값을 불러와 확인한 뒤 다시 저장한다(설계 05 D4·06 거부 표). */
+const EDIT_CONFLICT_TEXT = '그사이 다른 곳에서 이 예약이 바뀌었어요. 최신 값을 불러와 확인한 뒤 다시 저장해 주세요.';
+const EDIT_UNKNOWN_TEXT = '바꾼 내용이 저장됐는지 확인하지 못했어요. 다시 저장하면 같은 요청으로 확인해요.';
+const EDIT_KEYS = ['customerId', 'menuId', 'staffId', 'startAt', 'durationMin', 'prepMin', 'memo'] as const;
+type EditKey = (typeof EDIT_KEYS)[number];
 
 function AppointmentForm({
   start,
@@ -171,7 +179,9 @@ function AppointmentForm({
   const customers = useCustomerApi();
   const phone = useIsPhone();
   // 새 예약에는 사용 중인 담당자만(설계 04 D3·06 ⑤). 1명이면 자동, 0명이면 저장할 수 없다.
-  const staff = allStaff.filter((s) => s.active !== false);
+  // 바꾸기에서는 이 예약의 기존 담당자가 숨김이어도 그대로 둘 수 있다(06 ⑤).
+  const [base, setBase] = useState<CalendarAppointment | null>(null);
+  const staff = allStaff.filter((s) => s.active !== false || s.id === base?.staffId);
   const [menus, setMenus] = useState<Menu[]>([]);
   const [query, setQuery] = useState('');
   const [picked, setPicked] = useState<Picked | null>(start.customer ?? null);
@@ -217,6 +227,48 @@ function AppointmentForm({
   const unsettled = useRef<{ input: NewAppointment; key: string } | null>(null);
   /** 이 화면에서 새로 등록한 고객인가 — 예약이 안 되면 "고객은 등록됐어요"를 붙인다. */
   const createdCustomer = useRef(false);
+  /** 바꾸기: 최신 상세 불러오기 상태와, 결과를 모르는 바꾸기 요청. */
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [conflict, setConflict] = useState(false);
+  const unsettledEdit = useRef<{ change: AppointmentChange; key: string } | null>(null);
+  /** 바꾸기에서 고객 칸을 건드렸는가 — 안 건드렸으면 고객은 그대로(숨긴 고객이어도 유지, 06 ③). */
+  const customerTouched = useRef(false);
+  /** 바꾸기에서 원장이 손댄 칸. 충돌 뒤 최신 값을 불러오면 손대지 않은 칸은 최신 값으로 맞춘다 — 다른 곳의 변경을 덮지 않게(#77 리뷰). */
+  const edited = useRef(new Set<EditKey>());
+  const mark = (...keys: EditKey[]) => {
+    for (const k of keys) edited.current.add(k);
+  };
+  /** 최신 상세로 칸을 채운다. only가 있으면 그 칸만. */
+  const fill = (a: CalendarAppointment, only?: (k: EditKey) => boolean) => {
+    const want = (k: EditKey) => !only || only(k);
+    if (want('customerId')) setPicked({ id: a.customerId ?? null, name: a.customerName, phone: a.customerPhone ?? null });
+    if (want('menuId')) setMenuId(a.menuId ?? '');
+    if (want('startAt')) {
+      setDate(shopDate(Date.parse(a.startAt)));
+      setTime(shopTime(a.startAt));
+    }
+    if (want('durationMin')) setDuration(a.durationMin);
+    if (want('prepMin')) setPrep(a.prepMin);
+    if (want('staffId')) setStaffId(a.staffId);
+    if (want('memo')) setMemo(a.memo ?? '');
+  };
+  const loadLatest = async (fillDraft: boolean) => {
+    if (!start.editId) return;
+    setLoadFailed(false);
+    try {
+      const a = await api.appointment(start.editId);
+      if (!a) return setError('예약을 찾을 수 없어요. 캘린더를 다시 불러와 주세요.');
+      setBase(a);
+      if (fillDraft) fill(a);
+      else fill(a, (k) => !edited.current.has(k));
+    } catch {
+      setLoadFailed(true);
+    }
+  };
+  useEffect(() => {
+    void loadLatest(true);
+    // 편집을 열 때 한 번만 읽는다(최신 version) — 충돌 뒤에는 "최신 값 불러오기"로 다시 읽는다.
+  }, []);
   const touched = <T,>(setter: (v: T) => void) => (v: T) => {
     onDirty(true);
     setError(null);
@@ -242,14 +294,22 @@ function AppointmentForm({
 
   const startAt = date && time ? shopIso(date, time) : null;
   const staffName = staff.find((s) => s.id === staffId)?.name;
-  const ready = picked !== null && staffId !== '' && startAt !== null && sameName === null;
+  const editing = start.editId !== undefined;
+  const ready = picked !== null && staffId !== '' && startAt !== null && sameName === null && (!editing || base !== null);
 
   const pickMenu = (id: string) => {
     touched(setMenuId)(id);
+    mark('menuId');
     const m = menus.find((x) => x.id === id);
     // 메뉴에 정해 둔 값만 덮어쓴다(06 D3).
-    if (m?.durationMin != null) setDuration(m.durationMin);
-    if (m?.prepMin != null) setPrep(m.prepMin);
+    if (m?.durationMin != null) {
+      setDuration(m.durationMin);
+      mark('durationMin');
+    }
+    if (m?.prepMin != null) {
+      setPrep(m.prepMin);
+      mark('prepMin');
+    }
   };
 
   /** 새 고객 등록. 성공하면 고른 고객에 id를 넣어 둔다 — 예약이 실패해 다시 저장해도 고객을 또 만들지 않는다. */
@@ -273,8 +333,96 @@ function AppointmentForm({
     }
   };
 
+  /** W2 바꾸기 저장(설계 06 ①·D4, 04 Q1·D2): 읽은 version과 바뀐 칸만 PATCH. */
+  const saveEdit = async (confirmedNew: boolean) => {
+    if (!base || !picked || !startAt) return;
+    setConflict(false);
+    // 결과를 모르는 바꾸기가 있으면 같은 요청·같은 키부터 다시 보낸다(설계 05 D5).
+    if (unsettledEdit.current) {
+      const { change, key } = unsettledEdit.current;
+      const again = await api.updateAppointment(base.id, change, { idempotencyKey: key });
+      if (again.ok) return onSaved(shopDate(Date.parse(again.value.startAt)));
+      if (again.reason === 'NETWORK') return setError(EDIT_UNKNOWN_TEXT);
+      unsettledEdit.current = null;
+      appointmentKey.settle();
+      if (again.reason === 'VERSION_CONFLICT') {
+        setConflict(true);
+        return setError(EDIT_CONFLICT_TEXT);
+      }
+    }
+    if (!picked.id && !confirmedNew) {
+      const r = await customers.checkSameName({ name: picked.name, phone: null });
+      if (r.needsReview) return setSameName(r.candidates);
+    }
+    setSameName(null);
+    const customer = customerTouched.current ? await ensureCustomer(picked) : { ...picked, id: base.customerId ?? null };
+    if (customerTouched.current && !customer?.id) return;
+    const menu = menus.find((m) => m.id === menuId);
+    const draft = {
+      customerId: customer!.id ?? undefined,
+      menuId: menuId === '' ? null : menuId,
+      staffId,
+      startAt,
+      durationMin: duration,
+      prepMin: prep,
+      memo: memo.trim() || null,
+    };
+    const fields = EDIT_KEYS.filter((k) =>
+      k === 'startAt' ? Date.parse(draft.startAt) !== Date.parse(base.startAt) : (draft[k] ?? null) !== (base[k] ?? null),
+    );
+    if (fields.length === 0) return onSaved(shopDate(Date.parse(base.startAt)));
+    const has = (k: (typeof EDIT_KEYS)[number]) => fields.includes(k);
+    // 화면에서 먼저 같은 규칙으로 검사(자기 자신 제외). 시작·끝이 바뀌면 영업시간까지, 준비·담당자만이면 겹침만(04 D2).
+    const end = (a: { startAt: string; durationMin: number }) => Date.parse(a.startAt) + a.durationMin * 60_000;
+    const moved = has('startAt') || end(draft) !== end(base);
+    const day = shopDate(Date.parse(startAt));
+    const data = await api.range(addDays(day, -1), addDays(day, 1));
+    const ctx = { data, staffId, startAt };
+    if (moved || has('prepMin') || has('staffId')) {
+      const { hours, existing, blocks } = toBookingInputs(data);
+      const check = checkBooking({ staffId, start: new Date(startAt), durationMin: duration, prepMin: prep }, hours, existing, blocks, {
+        excludeId: base.id,
+        skipHoursCheck: !moved,
+      });
+      if (!check.ok) return setError(rejectText(check.reason, check.conflictingIds, ctx));
+    }
+    const change: AppointmentChange = { version: base.version ?? 1 };
+    for (const k of fields) Object.assign(change, { [k]: draft[k] });
+    // 가짜 저장소의 카드 이름(실제 API는 보내지 않는다).
+    if (has('customerId')) Object.assign(change, { customerName: customer!.name, customerPhone: customer!.phone });
+    if (has('menuId')) change.menuName = menu?.name ?? null;
+    const key = appointmentKey.keyFor(JSON.stringify([base.id, change]));
+    const r = await api.updateAppointment(base.id, change, { idempotencyKey: key });
+    if (r.ok) {
+      appointmentKey.settle();
+      return onSaved(shopDate(Date.parse(r.value.startAt)));
+    }
+    if (r.reason === 'NETWORK') {
+      unsettledEdit.current = { change, key };
+      return setError(EDIT_UNKNOWN_TEXT);
+    }
+    appointmentKey.settle();
+    if (r.reason === 'VERSION_CONFLICT') {
+      setConflict(true);
+      return setError(EDIT_CONFLICT_TEXT);
+    }
+    setError(rejectText(r.reason, r.conflictingIds, ctx));
+  };
+
   const save = async (confirmedNew = false) => {
     if (saving.current || !picked || staffId === '' || !startAt) return;
+    if (editing) {
+      setSaving(true);
+      setError(null);
+      try {
+        await saveEdit(confirmedNew);
+      } catch (err) {
+        setError(err instanceof NetworkError ? NETWORK_TEXT : '저장하지 못했어요. 다시 시도해 주세요.');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     setSaving(true);
     setError(null);
     const customerNote = () => (createdCustomer.current ? '고객은 등록됐어요. ' : '');
@@ -347,6 +495,22 @@ function AppointmentForm({
   return (
     <>
       <ResponsiveSidePanel.Body className={cn(sheetBodyClass(phone), 'gap-3.5')}>
+        {editing && !base && (
+          <p role="status" className="text-[15px] text-ink-soft">
+            {loadFailed ? '예약을 불러오지 못했어요. ' : '예약을 불러오는 중…'}
+            {loadFailed && (
+              <button type="button" className="font-bold underline" onClick={() => loadLatest(true)}>
+                다시 불러오기
+              </button>
+            )}
+          </p>
+        )}
+        {editing && base && conflict && !error && (
+          <p role="status" className="rounded-xl bg-neutral-weak p-3 text-sm">
+            최신 값: {shortDate(shopDate(Date.parse(base.startAt)))} {shopTime(base.startAt)} · 관리 {base.durationMin}분 · 준비 {base.prepMin}분
+            {base.menuName ? ` · ${base.menuName}` : ''} — 입력은 그대로 두었어요. 확인한 뒤 다시 저장해 주세요.
+          </p>
+        )}
         <div className="relative">
           <Field.Root>
             <Field.Header>
@@ -360,6 +524,8 @@ function AppointmentForm({
                 autoComplete="off"
                 onChange={(e) => {
                   onDirty(true);
+                  customerTouched.current = true;
+                  mark('customerId');
                   setError(null);
                   setSameName(null);
                   setPicked(null);
@@ -473,6 +639,7 @@ function AppointmentForm({
               value={date}
               onChange={(d) => {
                 touched(setDate)(d);
+                mark('startAt');
                 setStartEdited(true);
               }}
             />
@@ -487,6 +654,7 @@ function AppointmentForm({
               options={startTimes(date, businessHours)}
               onChange={(t) => {
                 touched(setTime)(t);
+                mark('startAt');
                 setStartEdited(true);
               }}
               phone={phone}
@@ -494,8 +662,26 @@ function AppointmentForm({
           </div>
         </div>
 
-        <Stepper label="관리 시간" value={duration} step={10} min={10} onChange={touched(setDuration)} />
-        <Stepper label="준비 시간" value={prep} step={5} min={0} onChange={touched(setPrep)} />
+        <Stepper
+          label="관리 시간"
+          value={duration}
+          step={10}
+          min={10}
+          onChange={(v) => {
+            touched(setDuration)(v);
+            mark('durationMin');
+          }}
+        />
+        <Stepper
+          label="준비 시간"
+          value={prep}
+          step={5}
+          min={0}
+          onChange={(v) => {
+            touched(setPrep)(v);
+            mark('prepMin');
+          }}
+        />
 
         {staff.length === 0 && (
           <Callout.Root tone="warning">
@@ -514,6 +700,7 @@ function AppointmentForm({
               value={staffId}
               onValueChange={(id) => {
                 touched(setStaffId)(id);
+                mark('staffId');
                 setStartEdited(true);
               }}
               className="flex flex-wrap gap-2"
@@ -539,7 +726,10 @@ function AppointmentForm({
               autoresize
               className="min-h-12"
               value={memo}
-              onChange={(e) => touched(setMemo)(e.target.value)}
+              onChange={(e) => {
+                touched(setMemo)(e.target.value);
+                mark('memo');
+              }}
             />
           </TextField.Root>
         </Field.Root>
@@ -558,7 +748,21 @@ function AppointmentForm({
             <Callout.Root tone="critical" role="alert">
               <Callout.Content>
                 <Callout.Title>저장하지 못했어요</Callout.Title>
-                <Callout.Description>{error}</Callout.Description>
+                <Callout.Description>
+                  {error}
+                  {conflict && (
+                    <button
+                      type="button"
+                      className="ml-1 font-bold underline"
+                      onClick={async () => {
+                        await loadLatest(false);
+                        setError(null);
+                      }}
+                    >
+                      최신 값 불러오기
+                    </button>
+                  )}
+                </Callout.Description>
               </Callout.Content>
             </Callout.Root>
           )}
