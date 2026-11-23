@@ -335,3 +335,67 @@ test('다른 매장의 쓰기 잠금은 기다리지 않는다', async () => {
     await race.end();
   }
 });
+
+// ── ③ PATCH(설계 09 D2) ──
+const patchBlock = (id, body, opts) => call('PATCH', `${A}/calendar-blocks/${id}`, { body, ...opts });
+
+test('고치기: 시간을 옮기면 새 시간이 막히고 옛 시간은 풀린다, 같은 키 재생, 기존 예약은 그대로', async () => {
+  const appt = await book({ startAt: at('16', '10:00') });
+  const b = await block({ startAt: at('16', '10:30'), endAt: at('16', '11:00') });
+  const key = randomUUID();
+  const moved = await patchBlock(b.body.id, { version: 1, startAt: at('16', '14:00'), endAt: at('16', '15:00'), memo: ' 외출 ' }, { key });
+  assert.equal(moved.status, 200);
+  assert.deepEqual([moved.body.version, moved.body.startAt, moved.body.memo, moved.body.staffIds], [2, '2027-02-16T05:00:00.000Z', '외출', [staffA]]);
+  const again = await patchBlock(b.body.id, { version: 1, startAt: at('16', '14:00'), endAt: at('16', '15:00'), memo: ' 외출 ' }, { key });
+  assert.deepEqual([again.status, again.replayed, again.body], [200, 'true', moved.body]);
+  assert.equal((await book({ startAt: at('16', '14:30'), durationMin: 30 })).body.code, 'BLOCKED');
+  assert.equal((await book({ startAt: at('16', '11:00') })).status, 201, '옛 시간은 풀림');
+  const day = (await calendar('2027-02-16')).body;
+  const kept = day.appointments.find((a) => a.id === appt.body.id);
+  assert.deepEqual([kept.version, kept.blockedBy], [1, []], '기존 예약 행은 그대로, 겹침만 사라짐');
+});
+
+test('대상 바꾸기: 지정 → 전체는 연결을 비우고, 전체 → 지정은 새 집합 — 대상만 바뀌어도 version은 한 번만 오른다', async () => {
+  const b = await block({ startAt: at('17', '10:00'), endAt: at('17', '11:00') });
+  const all = await patchBlock(b.body.id, { version: 1, allStaff: true, staffIds: [] });
+  assert.deepEqual([all.status, all.body.allStaff, all.body.staffIds, all.body.version], [200, true, [], 2]);
+  assert.equal((await admin.query('SELECT 1 FROM crm.calendar_block_staff WHERE block_id = $1', [b.body.id])).rowCount, 0);
+  const two = await patchBlock(b.body.id, { version: 2, allStaff: false, staffIds: [staffB, staffA] });
+  assert.deepEqual([two.body.allStaff, [...two.body.staffIds].sort(), two.body.version], [false, [staffA, staffB].sort(), 3]);
+  const one = await patchBlock(b.body.id, { version: 3, staffIds: [staffB] });
+  assert.deepEqual([one.body.staffIds, one.body.version], [[staffB], 4], '담당자 집합만 바꿔도 version +1');
+  assert.equal((await book({ startAt: at('17', '10:00') })).status, 201, 'A는 풀림');
+  assert.equal((await book({ startAt: at('17', '10:00'), staffId: staffB })).body.code, 'BLOCKED');
+  const same = await patchBlock(b.body.id, { version: 4, staffIds: [staffB] });
+  assert.deepEqual([same.status, same.body.version], [200, 4], '바뀐 게 없으면 version 그대로');
+});
+
+test('고치기 오류: 오래된 version 409, 제거 404, 합친 기간·대상 검사 422, 새로 붙는 숨긴 담당자 거부, 이미 붙은 숨긴 담당자는 유지', async () => {
+  const hidden = randomUUID();
+  await admin.query("INSERT INTO crm.staff (id, shop_id, name) VALUES ($1, $2, 'S-hide2')", [hidden, shopA]);
+  const b = await block({ startAt: at('18', '10:00'), endAt: at('18', '11:00'), staffIds: [hidden] });
+  await admin.query('UPDATE crm.staff SET active = false WHERE id = $1', [hidden]);
+  const memoOnly = await patchBlock(b.body.id, { version: 1, memo: '메모만' });
+  assert.deepEqual([memoOnly.status, memoOnly.body.staffIds], [200, [hidden]], '숨긴 기존 대상은 그대로');
+  assert.equal((await patchBlock(b.body.id, { version: 2, staffIds: [hidden, staffA] })).status, 200, '남겨 둔 숨긴 대상 + 새 사용 중 담당자');
+
+  const stale = await patchBlock(b.body.id, { version: 1, memo: 'x' });
+  assert.deepEqual([stale.status, stale.body.details], [409, { currentVersion: 3 }]);
+  const field = async (body) => (await patchBlock(b.body.id, { version: 3, ...body })).body.details.fields[0];
+  assert.deepEqual(await field({ endAt: at('18', '09:00') }), { field: 'endAt', code: 'INVALID_PERIOD' }, '끝만 바꿔 시작보다 이르면');
+  assert.deepEqual(await field({ allStaff: true, staffIds: [staffA] }), { field: 'staffIds', code: 'MUST_BE_EMPTY' });
+  assert.deepEqual(await field({ staffIds: [] }), { field: 'staffIds', code: 'REQUIRED' });
+  assert.deepEqual(await field({ staffIds: [staffOff] }), { field: 'staffIds', code: 'INACTIVE' }, '새로 붙는 숨긴 담당자');
+  assert.deepEqual(await field({ staffIds: [staffOther] }), { field: 'staffIds', code: 'NOT_FOUND' });
+  assert.deepEqual(await field({ status: 'removed' }), { field: 'status', code: 'UNKNOWN_FIELD' });
+  assert.deepEqual((await patchBlock(b.body.id, { memo: 'x' })).body.details.fields[0], { field: 'version', code: 'REQUIRED' });
+
+  const all = await block({ startAt: at('18', '12:00'), endAt: at('18', '13:00'), allStaff: true, staffIds: [] });
+  assert.deepEqual(await (async () => (await patchBlock(all.body.id, { version: 1, allStaff: false })).body.details.fields[0])(),
+    { field: 'staffIds', code: 'REQUIRED' }, '전체 → 지정인데 담당자 없음');
+
+  await removeBlock(b.body.id, 3);
+  const gone = await patchBlock(b.body.id, { version: 4, memo: 'x' });
+  assert.deepEqual([gone.status, gone.body.code], [404, 'NOT_FOUND']);
+  assert.equal((await call('PATCH', `/api/shops/${shopB}/calendar-blocks/${all.body.id}`, { cookie: ownerB, body: { version: 1, memo: 'x' } })).status, 404);
+});
