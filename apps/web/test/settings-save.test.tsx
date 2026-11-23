@@ -30,8 +30,9 @@ describe('오류 → 화면 문구', () => {
     expect(toSaveProblem(new SettingsNotFoundError())).toEqual({ kind: 'gone', message: GONE_TEXT });
     expect(toSaveProblem(new TypeError('fetch failed'))).toEqual({ kind: 'failed', message: FAILED_TEXT });
     expect(toSaveProblem(new NetworkError())).toEqual({ kind: 'failed', message: FAILED_TEXT });
-    // 서버가 답한 그 밖의 실패(500·세션 만료)는 연결 문구가 아니다(#72 리뷰).
-    expect(toSaveProblem(new HttpError(500, 'UNKNOWN'))).toEqual({ kind: 'rejected', message: REJECTED_TEXT });
+    // 서버가 답한 그 밖의 실패는 연결 문구가 아니다(#72 리뷰). 5xx는 저장 여부를 모르니 같은 키를 남기는 failed(#75 리뷰).
+    expect(toSaveProblem(new HttpError(500, 'UNKNOWN'))).toEqual({ kind: 'failed', message: REJECTED_TEXT });
+    expect(toSaveProblem(new HttpError(504, 'UNKNOWN')).kind).toBe('failed');
     expect(toSaveProblem(new HttpError(401, 'UNAUTHENTICATED')).kind).toBe('rejected');
   });
 });
@@ -137,13 +138,30 @@ describe('Idempotency-Key', () => {
     });
     expect(keys).toEqual(['key-1', 'key-2']);
   });
-  it('서버가 500·세션 만료로 답하면 다음 저장은 새 키로 보낸다(#72 리뷰)', async () => {
+  it('서버가 5xx로 답하면 저장됐을 수 있으니 같은 키로 다시 보낸다(#75 리뷰)', async () => {
     let n = 0;
     const { result } = renderHook(() => useSaveAction(() => {}, () => `key-${++n}`));
     const keys: string[] = [];
     const fail = async (key: string) => {
       keys.push(key);
       throw new HttpError(500, 'UNKNOWN');
+    };
+    await act(async () => {
+      await result.current.run(fail);
+    });
+    expect(result.current.problem).toEqual({ kind: 'failed', message: REJECTED_TEXT });
+    await act(async () => {
+      await result.current.run(fail);
+    });
+    expect(keys).toEqual(['key-1', 'key-1']);
+  });
+  it('서버가 쓰기를 거절하면(세션 만료) 다음 저장은 새 키로 보낸다(#72 리뷰)', async () => {
+    let n = 0;
+    const { result } = renderHook(() => useSaveAction(() => {}, () => `key-${++n}`));
+    const keys: string[] = [];
+    const fail = async (key: string) => {
+      keys.push(key);
+      throw new HttpError(401, 'UNAUTHENTICATED');
     };
     await act(async () => {
       await result.current.run(fail);
