@@ -23,14 +23,15 @@ export const SETTINGS_SECTIONS = [
 /** 웹 = SEED md(768px) 이상. 그보다 좁으면 폰 배치. */
 const useIsWeb = () => useBreakpointValue({ base: false, md: true }) ?? false;
 
-/** /settings 아래 모든 화면의 틀. 웹에서는 왼쪽 메뉴를 늘 보인다. */
+/**
+ * /settings 아래 모든 화면의 틀. 웹(md 이상)에서는 왼쪽 메뉴를 늘 보인다.
+ * 폰·웹 배치를 CSS로만 바꾼다 — Outlet 자리가 바뀌면 하위 화면이 새로 그려져 저장 전 입력이 사라진다(#78 리뷰).
+ */
 export function SettingsLayout() {
-  const isWeb = useIsWeb();
-  if (!isWeb) return <Outlet />;
   return (
-    <div className="grid grid-cols-[12rem_minmax(0,1fr)] gap-8 px-6">
+    <div className="md:grid md:grid-cols-[12rem_minmax(0,1fr)] md:gap-8 md:px-6">
       {/* ASSUMPTION: SEED SideNavigation은 앱 전체 사이드바(접기·고정 위치)용이라, 설정 안 메뉴는 같은 모양의 링크 목록으로 둔다. */}
-      <nav aria-label="설정 메뉴" className="pt-6">
+      <nav aria-label="설정 메뉴" className="hidden pt-6 md:block">
         <ul className="flex flex-col gap-1">
           {SETTINGS_SECTIONS.map((s) => (
             <li key={s.to}>

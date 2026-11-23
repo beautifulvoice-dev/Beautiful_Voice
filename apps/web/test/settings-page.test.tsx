@@ -1,5 +1,5 @@
 // 설정 틀(W13 디자인 11/20): 폰은 목록(제목 아래 요약) → 하위 화면, 웹은 왼쪽 메뉴 + 오른쪽 내용. 데이터는 합성(절대 규칙 8).
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
@@ -34,7 +34,8 @@ describe('설정 — 폰(390px)', () => {
       '메뉴2개›',
       '담당자원장›',
     ]);
-    expect(screen.queryByRole('navigation', { name: '설정 메뉴' })).toBeNull();
+    // 왼쪽 메뉴는 CSS로만 숨긴다(jsdom은 CSS를 적용하지 않아 클래스로 확인) — 폭이 바뀌어도 하위 화면이 다시 그려지지 않게(#78 리뷰).
+    expect(screen.getByRole('navigation', { name: '설정 메뉴' })).toHaveClass('hidden', 'md:block');
     // 폰은 제목 위에 매장 이름(디자인 .p-shop). 테스트에는 매장 이름이 없어 자리 글자.
     expect(screen.getByRole('heading', { name: '설정' }).previousElementSibling).toHaveTextContent('내 매장');
 
@@ -64,5 +65,17 @@ describe('설정 — 웹(1280px)', () => {
     expect(router.state.location.pathname).toBe('/settings/staff');
     expect(await screen.findByRole('heading', { name: '담당자' })).toBeInTheDocument();
     expect(within(screen.getByRole('navigation', { name: '설정 메뉴' })).getByRole('link', { name: '담당자' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('고치는 중에 화면 폭이 바뀌어도(태블릿 회전) 입력이 남는다(#78 리뷰)', async () => {
+    setTestWidth(1280);
+    renderAt('/settings/menus');
+    await userEvent.click(await screen.findByRole('button', { name: '메뉴 추가' }));
+    const name = await screen.findByLabelText('이름');
+    await userEvent.type(name, '얼굴 관리');
+    act(() => setTestWidth(390));
+    expect(await screen.findByLabelText('이름')).toHaveValue('얼굴 관리');
+    act(() => setTestWidth(1280));
+    expect(await screen.findByLabelText('이름')).toHaveValue('얼굴 관리');
   });
 });
