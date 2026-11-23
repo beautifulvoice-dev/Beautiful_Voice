@@ -30,6 +30,7 @@ describe('링크 보완', () => {
     expect(completeLink('naverPlaceUrl', '  ')).toBeNull();
     expect(completeLink('naverPlaceUrl', 'naver.me/abc')).toBe('https://naver.me/abc');
     expect(completeLink('landingUrl', 'http://example.com')).toBe('http://example.com');
+    expect(completeLink('landingUrl', 'example.com:8443/page')).toBe('https://example.com:8443/page');
     expect(completeLink('instagramUrl', '@raon.beauty')).toBe('https://instagram.com/raon.beauty');
     expect(completeLink('landingUrl', '@raon.beauty')).toBe('https://@raon.beauty');
   });
@@ -50,6 +51,28 @@ describe('매장 정보 화면', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(SHOP_INFO_SAVED_TEXT);
     expect(await api.getShopInfo()).toMatchObject({ naverPlaceUrl: 'https://naver.me/raon', instagramUrl: 'https://instagram.com/raon.beauty' });
     expect(await field('인스타그램')).toHaveValue('https://instagram.com/raon.beauty');
+  });
+
+  it('미지원 스킴은 각 링크 칸에 오류를 표시하고 기존 주소를 유지한다', async () => {
+    const api = createMemorySettingsApi();
+    const before = await api.getShopInfo();
+    renderAt('/settings/shop-info', api);
+    const homepage = await field('홈페이지');
+    const naver = await field('네이버 플레이스');
+    await userEvent.clear(homepage);
+    await userEvent.type(homepage, 'ftp://files.example.com/path');
+    await userEvent.clear(naver);
+    await userEvent.type(naver, 'mailto:shop@example.com');
+    await userEvent.click(screen.getByRole('button', { name: '저장' }));
+
+    await waitFor(() => {
+      expect(homepage).toHaveAttribute('aria-invalid', 'true');
+      expect(naver).toHaveAttribute('aria-invalid', 'true');
+    });
+    expect(homepage).toHaveValue('ftp://files.example.com/path');
+    expect(naver).toHaveValue('mailto:shop@example.com');
+    expect(await api.getShopInfo()).toEqual(before);
+    expect(screen.queryByText(SHOP_INFO_SAVED_TEXT)).not.toBeInTheDocument();
   });
 
   it('서버가 칸을 거부하면 그 칸 아래 이유', async () => {

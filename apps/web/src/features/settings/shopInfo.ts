@@ -4,13 +4,16 @@ import type { ShopInfo } from '@bv/contracts';
 
 export type LinkField = 'naverPlaceUrl' | 'instagramUrl' | 'landingUrl';
 
-const SCHEME = /^https?:\/\//i;
+const SCHEME = /^[a-z][a-z\d+.-]*:/i;
+const HOST_WITH_PORT = /^(?:localhost|(?:[a-z\d-]+\.)+[a-z\d-]+):\d+(?:[/?#]|$)/i;
 
 /** 빈 칸은 null. `@아이디`(인스타그램 칸)는 instagram.com 주소로, 그 밖에 주소 앞부분이 없으면 https://를 붙인다. */
 export function completeLink(field: LinkField, raw: string): string | null {
   const text = raw.trim();
   if (!text) return null;
-  if (SCHEME.test(text)) return text;
+  // 이미 스킴이 있으면 그대로 보내 공통 검증이 지원하지 않는 스킴을 거부하게 한다.
+  // example.com:8443처럼 주소에 붙은 포트는 스킴이 아니다.
+  if (SCHEME.test(text) && !HOST_WITH_PORT.test(text)) return text;
   if (field === 'instagramUrl' && text.startsWith('@')) return `https://instagram.com/${text.slice(1)}`;
   return `https://${text.replace(/^\/+/, '')}`;
 }
