@@ -71,18 +71,24 @@ describe('메뉴 화면', () => {
     expect((await api.listMenus()).at(-1)).toMatchObject({ name: '얼굴 관리', defaultDurationMin: 60, defaultPrepMin: 20 });
   });
 
-  it('5분 간격이 아닌 분도 숫자 칸에 직접 넣어 저장한다(#78 리뷰)', async () => {
+  it.each([
+    ['63', '7'],
+    ['1200', '1007'],
+  ])('관리 %s분·준비 %s분을 잘리지 않고 직접 입력해 저장한다(#78 리뷰)', async (duration, prep) => {
     const api = createMemorySettingsApi();
     renderAt('/settings/menus', api);
     await userEvent.click(await screen.findByRole('button', { name: /수분 관리/ }));
     const d = await sheet();
     await userEvent.clear(minutes(d, '준비 시간'));
-    await userEvent.type(minutes(d, '준비 시간'), '7');
+    await userEvent.type(minutes(d, '준비 시간'), prep);
     await userEvent.clear(minutes(d, '관리 시간'));
-    await userEvent.type(minutes(d, '관리 시간'), '63');
+    await userEvent.type(minutes(d, '관리 시간'), duration);
     await save(d);
     await closed();
-    expect((await api.listMenus()).find((m) => m.name === '수분 관리')).toMatchObject({ defaultDurationMin: 63, defaultPrepMin: 7 });
+    expect((await api.listMenus()).find((m) => m.name === '수분 관리')).toMatchObject({
+      defaultDurationMin: Number(duration),
+      defaultPrepMin: Number(prep),
+    });
   });
 
   it('시간을 비워도 저장된다', async () => {

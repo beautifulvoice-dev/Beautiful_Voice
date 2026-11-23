@@ -325,9 +325,10 @@ function MinutesInput({ label, value, onChange }: { label: string; value: number
       aria-label={label}
       value={draft ?? String(value)}
       onChange={(e) => {
-        const text = e.target.value.replace(/[^0-9]/gu, '').slice(0, 3);
+        const text = e.target.value.replace(/[^0-9]/gu, '');
         setDraft(text);
-        if (text !== '') onChange(Number(text));
+        // 너무 큰 입력도 기존 분 검증에서 거부되게 한다. Infinity를 JSON으로 보내면 null이 된다.
+        if (text !== '') onChange(Math.min(Number(text), Number.MAX_SAFE_INTEGER));
       }}
       onBlur={() => setDraft(null)}
       className="w-12 rounded-md border border-line bg-transparent py-1 text-center text-base text-ink"
