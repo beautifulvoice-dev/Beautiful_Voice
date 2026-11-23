@@ -8,6 +8,7 @@ import { SessionLoaderProvider } from '@/features/auth/session';
 import { createMemoryCustomerApi, CustomerApiProvider, type CustomerApi } from '@/features/customers/api';
 import { formatBirthdate, shopToday, visitHistory, type Visit } from '@/features/customers/model';
 import { routes } from '@/routes';
+import { setTestWidth } from './setup';
 
 function renderAt(path: string, api: CustomerApi = createMemoryCustomerApi()) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
@@ -21,7 +22,10 @@ function renderAt(path: string, api: CustomerApi = createMemoryCustomerApi()) {
   return router;
 }
 
-const names = () => within(screen.getByRole('list', { name: '고객 목록' })).getAllByRole('link').map((a) => a.textContent);
+/** 목록 줄 글자 — 장식(이름 첫 글자 동그라미, aria-hidden)은 뺀다. */
+const visibleText = (el: Element) =>
+  [...el.childNodes].filter((n) => !(n instanceof Element && n.getAttribute('aria-hidden') === 'true')).map((n) => n.textContent).join('');
+const names = () => within(screen.getByRole('list', { name: '고객 목록' })).getAllByRole('link').map(visibleText);
 
 const search = async (text: string) => {
   await screen.findByRole('list', { name: '고객 목록' });
@@ -29,6 +33,14 @@ const search = async (text: string) => {
 };
 
 describe('고객 목록·검색', () => {
+  it('고객 수와, 같은 이름이면 "동명 n"을 보인다(W5 디자인)', async () => {
+    renderAt('/customers');
+    await screen.findByRole('list', { name: '고객 목록' });
+    expect(screen.getByText('고객 4명')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '고객' }).previousElementSibling).toHaveTextContent('내 매장'); // 폰 제목 위 매장 이름
+    expect(screen.getAllByText('동명 2')).toHaveLength(2); // 김하늘 두 명
+  });
+
   it('이름으로 찾는다 — 띄어쓰기는 무시, 검색어는 주소에 남기지 않는다', async () => {
     const router = renderAt('/customers');
     await search('이 서윤');
@@ -72,6 +84,34 @@ describe('고객 목록·검색', () => {
   });
 });
 
+describe('고객 등록 시트 (W5 디자인 "+ 고객: 시트")', () => {
+  it('"+ 고객"을 누르면 목록 위에 등록 시트가 열리고, 취소하면 목록으로 돌아가며 검색어는 남는다', async () => {
+    const router = renderAt('/customers');
+    await search('김');
+    await userEvent.click(screen.getByRole('link', { name: '+ 고객' }));
+    const sheet = await screen.findByRole('dialog', { name: '고객 등록' });
+    expect(router.state.location.pathname).toBe('/customers/new');
+    // 목록은 시트 뒤에 그대로 있다(시트가 열리면 화면 읽기에서는 뒤를 가린다).
+    expect(document.querySelector('ul[aria-label="고객 목록"]')).toHaveTextContent('김하늘');
+    expect(within(sheet).getByLabelText('이름 (필수)')).toHaveValue('');
+
+    await userEvent.click(within(sheet).getByRole('button', { name: '취소' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(router.state.location.pathname).toBe('/customers');
+    expect(screen.getByRole('searchbox', { name: '고객 검색' })).toHaveValue('김');
+  });
+
+  it('시트에서 저장하면 그 고객 상세로 간다', async () => {
+    const router = renderAt('/customers/new');
+    const sheet = await screen.findByRole('dialog', { name: '고객 등록' });
+    await userEvent.type(within(sheet).getByLabelText('이름 (필수)'), '최가람');
+    await userEvent.click(within(sheet).getByRole('button', { name: '저장' }));
+    expect(await screen.findByRole('heading', { level: 1, name: '최가람' })).toBeInTheDocument();
+    expect(router.state.location.pathname).toMatch(/^\/customers\/c\d+$/u);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
 describe('고객 등록 → 검색 → 수정', () => {
   it('이름이 없으면 저장하지 않는다', async () => {
     renderAt('/customers/new');
@@ -84,12 +124,12 @@ describe('고객 등록 → 검색 → 수정', () => {
     await userEvent.type(await screen.findByLabelText('이름 (필수)'), '최가람');
     await userEvent.click(screen.getByRole('button', { name: '저장' }));
     expect(await screen.findByRole('heading', { level: 1, name: '최가람' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: '개인 정보' })).toHaveTextContent('전화번호없음');
+    expect(screen.getByRole('region', { name: '정보' })).toHaveTextContent('전화없음');
 
     await router.navigate('/customers');
     await search('가람');
     await userEvent.click(await screen.findByRole('link', { name: /최가람/ }));
-    await userEvent.click(await screen.findByRole('link', { name: '수정' }));
+    await userEvent.click(await screen.findByRole('link', { name: '정보 고치기' }));
     const phone = await screen.findByLabelText('전화번호');
     await userEvent.type(phone, '010-0000-12');
     await userEvent.click(screen.getByRole('button', { name: '저장' }));
@@ -97,7 +137,7 @@ describe('고객 등록 → 검색 → 수정', () => {
 
     await userEvent.type(phone, '34');
     await userEvent.click(screen.getByRole('button', { name: '저장' }));
-    expect(await screen.findByRole('region', { name: '개인 정보' })).toHaveTextContent('010-0000-1234');
+    expect(await screen.findByRole('region', { name: '정보' })).toHaveTextContent('010-0000-1234');
   });
 
   it('같은 이름이 있으면 확인을 받고, 원장이 다른 고객이라 하면 따로 저장한다', async () => {
@@ -122,7 +162,7 @@ describe('생년월일·거주지 (BEA-172, 명세 1 §2.3)', () => {
     await userEvent.type(screen.getByLabelText('생년월일'), '1990-02-28');
     await userEvent.type(screen.getByLabelText('거주지'), '합성시 가상구');
     await userEvent.click(screen.getByRole('button', { name: '저장' }));
-    const info = await screen.findByRole('region', { name: '개인 정보' });
+    const info = await screen.findByRole('region', { name: '정보' });
     expect(info).toHaveTextContent('생년월일1990년 2월 28일');
     expect(info).toHaveTextContent('거주지합성시 가상구');
 
@@ -138,7 +178,7 @@ describe('생년월일·거주지 (BEA-172, 명세 1 §2.3)', () => {
     await userEvent.clear(birthdate);
     await userEvent.clear(screen.getByLabelText('거주지'));
     await userEvent.click(screen.getByRole('button', { name: '저장' }));
-    const info = await screen.findByRole('region', { name: '개인 정보' });
+    const info = await screen.findByRole('region', { name: '정보' });
     expect(info).toHaveTextContent('생년월일없음');
     expect(info).toHaveTextContent('거주지없음');
   });
@@ -189,13 +229,35 @@ describe('동명이인 확인과 입력이 어긋나지 않는다 (#32 리뷰)',
   });
 });
 
+describe('등록 시트 주소 (#79 리뷰)', () => {
+  it('/customers/new/ 처럼 끝에 슬래시가 있어도 등록 시트가 열린다', async () => {
+    renderAt('/customers/new/');
+    expect(await screen.findByRole('dialog', { name: '고객 등록' })).toBeInTheDocument();
+  });
+});
+
 describe('고객 상세: 정보·예약·방문 이력 (명세 3 2A-2.4)', () => {
-  it('이력은 원장이 표시한 상태 그대로 보이고, 지갑·발송 이력은 자리만 있다', async () => {
+  it('다가오는 예약과 지난 방문을 나눠, 원장이 표시한 상태 그대로 보인다. 지갑·문자는 자리만 있다(W6 디자인, 웹 두 칸)', async () => {
+    setTestWidth(1280);
     renderAt('/customers/c1');
-    const visits = within(await screen.findByRole('list', { name: '예약·방문 이력' })).getAllByRole('listitem');
-    expect(visits.map((v) => v.lastChild?.textContent)).toEqual(['예정', '완료', '취소', '노쇼', '완료']);
+    const upcoming = within(await screen.findByRole('list', { name: '다가오는 예약' })).getAllByRole('listitem');
+    expect(upcoming.map((v) => v.lastChild?.textContent)).toEqual(['예정']);
+    const past = within(screen.getByRole('list', { name: '지난 방문' })).getAllByRole('listitem');
+    expect(past.map((v) => v.lastChild?.textContent)).toEqual(['완료', '취소', '노쇼', '완료']);
     expect(screen.getByRole('region', { name: '지갑' })).toHaveTextContent('다음 단계에서 열려요');
-    expect(screen.getByRole('region', { name: '발송 이력' })).toHaveTextContent('다음 단계에서 열려요');
+    expect(screen.getByRole('region', { name: '문자' })).toHaveTextContent('다음 단계에서 열려요');
+    expect(screen.queryByRole('tablist')).toBeNull();
+  });
+
+  it('폰에서는 정보·예약·지갑·문자 탭으로 나뉘고 예약 탭부터 보인다(W6 디자인)', async () => {
+    setTestWidth(390);
+    renderAt('/customers/c1');
+    const tabs = await screen.findByRole('tablist');
+    expect(within(tabs).getAllByRole('tab').map((t) => t.textContent)).toEqual(['정보', '예약', '지갑', '문자']);
+    expect(within(tabs).getByRole('tab', { name: '예약' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('list', { name: '다가오는 예약' })).toBeInTheDocument();
+    await userEvent.click(within(tabs).getByRole('tab', { name: '정보' }));
+    expect(await screen.findByRole('region', { name: '정보' })).toHaveTextContent('특이사항민감성 피부');
   });
 
   it('없는 고객은 안내를 보여 준다', async () => {
