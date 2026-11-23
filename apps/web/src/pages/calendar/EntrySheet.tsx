@@ -1,5 +1,5 @@
 // 예약 넣기 W3 · 관리 불가 시간 W4 (화면 설계서 §4 F1·§5 W3·W4, 디자인 w2.png 가운데·오른쪽). 한 시트를 세그먼트 `예약 · 관리 불가 시간`으로 바꾼다.
-// W4는 서버 API(BEA-179) 전까지 가짜 저장소에서만 켠다(api.supportsBlocks) — 실제 API 모드에선 세그먼트가 꺼져 있고 "곧 열려요".
+// W4는 창구가 관리 불가 시간을 지원할 때 켠다(api.supportsBlocks) — 실제 API(BEA-179 서버)와 가짜 저장소 모두.
 // 폰은 큰 아래 시트, 웹은 오른쪽 패널(W2와 같은 틀). 저장 검사는 서버와 같은 @bv/scheduling checkBooking(절대 규칙 4) —
 // 거부되면 저장 버튼 위 빨간 알림(W3 거부 표). 관리 불가 시간은 겹치는 예약을 막지 않고 미리 알린다(결정 R50).
 import { blockedAppointmentIds, checkBooking, occupiedOf } from '@bv/scheduling/booking';
@@ -962,6 +962,8 @@ function BlockForm({
   const [memo, setMemo] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [around, setAround] = useState<CalendarData | null>(null);
+  // 응답을 못 받으면 같은 내용·같은 키로 다시(설계 05 D5) — 차단이 두 개 생기지 않게.
+  const blockKey = useRetryKey();
   const touch = () => onDirty(true);
 
   const choices = blockTimeChoices(date, businessHours);
@@ -1004,10 +1006,16 @@ function BlockForm({
     setSaving(true);
     setError(null);
     try {
-      await api.createBlock({ startAt, endAt, allStaff, staffIds: allStaff ? [] : who, memo: memo.trim() || null });
+      const input = { startAt, endAt, allStaff, staffIds: allStaff ? [] : who, memo: memo.trim() || null };
+      await api.createBlock(input, { idempotencyKey: blockKey.keyFor(JSON.stringify(input)) });
+      blockKey.settle();
       onSaved(date);
-    } catch {
-      setError('저장하지 못했어요. 잠시 뒤 다시 해 주세요.');
+    } catch (err) {
+      if (err instanceof NetworkError) setError(NETWORK_TEXT);
+      else {
+        blockKey.settle();
+        setError('저장하지 못했어요. 잠시 뒤 다시 해 주세요.');
+      }
     } finally {
       setSaving(false);
     }

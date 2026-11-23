@@ -2,12 +2,13 @@
 // - 조회: 캘린더(예약·담당자·차단)와 설정(영업시간·휴무)을 함께 읽는다. 설정만 실패하면 예약은 보이고 음영만 보류(설계 05 D3).
 // - 취소·무효는 그대로 받고 화면이 뺀다(04 D6). 화면에 남는 예약이 없는 비활성 담당자는 열을 만들지 않는다(04 D7).
 // - 상태 바꾸기는 마지막으로 읽은(또는 방금 저장한) version을 보낸다 → 스낵바 되돌리기도 방금 저장한 version으로(04 §W2).
-import type { Appointment, BusinessHoursBody, CalendarResponse, Closure, Menu as ContractMenu } from '@bv/contracts';
+// - 관리 불가 시간(BEA-179 서버 #84): 넣기·지우기. 예약의 겹침은 서버가 준 blockedBy를 쓴다(설계 09 D5).
+import type { Appointment, BusinessHoursBody, CalendarBlock as ContractBlock, CalendarResponse, Closure, Menu as ContractMenu } from '@bv/contracts';
 import type { BookingReject } from '@bv/scheduling/booking';
 import { randomKey } from '@/features/settings/useSaveAction';
 import { HttpError, NetworkError, shopPath, type Http } from '@/lib/http';
 import type { CalendarApi, SaveReject, SaveResult } from './api';
-import { isShown, type CalendarAppointment, type Menu } from './model';
+import { isShown, type CalendarAppointment, type CalendarBlock, type Menu } from './model';
 
 
 const REJECTS: readonly string[] = [
@@ -27,6 +28,11 @@ const toAppointment = (a: Appointment): CalendarAppointment => ({
   memo: a.memo ?? null,
   status: a.status,
   version: a.version,
+  blockedBy: a.blockedBy ?? [],
+});
+
+const toBlock = (b: ContractBlock): CalendarBlock => ({
+  id: b.id, startAt: b.startAt, endAt: b.endAt, allStaff: b.allStaff, staffIds: b.staffIds, memo: b.memo ?? null, version: b.version,
 });
 
 /**
@@ -59,6 +65,7 @@ export function createHttpCalendarApi(http: Http, shopId: string): CalendarApi {
 
   return {
     persistsAppointments: true,
+    supportsBlocks: true,
     async range(from, to) {
       const settings = Promise.all([
         http.get<BusinessHoursBody>(path('settings', 'business-hours')),
@@ -70,8 +77,8 @@ export function createHttpCalendarApi(http: Http, shopId: string): CalendarApi {
       return {
         staff: calendar.staff.filter((s) => s.active || shownStaff.has(s.id)).map((s) => ({ id: s.id, name: s.name, active: s.active })),
         appointments,
-        // 차단은 BEA-179 전까지 빈 배열(#42).
-        blocks: calendar.blocks.map((b) => ({ id: b.id, startAt: b.startAt, endAt: b.endAt, allStaff: b.allStaff, staffIds: b.staffIds, memo: b.memo ?? null })),
+        // 활성 차단(BEA-179). 숨긴 담당자에게만 걸린 차단은 그 담당자 열이 없으면 보이지 않는다(04 D7과 같은 기준).
+        blocks: calendar.blocks.map(toBlock),
         businessHours: hours?.[0].businessHours ?? null,
         closures: hours ? hours[1].items : [],
         ...(hours ? {} : { hoursUnavailable: true }),
@@ -147,9 +154,21 @@ export function createHttpCalendarApi(http: Http, shopId: string): CalendarApi {
         return toReject(err);
       }
     },
-    async createBlock() {
-      // 차단 API는 BEA-179에서 생긴다(#42 — 11/25 시연 범위 밖).
-      throw new Error('BLOCKS_NOT_AVAILABLE');
+    async createBlock(input, options) {
+      const b = await http.send<ContractBlock>('POST', path('calendar-blocks'), {
+        body: { startAt: input.startAt, endAt: input.endAt, allStaff: input.allStaff, staffIds: input.allStaff ? [] : input.staffIds, memo: input.memo },
+        idempotencyKey: options?.idempotencyKey ?? randomKey(),
+      });
+      return toBlock(b);
+    },
+    async removeBlock(id, version, options) {
+      if (version === undefined) return { ok: false, reason: 'VERSION_CONFLICT', conflictingIds: [] };
+      try {
+        await http.send<void>('DELETE', path('calendar-blocks', id), { query: { version }, idempotencyKey: options?.idempotencyKey ?? randomKey() });
+        return { ok: true, value: null };
+      } catch (err) {
+        return toReject(err);
+      }
     },
   };
 }

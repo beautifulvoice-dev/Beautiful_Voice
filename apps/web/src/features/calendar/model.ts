@@ -37,6 +37,8 @@ export interface CalendarAppointment {
   version?: number;
   /** 고른 메뉴(없으면 null). 가짜 저장소는 이름만 둔다. */
   menuId?: string | null;
+  /** 실제 API: 이 예약과 겹치는 활성 차단 id(#42·설계 09 D5). 가짜 저장소는 없음(화면이 계산). */
+  blockedBy?: string[];
 }
 
 /** 캘린더 차단. allStaff면 매장 전체, 아니면 staffIds의 담당자만 막는다(명세 01 §2.2). */
@@ -47,6 +49,8 @@ export interface CalendarBlock {
   allStaff: boolean;
   staffIds: string[];
   memo: string | null;
+  /** 실제 API의 행 버전 — 지울 때 보낸다(#42 DELETE ?version). 가짜 저장소는 비워 둔다. */
+  version?: number;
 }
 
 export interface Staff {
@@ -274,15 +278,19 @@ export function hoursBase(days: readonly string[], hours: BusinessHours | null):
 /**
  * 관리 불가 시간과 겹치는 예약인가(결정 R50: 기존 예약은 그대로 두고 캘린더에서 겹침으로 보인다).
  * 점유 [시작−준비, 시작+관리)가 그 담당자에게 걸린 차단(매장 전체 포함)과 겹치면 true.
- * 표시용이다 — 저장 거부는 서버(#36 checkBooking)·DB가 한다.
- * 후속: "캘린더 연결" PR에서 서버가 주는 blockedBy(#42)를 쓰고 이 함수와 그 테스트를 지운다.
+ * 표시용이다 — 저장 거부는 서버(#36 checkBooking)가 한다.
+ * 실제 API는 예약마다 blockedBy(예약 전체 점유와 겹치는 차단 id, 설계 09 D5)를 준다 — 있으면 그걸 쓴다.
+ * 조회 창 밖 차단이라 blocks에 없어도 id가 있으면 겹침이다. 가짜 저장소는 blockedBy가 없어 여기서 계산한다.
  */
 export function overlapsBlock(a: CalendarAppointment, blocks: readonly CalendarBlock[]): boolean {
+  if (a.blockedBy) return a.blockedBy.length > 0;
   return overlappingBlocks(a, blocks).length > 0;
 }
 
 /** 이 예약과 겹치는 관리 불가 시간들(예약 패널의 겹침 알림 문구에 쓴다). */
 export function overlappingBlocks(a: CalendarAppointment, blocks: readonly CalendarBlock[]): CalendarBlock[] {
+  // 서버 판정이 있으면 받은 차단 중 그 id만(시각·메모는 받은 차단에서만 보인다, 설계 09 D5).
+  if (a.blockedBy) return blocks.filter((b) => a.blockedBy!.includes(b.id));
   const start = Date.parse(a.startAt);
   const from = start - a.prepMin * MIN;
   const to = start + a.durationMin * MIN;
