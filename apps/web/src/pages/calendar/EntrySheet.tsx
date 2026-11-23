@@ -152,6 +152,7 @@ const NETWORK_TEXT = '저장 결과를 확인하지 못했어요. 같은 내용�
 const EDIT_CONFLICT_TEXT = '그사이 다른 곳에서 이 예약이 바뀌었어요. 최신 값을 불러와 확인한 뒤 다시 저장해 주세요.';
 const EDIT_UNKNOWN_TEXT = '바꾼 내용이 저장됐는지 확인하지 못했어요. 다시 저장하면 같은 요청으로 확인해요.';
 const EDIT_KEYS = ['customerId', 'menuId', 'staffId', 'startAt', 'durationMin', 'prepMin', 'memo'] as const;
+type EditKey = (typeof EDIT_KEYS)[number];
 
 function AppointmentForm({
   start,
@@ -230,15 +231,24 @@ function AppointmentForm({
   const unsettledEdit = useRef<{ change: AppointmentChange; key: string } | null>(null);
   /** 바꾸기에서 고객 칸을 건드렸는가 — 안 건드렸으면 고객은 그대로(숨긴 고객이어도 유지, 06 ③). */
   const customerTouched = useRef(false);
-  const fill = (a: CalendarAppointment) => {
-    setPicked({ id: a.customerId ?? null, name: a.customerName, phone: a.customerPhone ?? null });
-    setMenuId(a.menuId ?? '');
-    setDate(shopDate(Date.parse(a.startAt)));
-    setTime(shopTime(a.startAt));
-    setDuration(a.durationMin);
-    setPrep(a.prepMin);
-    setStaffId(a.staffId);
-    setMemo(a.memo ?? '');
+  /** 바꾸기에서 원장이 손댄 칸. 충돌 뒤 최신 값을 불러오면 손대지 않은 칸은 최신 값으로 맞춘다 — 다른 곳의 변경을 덮지 않게(#77 리뷰). */
+  const edited = useRef(new Set<EditKey>());
+  const mark = (...keys: EditKey[]) => {
+    for (const k of keys) edited.current.add(k);
+  };
+  /** 최신 상세로 칸을 채운다. only가 있으면 그 칸만. */
+  const fill = (a: CalendarAppointment, only?: (k: EditKey) => boolean) => {
+    const want = (k: EditKey) => !only || only(k);
+    if (want('customerId')) setPicked({ id: a.customerId ?? null, name: a.customerName, phone: a.customerPhone ?? null });
+    if (want('menuId')) setMenuId(a.menuId ?? '');
+    if (want('startAt')) {
+      setDate(shopDate(Date.parse(a.startAt)));
+      setTime(shopTime(a.startAt));
+    }
+    if (want('durationMin')) setDuration(a.durationMin);
+    if (want('prepMin')) setPrep(a.prepMin);
+    if (want('staffId')) setStaffId(a.staffId);
+    if (want('memo')) setMemo(a.memo ?? '');
   };
   const loadLatest = async (fillDraft: boolean) => {
     if (!start.editId) return;
@@ -248,6 +258,7 @@ function AppointmentForm({
       if (!a) return setError('예약을 찾을 수 없어요. 캘린더를 다시 불러와 주세요.');
       setBase(a);
       if (fillDraft) fill(a);
+      else fill(a, (k) => !edited.current.has(k));
     } catch {
       setLoadFailed(true);
     }
@@ -286,10 +297,17 @@ function AppointmentForm({
 
   const pickMenu = (id: string) => {
     touched(setMenuId)(id);
+    mark('menuId');
     const m = menus.find((x) => x.id === id);
     // 메뉴에 정해 둔 값만 덮어쓴다(06 D3).
-    if (m?.durationMin != null) setDuration(m.durationMin);
-    if (m?.prepMin != null) setPrep(m.prepMin);
+    if (m?.durationMin != null) {
+      setDuration(m.durationMin);
+      mark('durationMin');
+    }
+    if (m?.prepMin != null) {
+      setPrep(m.prepMin);
+      mark('prepMin');
+    }
   };
 
   /** 새 고객 등록. 성공하면 고른 고객에 id를 넣어 둔다 — 예약이 실패해 다시 저장해도 고객을 또 만들지 않는다. */
@@ -505,6 +523,7 @@ function AppointmentForm({
                 onChange={(e) => {
                   onDirty(true);
                   customerTouched.current = true;
+                  mark('customerId');
                   setError(null);
                   setSameName(null);
                   setPicked(null);
@@ -618,6 +637,7 @@ function AppointmentForm({
               value={date}
               onChange={(d) => {
                 touched(setDate)(d);
+                mark('startAt');
                 setStartEdited(true);
               }}
             />
@@ -632,6 +652,7 @@ function AppointmentForm({
               options={startTimes(date, businessHours)}
               onChange={(t) => {
                 touched(setTime)(t);
+                mark('startAt');
                 setStartEdited(true);
               }}
               phone={phone}
@@ -639,8 +660,26 @@ function AppointmentForm({
           </div>
         </div>
 
-        <Stepper label="관리 시간" value={duration} step={10} min={10} onChange={touched(setDuration)} />
-        <Stepper label="준비 시간" value={prep} step={5} min={0} onChange={touched(setPrep)} />
+        <Stepper
+          label="관리 시간"
+          value={duration}
+          step={10}
+          min={10}
+          onChange={(v) => {
+            touched(setDuration)(v);
+            mark('durationMin');
+          }}
+        />
+        <Stepper
+          label="준비 시간"
+          value={prep}
+          step={5}
+          min={0}
+          onChange={(v) => {
+            touched(setPrep)(v);
+            mark('prepMin');
+          }}
+        />
 
         {staff.length === 0 && (
           <Callout.Root tone="warning">
@@ -659,6 +698,7 @@ function AppointmentForm({
               value={staffId}
               onValueChange={(id) => {
                 touched(setStaffId)(id);
+                mark('staffId');
                 setStartEdited(true);
               }}
               className="flex flex-wrap gap-2"
@@ -684,7 +724,10 @@ function AppointmentForm({
               autoresize
               className="min-h-12"
               value={memo}
-              onChange={(e) => touched(setMemo)(e.target.value)}
+              onChange={(e) => {
+                touched(setMemo)(e.target.value);
+                mark('memo');
+              }}
             />
           </TextField.Root>
         </Field.Root>

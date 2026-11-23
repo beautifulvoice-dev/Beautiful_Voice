@@ -99,6 +99,16 @@ describe('W2 바꾸기', () => {
     expect(await screen.findByRole('alertdialog', { name: '입력한 내용이 저장되지 않았어요. 닫을까요?' })).toBeInTheDocument();
   });
 
+  it('바꾸기 중에 + 예약을 눌러도 편집 폼을 바꾸지 않는다 — 바꾼 입력이 사라지지 않는다(#77 리뷰)', async () => {
+    renderAt(spied().api);
+    const sheet = await openEdit();
+    await pickTime(sheet, '15:00');
+    await userEvent.click(screen.getByRole('button', { name: '예약' }));
+    expect(screen.getByRole('dialog', { name: '예약 바꾸기' })).toBe(sheet);
+    expect(screen.queryByRole('dialog', { name: '예약 넣기' })).not.toBeInTheDocument();
+    expect(sheet.querySelector('#entry-time')).toHaveTextContent('15:00');
+  });
+
   it('영업시간 밖으로 옮기면 W3와 같은 거부 문구, 저장하지 않는다', async () => {
     const { api, sent } = spied();
     renderAt(api);
@@ -127,6 +137,9 @@ describe('W2 바꾸기', () => {
     await closed();
     expect(sent.map((s) => s.change.version)).toEqual([1, 2]);
     expect(sent[1]!.key).not.toBe(sent[0]!.key);
+    // 손대지 않은 메모는 최신 값으로 맞춰져 다시 보내지 않는다 — 다른 곳의 변경을 덮지 않는다(#77 리뷰).
+    expect(Object.keys(sent[1]!.change).sort()).toEqual(['startAt', 'version']);
+    expect((await base.appointment(other!.id))?.memo).toBe('다른 곳에서 고침');
   });
 
   it('저장된 뒤 응답만 유실되면, 다시 저장은 같은 요청·같은 키로 확인한다', async () => {
