@@ -182,6 +182,26 @@ describe('처리하지 않은 서버 오류(#73 리뷰)', () => {
   });
 });
 
+describe('예약 바꾸기(W2 바꾸기)', () => {
+  it('상세 404는 null, PATCH는 version과 바뀐 칸만 — 화면 표시용 이름은 보내지 않는다', async () => {
+    const { api, sent } = fake({
+      'GET /appointments/none': [fail(404, 'NOT_FOUND')],
+      'PATCH /appointments/a1': [json(200, appt('a1', { version: 3, startAt: '2026-12-01T06:00:00.000Z' })), fail(409, 'VERSION_CONFLICT', { currentVersion: 4 })],
+    });
+    expect(await api.appointment('none')).toBeNull();
+    const r = await api.updateAppointment('a1', { version: 2, startAt: '2026-12-01T06:00:00.000Z', customerId: 'c2', customerName: '합성 둘', menuName: null }, { idempotencyKey: 'k-e' });
+    expect(r).toMatchObject({ ok: true, value: { version: 3 } });
+    expect(sent[1]).toMatchObject({ method: 'PATCH', key: 'k-e', body: { version: 2, startAt: '2026-12-01T06:00:00.000Z', customerId: 'c2' } });
+    expect(Object.keys(sent[1]!.body as object).sort()).toEqual(['customerId', 'startAt', 'version']);
+    expect(await api.updateAppointment('a1', { version: 2, memo: 'x' })).toMatchObject({ ok: false, reason: 'VERSION_CONFLICT' });
+  });
+
+  it('메뉴에 안 정한 시간은 null 그대로 넘긴다(06 D3)', async () => {
+    const { api } = fake({ 'GET /menus': [json(200, { items: [{ id: 'm1', name: '상담', defaultDurationMin: null, defaultPrepMin: 5, active: true, version: 1, ...meta }] })] });
+    expect(await api.menus()).toEqual([{ id: 'm1', name: '상담', durationMin: null, prepMin: 5 }]);
+  });
+});
+
 describe('예약 등록', () => {
   it('메뉴 id·준비 시간을 그대로 보내고, 영업시간 밖·겹침은 이유로 돌려준다', async () => {
     const { api, sent } = fake({

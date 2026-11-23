@@ -125,9 +125,13 @@ function CalendarScreen() {
   const step = (n: number) => go({ date: view === 'week' ? addDays(date, 7 * n) : addMonths(date, n) });
 
   const staffName = (id: string) => data?.staff.find((s) => s.id === id)?.name ?? '담당자 미상';
-  const newEntry = (start?: Partial<EntryStart>) =>
+  const newEntry = (start?: Partial<EntryStart>) => {
+    // 바꾸기(편집) 중에는 빈 칸·+ 예약으로 폼을 바꾸지 않는다 — 바꾼 입력이 확인 없이 사라지지 않게(#77 리뷰).
+    // 새 예약은 편집을 닫은 뒤(바꾼 게 있으면 닫기 확인) 연다.
+    if (entry?.editId) return;
     // `+ 예약`은 보고 있는 날짜만 채우고 시각은 원장이 고른다. 빈 칸은 그 날짜·시각·담당자 열(설계 06 D1).
     setEntry({ date: start?.date ?? date, time: start?.time ?? null, staffId: start?.staffId ?? (staffId === ALL ? null : staffId) });
+  };
 
   const changeStatus = async (a: CalendarAppointment, to: AppointmentStatus) => {
     const reason = (r: { reason: Parameters<typeof rejectText>[0]; conflictingIds: string[] }) =>
@@ -291,12 +295,25 @@ function CalendarScreen() {
         blocks={data?.blocks ?? []}
         onClose={() => setOpen(null)}
         onStatus={changeStatus}
+        // W2 바꾸기 → 같은 자리에서 W3 편집(설계 06 D4). 닫으면 이 예약 보기로 돌아온다.
+        onEdit={
+          canEnter
+            ? (a) => {
+                setOpenId(null);
+                setEntry({ date: shopDate(Date.parse(a.startAt)), time: null, staffId: a.staffId, editId: a.id });
+              }
+            : undefined
+        }
       />
       <EntrySheet
         start={entry}
         staff={data?.staff ?? []}
         businessHours={data?.businessHours ?? null}
-        onClose={() => setEntry(null)}
+        onClose={() => {
+          // 바꾸기를 닫으면 원래 예약 보기(W2)로 돌아간다(설계 06 D4).
+          if (entry?.editId) setOpenId(entry.editId);
+          setEntry(null);
+        }}
         onSaved={(d) => {
           setEntry(null);
           go({ date: d });
