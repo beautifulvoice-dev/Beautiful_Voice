@@ -319,7 +319,8 @@ describe('캘린더 화면', () => {
   it('취소된 예약은 캘린더에 없다', async () => {
     renderAt('/calendar?date=2026-11-18');
     const thursday = await screen.findByRole('region', { name: '11월 19일' });
-    expect(within(thursday).queryByRole('button')).not.toBeInTheDocument();
+    // 예약 칸은 없고, 관리 불가 칸(누르면 보기·지우기)만 있다.
+    expect(within(thursday).queryAllByRole('button').filter((b) => b.dataset.kind !== 'block')).toEqual([]);
     expect(within(thursday).getByText('관리 불가')).toBeInTheDocument();
     expect(within(thursday).getByText('점심')).toBeInTheDocument();
   });
@@ -945,10 +946,10 @@ describe('관리 불가 시간 W4', () => {
     expect(sheet.querySelector('#block-from')).toHaveTextContent('16:45');
     expect(sheet.querySelector('#block-to')).toHaveTextContent('17:00');
     await userEvent.click(within(sheet).getByRole('button', { name: '저장' }));
-    expect(createBlock).toHaveBeenCalledWith(expect.objectContaining({
-      startAt: '2026-11-22T07:45:00.000Z',
-      endAt: '2026-11-22T08:00:00.000Z',
-    }));
+    expect(createBlock).toHaveBeenCalledWith(
+      expect.objectContaining({ startAt: '2026-11-22T07:45:00.000Z', endAt: '2026-11-22T08:00:00.000Z' }),
+      expect.objectContaining({ idempotencyKey: expect.any(String) }),
+    );
   });
 
   it('날짜를 고른 날에 유효한 시간 후보가 없으면 저장을 막는다', async () => {
