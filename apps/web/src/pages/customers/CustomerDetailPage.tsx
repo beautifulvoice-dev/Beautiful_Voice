@@ -277,6 +277,14 @@ function InfoCard({ customer: c }: { customer: CustomerDetail }) {
 }
 
 function VisitsCard({ customer: c }: { customer: CustomerDetail }) {
+  // 실제 API에는 아직 방문 이력 조회가 없다(null) — '없음'과 구분해 준비 중으로 보인다(#72 리뷰).
+  if (c.visits === null) {
+    return (
+      <Card title="예약">
+        <p className="text-sm text-ink-soft">예약·방문 이력은 준비 중이에요</p>
+      </Card>
+    );
+  }
   const all = visitHistory(c.visits);
   // 다가오는 예약은 가까운 것부터, 지난 방문은 최근 것부터(visitHistory가 최근순).
   const upcoming = all.filter((v) => v.status === 'scheduled').reverse();
