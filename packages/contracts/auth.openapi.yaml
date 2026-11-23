@@ -34,7 +34,32 @@ paths:
                 required: [shopId]
                 properties:
                   shopId: {type: string, format: uuid}
+                  consent:
+                    type: object
+                    required: [version, text]
+                    properties:
+                      version: {type: string}
+                      text: {type: string}
         '401': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /api/auth/consent:
+    post:
+      summary: Record the signed-in owner's agreement to the displayed consent text
+      security: [{ownerSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version]
+              properties:
+                version: {type: string}
+      responses:
+        '204': {description: Consent recorded or previously accepted}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
         '503': {$ref: '#/components/responses/Error'}
   /api/shops/{shopId}:
     get:
@@ -54,6 +79,7 @@ paths:
                   id: {type: string, format: uuid}
                   name: {type: string}
         '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
         '503': {$ref: '#/components/responses/Error'}
 components:

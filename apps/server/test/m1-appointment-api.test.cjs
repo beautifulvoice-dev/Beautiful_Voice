@@ -56,7 +56,7 @@ before(async () => {
 after(async () => {
   await app?.close();
   try {
-    for (const table of ['idempotency_key', 'appointment_m1', 'staff', 'menu', 'customer', 'shop_closure', 'shop_settings', 'user_membership']) {
+    for (const table of ['idempotency_key', 'appointment_m1_event', 'appointment_m1', 'staff', 'menu', 'customer', 'shop_closure', 'shop_settings', 'user_membership']) {
       await admin.query(`DELETE FROM crm.${table} WHERE shop_id IN ($1, $2)`, [shopA, shopB]);
     }
     await admin.query('DELETE FROM crm.shop WHERE id IN ($1, $2)', [shopA, shopB]);
@@ -104,6 +104,38 @@ test('등록 201 → 상세 조회가 같은 값(UTC 저장, 준비 기본 0, �
   assert.equal(foreign.status, 404);
   assert.equal(foreign.body.code, 'NOT_FOUND');
   assert.equal((await call('GET', `${A}/not-a-uuid`)).status, 404);
+});
+
+test('M1 API 등록·수정·상태 변경은 원자적으로 이력이 남고 앱은 직접 추가할 수 없다', async () => {
+  const created = await book({ startAt: at('09', '10:00'), memo: '이전 메모' });
+  assert.equal(created.status, 201);
+  const { id } = created.body;
+  const updated = await patch(id, { version: 1, memo: '수정한 메모' });
+  assert.equal(updated.status, 200);
+  const cancelled = await call('PUT', `${A}/${id}/status`, { body: { version: 2, status: 'cancelled' } });
+  assert.equal(cancelled.status, 200);
+
+  const appDb = new DatabaseService();
+  try {
+    await appDb.withShop(shopA, async (client) => {
+      const { rows } = await client.query(
+        `SELECT version, event_type, before_change->>'memo' AS old_memo, after_change->>'status' AS status
+         FROM crm.appointment_m1_event WHERE appointment_id = $1 ORDER BY version`, [id],
+      );
+      assert.deepEqual(rows, [
+        { version: 1, event_type: 'created', old_memo: null, status: 'scheduled' },
+        { version: 2, event_type: 'updated', old_memo: '이전 메모', status: 'scheduled' },
+        { version: 3, event_type: 'status_changed', old_memo: '수정한 메모', status: 'cancelled' },
+      ]);
+    });
+    await appDb.withShop(shopB, async (client) => {
+      assert.equal((await client.query('SELECT 1 FROM crm.appointment_m1_event WHERE appointment_id = $1', [id])).rowCount, 0);
+    });
+    await assert.rejects(appDb.withShop(shopA, (client) =>
+      client.query('INSERT INTO crm.appointment_m1_event DEFAULT VALUES')), { code: '42501' });
+  } finally {
+    await appDb.onModuleDestroy();
+  }
 });
 
 test('같은 담당자 점유 겹침은 409(준비 시간 포함), 다른 담당자는 같은 시각 허용, 맞붙은 시각은 허용', async () => {

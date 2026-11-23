@@ -59,6 +59,16 @@ test('the app role can read and change only its current shop', async () => {
         'Blocked', shopB,
       ])).rowCount, 0);
     });
+    const consent = { version: randomUUID(), text: 'Synthetic consent' };
+    await db.recordOwnerConsent(memberA, consent);
+    await db.recordOwnerConsent(memberA, consent);
+    assert.equal(await db.ownerConsentAccepted(memberA, consent.version), true);
+    assert.equal(await db.ownerConsentAccepted(memberB, consent.version), false);
+    const { rows: [receipt] } = await admin.query(
+      'SELECT consent_text, accepted_at FROM crm.owner_consent WHERE user_id = $1', [memberA],
+    );
+    assert.equal(receipt.consent_text, consent.text);
+    assert.ok(receipt.accepted_at instanceof Date);
     await assert.rejects(
       db.withShop(shopA, (client) => client.query('DELETE FROM crm.user_membership')),
       { code: '42501' },
@@ -75,10 +85,35 @@ test('the app role can read and change only its current shop', async () => {
   } finally {
     await db.onModuleDestroy();
     await unscoped.end();
+    await admin.query('DELETE FROM crm.owner_consent WHERE user_id IN ($1, $2)', [memberA, memberB]);
     await admin.query('DELETE FROM crm.user_membership WHERE shop_id IN ($1, $2)', [shopA, shopB]);
     await admin.query('DELETE FROM crm.shop_settings WHERE shop_id IN ($1, $2)', [shopA, shopB]);
     await admin.query('DELETE FROM crm.shop WHERE id IN ($1, $2)', [shopA, shopB]);
     await admin.end();
+  }
+});
+
+test('AI cannot write settings, supervisors cannot write CRM, and owners cannot append history directly', async () => {
+  assert.ok(process.env.DATABASE_MIGRATION_URL);
+  const db = new Client({ connectionString: process.env.DATABASE_MIGRATION_URL });
+  await db.connect();
+  try {
+    for (const [role, sql] of [
+      ['bv_ai_executor', 'UPDATE crm.shop_settings SET business_hours = business_hours'],
+      ['bv_ops', "UPDATE crm.customer SET name = 'Synthetic customer'"],
+      ['bv_app', 'INSERT INTO crm.appointment_event DEFAULT VALUES'],
+    ]) {
+      await db.query('BEGIN');
+      try {
+        await db.query(`SET LOCAL ROLE ${role}`);
+        assert.equal((await db.query('SELECT current_user')).rows[0].current_user, role);
+        await assert.rejects(db.query(sql), { code: '42501' });
+      } finally {
+        await db.query('ROLLBACK');
+      }
+    }
+  } finally {
+    await db.end();
   }
 });
 
