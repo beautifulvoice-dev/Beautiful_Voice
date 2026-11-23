@@ -12,6 +12,7 @@ import {
   STATUS_TEXT,
   type CalendarAppointment,
   type CalendarData,
+  type CalendarBlock,
 } from '@/features/calendar/model';
 import { useSwipe } from '@/lib/useSwipe';
 import { cn } from '@/lib/utils';
@@ -26,6 +27,8 @@ interface Props {
   data: CalendarData;
   today: string;
   onOpen: (a: CalendarAppointment) => void;
+  /** 관리 불가 줄 누르기 → 보기·지우기(W4, 웹). */
+  onOpenBlock?: (b: CalendarBlock) => void;
   /** 폰(768px 미만): 칸엔 예약 수만, 날을 누르면 아래에 그날 목록(설계서 W1 "폰 · 월"). */
   phone?: boolean;
   /** 고른 날(주소 ?date=). 폰에서 아래 목록에 쓴다. */
@@ -38,7 +41,7 @@ interface Props {
 /** 웹 칸에 이름을 몇 건까지 적나 — 넘치면 "+N"(설계서 W1). */
 const NAMES_PER_DAY = 3;
 
-export function MonthView({ days, month, data, today, onOpen, phone = false, selected, onPick, onStep, staffName }: Props) {
+export function MonthView({ days, month, data, today, onOpen, onOpenBlock, phone = false, selected, onPick, onStep, staffName }: Props) {
   const shown = data.appointments.filter(isShown).sort((a, b) => a.startAt.localeCompare(b.startAt));
   const dayOf = (a: CalendarAppointment) => shopDate(Date.parse(a.startAt));
   const swipe = useSwipe((n) => onStep?.(n));
@@ -142,7 +145,13 @@ export function MonthView({ days, month, data, today, onOpen, phone = false, sel
                   const b = data.blocks.find((x) => x.id === id)!;
                   return (
                     <li key={id} data-kind="block" className={cn('truncate rounded-md px-1.5', KIND_CLASS.block)}>
-                      관리 불가{b.memo ? ` · ${b.memo}` : ''}
+                      {onOpenBlock ? (
+                        <button type="button" className="w-full truncate text-left" onClick={() => onOpenBlock(b)}>
+                          관리 불가{b.memo ? ` · ${b.memo}` : ''}
+                        </button>
+                      ) : (
+                        <>관리 불가{b.memo ? ` · ${b.memo}` : ''}</>
+                      )}
                     </li>
                   );
                 })}

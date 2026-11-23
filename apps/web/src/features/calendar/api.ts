@@ -74,7 +74,7 @@ export interface CalendarWriteOptions {
 export interface CalendarApi {
   /** 실제 예약 저장 API가 연결됐을 때만 true. */
   readonly persistsAppointments?: true;
-  /** 관리 불가 시간(W4)을 넣을 수 있는가. 서버 API는 BEA-179 전까지 없음 — 가짜 저장소만 true. */
+  /** 관리 불가 시간(W4)을 넣고 지울 수 있는가. 실제 API(BEA-179 서버)와 가짜 저장소 모두 true. */
   readonly supportsBlocks?: true;
   /** 매장 날짜 from ~ to(마지막 날 포함). 즉 from 0시 ~ to 다음 날 0시 사이에 점유·차단이 걸치는 것. 예약 API 계약도 같은 뜻으로 둔다. */
   range(from: string, to: string): Promise<CalendarData>;
@@ -86,8 +86,10 @@ export interface CalendarApi {
   updateAppointment(id: string, change: AppointmentChange, options?: CalendarWriteOptions): Promise<SaveResult<CalendarAppointment>>;
   /** 상태 바꾸기·고치기(W2, 결정 S5). 취소를 되살리면 겹침을 다시 검사한다. */
   setStatus(id: string, to: AppointmentStatus): Promise<SaveResult<CalendarAppointment>>;
-  /** 관리 불가 시간은 기존 예약을 막지 않는다(결정 R50). start < end만 검사. */
-  createBlock(input: NewBlock): Promise<CalendarBlock>;
+  /** 관리 불가 시간은 기존 예약을 막지 않는다(결정 R50). start < end만 검사. 실패는 던진다(NetworkError면 같은 키로 다시). */
+  createBlock(input: NewBlock, options?: CalendarWriteOptions): Promise<CalendarBlock>;
+  /** 관리 불가 시간 지우기(#42 DELETE ?version, 설계 09 D3). 결과를 돌려준다 — 화면이 저장 중에서 멈추지 않게. */
+  removeBlock(id: string, version: number | undefined, options?: CalendarWriteOptions): Promise<SaveResult<null>>;
 }
 
 /** 캘린더 데이터 → @bv/scheduling 검사 입력. */
@@ -208,9 +210,16 @@ export function createMemoryCalendarApi(seed: CalendarSeed = seedDesignScene(), 
     },
     async createBlock(input) {
       if (!(Date.parse(input.startAt) < Date.parse(input.endAt))) throw new Error('INVALID_PERIOD');
-      const created: CalendarBlock = { id: `nb${next++}`, ...input, staffIds: [...input.staffIds] };
+      const created: CalendarBlock = { id: `nb${next++}`, ...input, staffIds: [...input.staffIds], version: 1 };
       store.blocks.push(created);
       return { ...created };
+    },
+    async removeBlock(id, version) {
+      const i = store.blocks.findIndex((b) => b.id === id);
+      if (i < 0) return { ok: false, reason: 'NOT_FOUND', conflictingIds: [] };
+      if (version !== undefined && (store.blocks[i]!.version ?? 1) !== version) return { ok: false, reason: 'VERSION_CONFLICT', conflictingIds: [] };
+      store.blocks.splice(i, 1);
+      return { ok: true, value: null };
     },
   };
 }

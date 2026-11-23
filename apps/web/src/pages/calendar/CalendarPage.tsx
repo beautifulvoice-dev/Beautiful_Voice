@@ -39,6 +39,7 @@ import { FAKE_API } from '@/lib/apiMode';
 import { useLoad } from '@/lib/useLoad';
 import { cn } from '@/lib/utils';
 import { AppointmentPanel, PANEL_WIDTH } from './AppointmentPanel';
+import { BlockPanel } from './BlockPanel';
 import { EntrySheet, type EntryStart } from './EntrySheet';
 import { MonthView } from './MonthView';
 import { WeekStrip } from './WeekStrip';
@@ -101,11 +102,17 @@ function CalendarScreen() {
   const load = useCallback(() => api.range(from, to), [api, from, to]);
   const { state, reload } = useLoad<CalendarData>(load);
   const [openId, setOpenId] = useState<string | null>(null);
+  // 관리 불가 시간 보기·지우기(W4). 창구가 지원할 때만 칸을 누를 수 있다.
+  const [blockId, setBlockId] = useState<string | null>(null);
   const [entry, setEntry] = useState<EntryStart | null>(null);
   // 닫히면 누른 예약 칸으로 초점을 돌려준다(키보드 사용자, 설계 §6).
   const opener = useRef<HTMLElement | null>(null);
   const setOpen = (a: CalendarAppointment | null) => {
-    if (a) opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (a) {
+      opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      // 패널은 한 번에 하나 — 관리 불가 시간 패널이 열려 있으면 닫는다(#86 리뷰).
+      setBlockId(null);
+    }
     setOpenId(a?.id ?? null);
     if (!a && !entry) requestAnimationFrame(() => opener.current?.focus());
   };
@@ -115,6 +122,13 @@ function CalendarScreen() {
   // 폰 배치엔 담당자 칩이 없으므로 거르기를 쓰지 않는다 — 웹에서 고른 뒤 폭이 좁아져도 다른 담당자 예약이 숨지 않게(#66 리뷰).
   const shown = data ? forStaff(data, phone || staffId === ALL ? null : staffId) : null;
   const open = data?.appointments.find((a) => a.id === openId) ?? null;
+  const openBlock =
+    api.supportsBlocks === true && !entry
+      ? (b: { id: string }) => {
+          setOpenId(null);
+          setBlockId(b.id);
+        }
+      : undefined;
 
   const go = (next: Partial<{ view: View; date: string }>) =>
     setParams({ view: next.view ?? view, date: next.date ?? date }, { replace: true });
@@ -122,6 +136,8 @@ function CalendarScreen() {
 
   const staffName = (id: string) => data?.staff.find((s) => s.id === id)?.name ?? '담당자 미상';
   const newEntry = (start?: Partial<EntryStart>) => {
+    // 예약 넣기를 열면 관리 불가 시간 패널은 닫는다(#86 리뷰).
+    setBlockId(null);
     if (openId !== null) {
       setOpenId(null);
       // 상세 뒤에 보존한 폼이 있으면 이어서 입력한다.
@@ -207,7 +223,7 @@ function CalendarScreen() {
     // 웹 패널은 모달이 아니라 격자 위에 뜨므로, 열려 있는 동안 패널 폭만큼 오른쪽을 비워 격자를 좁힌다(설계 §6, 디자인 padding-right 424px).
     <div
       className={cn('flex flex-col', !phone && 'gap-[18px] p-6')}
-      style={(open || entry) && !phone ? { paddingRight: PANEL_WIDTH + 24 } : undefined}
+      style={(open || entry || blockId) && !phone ? { paddingRight: PANEL_WIDTH + 24 } : undefined}
     >
       <h1 className="sr-only">캘린더</h1>
       {phone ? (
@@ -284,6 +300,7 @@ function CalendarScreen() {
             today={today}
             now={Date.now()}
             onOpen={setOpen}
+            onOpenBlock={openBlock}
             staffName={staffName}
             phone={phone}
             onEmpty={canEnter ? (d, minute, lane) => newEntry({ date: d, time: hhmm(minute), staffId: lane }) : undefined}
@@ -297,6 +314,7 @@ function CalendarScreen() {
           data={shown}
           today={today}
           onOpen={setOpen}
+          onOpenBlock={openBlock}
           phone={phone}
           selected={date}
           onPick={(d) => go({ date: d })}
@@ -305,6 +323,15 @@ function CalendarScreen() {
         />
       )}
 
+      <BlockPanel
+        block={data?.blocks.find((b) => b.id === blockId) ?? null}
+        data={data}
+        onClose={() => setBlockId(null)}
+        onRemoved={(reloadOnly) => {
+          if (!reloadOnly) setBlockId(null);
+          reload();
+        }}
+      />
       <AppointmentPanel
         appointment={open}
         staffName={open ? staffName(open.staffId) : ''}

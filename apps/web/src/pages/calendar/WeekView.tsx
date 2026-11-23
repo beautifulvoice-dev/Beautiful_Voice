@@ -18,7 +18,9 @@ import {
   type CalendarAppointment,
   type CalendarData,
   type Segment,
+  type CalendarBlock,
 } from '@/features/calendar/model';
+import { blockPeriodText } from './BlockPanel';
 import { cn } from '@/lib/utils';
 import { KIND_CLASS, OVERLAP_CLASS, STATUS_CLASS, STATUS_TONE } from './styles';
 
@@ -54,6 +56,8 @@ interface Props {
   staffName?: (id: string) => string;
   /** 빈 칸 누르기: 그 날, 그 날 0시부터 분(15분 단위), 담당자(칸이 나뉘었을 때). */
   onEmpty?: (date: string, minute: number, staffId: string | null) => void;
+  /** 관리 불가 칸 누르기 → 보기·지우기(W4). 없으면 칸은 누를 수 없다. */
+  onOpenBlock?: (b: CalendarBlock) => void;
   /** 폰 하루 시간표(디자인 .tl) — 1시간 64px, 시간 글자 "10:00". */
   phone?: boolean;
 }
@@ -64,7 +68,7 @@ function closedLabel(date: string, closures: readonly Closure[]): string {
   return closures.some((c) => c.kind === 'weekly' && c.weekday === weekday) ? '정기 휴무' : '휴무';
 }
 
-export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, phone = false }: Props) {
+export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, onOpenBlock, phone = false }: Props) {
   const hourPx = phone ? 64 : 48;
   const px = (min: number) => (min * hourPx) / 60;
   const byDay = days.map((d) => segmentsForDay(d, data));
@@ -153,16 +157,18 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, p
     const badgeClass = cn(CARD_BADGE, small && SMALL_CARD_BADGE);
     if (s.kind === 'block') {
       const b = block.get(s.sourceId)!;
+      const Tag = onOpenBlock ? 'button' : 'div';
       return (
-        <div
+        <Tag
           key={key}
           data-kind="block"
-          className={cn('absolute flex flex-col gap-px overflow-hidden rounded-lg [&>*]:shrink-0 px-[7px] py-[5px]', fs, KIND_CLASS.block)}
+          {...(onOpenBlock ? { type: 'button' as const, onClick: () => onOpenBlock(b), 'aria-label': `관리 불가 시간 ${blockPeriodText(b)}${b.memo ? ` · ${b.memo}` : ''}` } : {})}
+          className={cn('absolute flex flex-col gap-px overflow-hidden rounded-lg text-left [&>*]:shrink-0 px-[7px] py-[5px]', fs, KIND_CLASS.block)}
           style={pos}
         >
           <b className="truncate font-bold text-ink">관리 불가{b.allStaff && lanes.length > 1 ? ' · 전체' : ''}</b>
           {b.memo && <span className="truncate">{b.memo}</span>}
-        </div>
+        </Tag>
       );
     }
     const a = appt.get(s.sourceId)!;
