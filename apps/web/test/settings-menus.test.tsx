@@ -64,11 +64,25 @@ describe('메뉴 화면', () => {
     await press(d, '관리 시간 정하기'); // 60분
     await press(d, '준비 시간 정하기'); // 10분
     await press(d, '준비 시간 5분 늘리기', 2); // 20분
-    expect(minutes(d, '준비 시간')).toHaveTextContent('20');
+    expect(minutes(d, '준비 시간')).toHaveValue('20');
     await save(d);
     await closed();
     expect(await rows()).toContain('얼굴 관리관리 60분 · 준비 20분›');
     expect((await api.listMenus()).at(-1)).toMatchObject({ name: '얼굴 관리', defaultDurationMin: 60, defaultPrepMin: 20 });
+  });
+
+  it('5분 간격이 아닌 분도 숫자 칸에 직접 넣어 저장한다(#78 리뷰)', async () => {
+    const api = createMemorySettingsApi();
+    renderAt('/settings/menus', api);
+    await userEvent.click(await screen.findByRole('button', { name: /수분 관리/ }));
+    const d = await sheet();
+    await userEvent.clear(minutes(d, '준비 시간'));
+    await userEvent.type(minutes(d, '준비 시간'), '7');
+    await userEvent.clear(minutes(d, '관리 시간'));
+    await userEvent.type(minutes(d, '관리 시간'), '63');
+    await save(d);
+    await closed();
+    expect((await api.listMenus()).find((m) => m.name === '수분 관리')).toMatchObject({ defaultDurationMin: 63, defaultPrepMin: 7 });
   });
 
   it('시간을 비워도 저장된다', async () => {
@@ -86,7 +100,7 @@ describe('메뉴 화면', () => {
     renderAt('/settings/menus', api);
     await userEvent.click(await screen.findByRole('button', { name: /수분 관리/ }));
     const d = await sheet();
-    expect(minutes(d, '관리 시간')).toHaveTextContent('60');
+    expect(minutes(d, '관리 시간')).toHaveValue('60');
     await press(d, '관리 시간 5분 늘리기', 3); // 75분
     await save(d);
     await closed();
@@ -100,7 +114,7 @@ describe('메뉴 화면', () => {
     const d = await sheet();
     await press(d, '관리 시간 정하기');
     await press(d, '관리 시간 5분 줄이기', 11); // 60 → 5에서 멈춤
-    expect(minutes(d, '관리 시간')).toHaveTextContent('5');
+    expect(minutes(d, '관리 시간')).toHaveValue('5');
     expect(btn(d, '관리 시간 5분 줄이기')).toBeDisabled();
     await save(d);
     expect(await within(d).findByText('이름을 입력해 주세요.')).toBeInTheDocument();

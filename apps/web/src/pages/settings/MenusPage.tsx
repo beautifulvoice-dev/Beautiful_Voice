@@ -265,6 +265,7 @@ function MenuSheet({
 /**
  * 관리·준비 시간(분). 디자인 부품표(§9.2): SEED QuantityPicker. 비울 수 있어서(명세 S3) "정하지 않음 · 정하기"와 "비우기"를 둔다.
  * ASSUMPTION: 간격·범위(MinutesRange)는 명세에 없어 화면이 정한다 — 범위 밖 값이 저장돼 있으면 그대로 보이고 버튼만 막힌다.
+ * 숫자 칸은 직접 고칠 수 있다 — 서버(validateMenu)가 받는 정수 분(예 7분)을 버튼 간격과 상관없이 넣을 수 있게(#78 리뷰).
  */
 function MinutesField({
   label,
@@ -298,7 +299,7 @@ function MinutesField({
         <div className="flex min-h-11 items-center gap-2">
           <QuantityPicker.Root value={value} min={Math.min(range.min, value)} max={Math.max(range.max, value)} step={range.step} onValueChange={onChange}>
             <QuantityPicker.DecrementButton aria-label={`${label} ${range.step}분 줄이기`} icon={<MinusIcon />} />
-            <QuantityPicker.ValueDisplay aria-label={`${label} 분`} />
+            <MinutesInput label={`${label} 분`} value={value} onChange={onChange} />
             <QuantityPicker.IncrementButton aria-label={`${label} ${range.step}분 늘리기`} icon={<PlusIcon />} />
             <QuantityPicker.HiddenInput />
           </QuantityPicker.Root>
@@ -311,6 +312,26 @@ function MinutesField({
       {error && <span className="text-critical-text">{error}</span>}
       {help && <span className="text-ink-soft">{help}</span>}
     </div>
+  );
+}
+
+/** 분 숫자 칸. 고치는 중에는 빈칸도 허용하고, 정수가 되면 바로 반영한다. 칸을 벗어나면 현재 값으로 되돌린다. */
+function MinutesInput({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      aria-label={label}
+      value={draft ?? String(value)}
+      onChange={(e) => {
+        const text = e.target.value.replace(/[^0-9]/gu, '').slice(0, 3);
+        setDraft(text);
+        if (text !== '') onChange(Number(text));
+      }}
+      onBlur={() => setDraft(null)}
+      className="w-12 rounded-md border border-line bg-transparent py-1 text-center text-base text-ink"
+    />
   );
 }
 
