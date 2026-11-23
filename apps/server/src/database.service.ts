@@ -48,6 +48,14 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /** 읽기 전용 한 스냅샷(REPEATABLE READ). 캘린더처럼 여러 조회를 한 시점으로 묶을 때 쓴다(설계 09 D5). */
+  async withShopSnapshot<T>(shopId: string, run: (client: PoolClient) => Promise<T>): Promise<T> {
+    return this.inTransaction(async (client) => {
+      await client.query(`SELECT set_config('app.shop_id', $1::uuid::text, true)`, [shopId]);
+      return run(client);
+    }, 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+  }
+
   // Use only the internal user ID obtained after verifying the caller's identity.
   async findOwnerShop(authenticatedUserId: string): Promise<string | null> {
     return this.inTransaction(async (client) => {
@@ -72,12 +80,12 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private async inTransaction<T>(run: (client: PoolClient) => Promise<T>): Promise<T> {
+  private async inTransaction<T>(run: (client: PoolClient) => Promise<T>, begin = 'BEGIN'): Promise<T> {
     if (!this.pool) throw new Error('DATABASE_URL is required');
     const client = await this.pool.connect();
     let discardClient = false;
     try {
-      await client.query('BEGIN');
+      await client.query(begin);
       const result = await run(client);
       await client.query('COMMIT');
       return result;
