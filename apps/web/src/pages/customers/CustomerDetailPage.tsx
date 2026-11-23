@@ -8,9 +8,9 @@
 // ASSUMPTION: "고객 된 날"은 계약 Customer에 필드가 없어 넣지 않는다.
 import { ActionButton, AlertDialog, Badge, Icon, Popover, Tabs, useBreakpointValue } from '@seed-design/react';
 import { Ellipsis, MessageSquare } from 'lucide-react';
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { NetworkError } from '@/lib/http';
+import { HttpError, NetworkError } from '@/lib/http';
 import { useRetryKey } from '@/lib/retryKey';
 import { shortDate } from '@/features/calendar/bookingText';
 import { shopDate, shopTime } from '@/features/calendar/model';
@@ -58,12 +58,15 @@ function CustomerView({ customer: c, onChanged }: { customer: CustomerDetail; on
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+  const changingActive = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   // 같은 바꾸기를 다시 보내면(응답 유실 뒤) 같은 Idempotency-Key — 서버가 첫 결과를 돌려준다(#81 리뷰, 설계 05 D5).
   const retryKey = useRetryKey();
   const setActive = async (active: boolean) => {
+    if (changingActive.current) return;
+    changingActive.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -73,8 +76,9 @@ function CustomerView({ customer: c, onChanged }: { customer: CustomerDetail; on
       setConfirming(false);
       onChanged();
     } catch (err) {
-      // 응답을 못 받았으면 키를 남겨 다시 누를 때 같은 요청으로 보낸다. 그 밖(서버 거절)은 확정.
-      if (!(err instanceof NetworkError)) retryKey.settle();
+      // 연결이 끊기거나 5xx가 오면 서버에 반영됐을 수 있어 같은 키로 다시 보낸다.
+      const resultUnknown = err instanceof NetworkError || (err instanceof HttpError && err.status >= 500);
+      if (!resultUnknown) retryKey.settle();
       if (err instanceof CustomerConflictError) {
         // 그사이 다른 곳에서 고객을 바꿨다 — 최신 고객을 다시 읽어 상태를 보여 주고, 필요하면 다시 고르게 한다(#81 리뷰).
         setConfirming(false);
@@ -84,6 +88,7 @@ function CustomerView({ customer: c, onChanged }: { customer: CustomerDetail; on
         setError('바꾸지 못했어요. 잠시 뒤 다시 해 주세요.');
       }
     } finally {
+      changingActive.current = false;
       setBusy(false);
     }
   };
@@ -144,7 +149,7 @@ function CustomerView({ customer: c, onChanged }: { customer: CustomerDetail; on
           </ActionButton>
           <Popover.Root open={menuOpen} onOpenChange={setMenuOpen} placement="bottom-end">
             <Popover.Trigger asChild>
-              <ActionButton variant="ghost" size="medium" layout="iconOnly" aria-label="더보기">
+              <ActionButton variant="ghost" size="medium" layout="iconOnly" aria-label="더보기" disabled={busy}>
                 <Icon svg={<Ellipsis />} />
               </ActionButton>
             </Popover.Trigger>

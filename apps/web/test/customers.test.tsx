@@ -8,7 +8,7 @@ import { RouterProvider } from 'react-router/dom';
 import { describe, expect, it } from 'vitest';
 import { SessionLoaderProvider } from '@/features/auth/session';
 import { createMemoryCustomerApi, CustomerApiProvider, CustomerConflictError, type CustomerApi } from '@/features/customers/api';
-import { NetworkError } from '@/lib/http';
+import { HttpError, NetworkError } from '@/lib/http';
 import { formatBirthdate, shopToday, visitHistory, type Visit } from '@/features/customers/model';
 import { routes } from '@/routes';
 import { setTestWidth } from './setup';
@@ -330,7 +330,11 @@ describe('비활성 바꾸기 — 응답 유실·충돌 (#81 리뷰)', () => {
     await userEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: '비활성으로 바꾸기' }));
   };
 
-  it('응답을 못 받고 다시 누르면 같은 Idempotency-Key로 보낸다', async () => {
+  it.each([
+    ['연결 끊김', new NetworkError()],
+    ['502', new HttpError(502, 'BAD_GATEWAY')],
+    ['504', new HttpError(504, 'GATEWAY_TIMEOUT')],
+  ])('%s 후 다시 누르면 같은 Idempotency-Key로 보낸다', async (_label, error) => {
     setTestWidth(1280);
     const real = createMemoryCustomerApi(seed());
     const keys: (string | undefined)[] = [];
@@ -341,7 +345,7 @@ describe('비활성 바꾸기 — 응답 유실·충돌 (#81 리뷰)', () => {
         keys.push(o?.idempotencyKey);
         if (lose) {
           lose = false;
-          throw new NetworkError();
+          throw error;
         }
         return real.setActive(id, active, o);
       },
@@ -353,7 +357,41 @@ describe('비활성 바꾸기 — 응답 유실·충돌 (#81 리뷰)', () => {
     await userEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '비활성으로 바꾸기' }));
     expect(await screen.findByText('비활성')).toBeInTheDocument();
     expect(keys).toHaveLength(2);
+    expect(keys[0]).toBeTruthy();
     expect(keys[1]).toBe(keys[0]);
+  });
+
+  it('다시 활성으로 바꾸는 동안 더보기 메뉴를 열 수 없다', async () => {
+    setTestWidth(1280);
+    const real = createMemoryCustomerApi(seed());
+    await real.setActive('a', false);
+    let release = () => {};
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let attempts = 0;
+    const api: CustomerApi = {
+      ...real,
+      setActive: async (id, active, options) => {
+        attempts += 1;
+        await pending;
+        return real.setActive(id, active, options);
+      },
+    };
+
+    renderAt('/customers/a', api);
+    await screen.findByText('비활성');
+    const menu = screen.getByRole('button', { name: '더보기' });
+    await userEvent.click(menu);
+    await userEvent.click(await screen.findByRole('button', { name: '다시 활성으로' }));
+    expect(menu).toBeDisabled();
+    await userEvent.click(menu);
+    expect(menu).toHaveAttribute('aria-expanded', 'false');
+    expect(attempts).toBe(1);
+
+    release();
+    await waitFor(() => expect(screen.getByRole('button', { name: '예약 넣기' })).toBeEnabled());
+    expect(screen.getByRole('button', { name: '더보기' })).toBeEnabled();
   });
 
   it('version 충돌이면 최신 고객을 다시 읽어 보여 주고 알린다(다른 기기에서 이미 비활성으로 바꾼 경우)', async () => {
