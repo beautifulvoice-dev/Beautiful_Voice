@@ -895,6 +895,27 @@ describe('관리 불가 시간 W4', () => {
     await waitFor(() => expect(within(monday).getByRole('button', { name: /박지민/ })).toHaveAttribute('data-overlap', 'true'));
   });
 
+  it('시작을 마감 직전으로 바꾸면 끝은 그날 마감 안에서 맞춘다(#76 리뷰)', async () => {
+    const sheet = await openBlock();
+    await userEvent.click(within(sheet).getByRole('radio', { name: '관리 불가 시간' }));
+    await pick(sheet, 'block-from', '21:45');
+    expect(sheet.querySelector('#block-to')).toHaveTextContent('22:00'); // 22:45가 아니라 영업 마감 22:00
+  });
+
+  it('입력이 있으면 예약 ↔ 관리 불가를 바꾸기 전에 묻고, 계속 입력하면 그대로 둔다(#76 리뷰)', async () => {
+    const sheet = await openBlock();
+    const memo = within(sheet).getByRole('textbox', { name: /메모/ });
+    await userEvent.type(memo, '합성 메모');
+    await userEvent.click(within(sheet).getByRole('radio', { name: '관리 불가 시간' }));
+    const ask = await screen.findByRole('alertdialog', { name: '입력한 내용이 사라져요. 관리 불가 시간으로 바꿀까요?' });
+    await userEvent.click(within(ask).getByRole('button', { name: '계속 입력' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(within(sheet).getByRole('textbox', { name: /메모/ })).toHaveValue('합성 메모');
+    await userEvent.click(within(sheet).getByRole('radio', { name: '관리 불가 시간' }));
+    await userEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: '바꾸기' }));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: '관리 불가 시간' })).toBe(sheet));
+  });
+
   it('실제 API 모드(차단 API 없음, BEA-179 전)에선 세그먼트가 꺼져 있고 "곧 열려요"', async () => {
     const sheet = await openBlock({ ...API(), supportsBlocks: undefined });
     expect(within(sheet).getByRole('radio', { name: '관리 불가 시간' })).toBeDisabled();

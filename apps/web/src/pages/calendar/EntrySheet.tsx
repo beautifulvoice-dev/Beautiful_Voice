@@ -65,6 +65,13 @@ export function EntrySheet({ start, staff, businessHours = null, onClose, onSave
   // 입력을 바꿨으면 닫기 전에 묻는다(설계 06 D4). 저장 중에는 닫지 않는다.
   const [dirty, setDirty] = useState(false);
   const [asking, setAsking] = useState(false);
+  // 입력이 있는데 예약 ↔ 관리 불가를 바꾸면 그 입력이 사라진다 — 먼저 묻는다(#76 리뷰, 닫기 확인과 같은 규칙).
+  const [pendingKind, setPendingKind] = useState<Kind | null>(null);
+  const switchKind = (next: Kind) => {
+    if (next === kind) return;
+    if (dirty) setPendingKind(next);
+    else setKind(next);
+  };
   const saving = useRef(false);
   const [busy, setBusy] = useState(false);
   const setSaving = (next: boolean) => {
@@ -94,7 +101,7 @@ export function EntrySheet({ start, staff, businessHours = null, onClose, onSave
                 <Icon svg={<X />} />
               </ActionButton>
             </div>
-            <SegmentedControl.Root aria-label="종류" value={kind} onValueChange={(v) => setKind(v as Kind)} className="w-full">
+            <SegmentedControl.Root aria-label="종류" value={kind} onValueChange={(v) => switchKind(v as Kind)} className="w-full">
               <SegmentedControl.Indicator />
               <SegmentedControl.Item value="appointment">
                 <SegmentedControlItemHiddenInput />
@@ -133,6 +140,38 @@ export function EntrySheet({ start, staff, businessHours = null, onClose, onSave
               }}
             />
           )}
+          <AlertDialog.Root open={pendingKind !== null} onOpenChange={(open) => !open && setPendingKind(null)}>
+            <AlertDialog.Backdrop />
+            <AlertDialog.Positioner>
+              <AlertDialog.Content>
+                <AlertDialog.Header>
+                  <AlertDialog.Title>
+                    입력한 내용이 사라져요. {pendingKind === 'block' ? '관리 불가 시간' : '예약'}으로 바꿀까요?
+                  </AlertDialog.Title>
+                </AlertDialog.Header>
+                <AlertDialog.Footer>
+                  <AlertDialog.Action asChild>
+                    <ActionButton variant="neutralWeak" size="large" flexGrow={1}>
+                      계속 입력
+                    </ActionButton>
+                  </AlertDialog.Action>
+                  <ActionButton
+                    variant="criticalSolid"
+                    size="large"
+                    flexGrow={1}
+                    onClick={() => {
+                      if (!pendingKind) return;
+                      setDirty(false);
+                      setKind(pendingKind);
+                      setPendingKind(null);
+                    }}
+                  >
+                    바꾸기
+                  </ActionButton>
+                </AlertDialog.Footer>
+              </AlertDialog.Content>
+            </AlertDialog.Positioner>
+          </AlertDialog.Root>
           {/* 확인 창은 시트 안에 둔다 — 밖에 두면 폰 아래 시트 뒤로 가려진다(W2 취소 확인과 같은 자리). */}
           <AlertDialog.Root open={asking} onOpenChange={setAsking}>
             <AlertDialog.Backdrop />
@@ -674,9 +713,21 @@ function BlockForm({
 }) {
   const api = useCalendarApi();
   const phone = useIsPhone();
+  /** 그날 시작 f 뒤에 고를 수 있는 끝 시각: 시작보다 늦은 15분 단위, 마지막은 그날 마지막 시작 + 15분(영업 마감). */
+  const endsFor = (d: string, f: string) => {
+    const st = startTimes(d, businessHours);
+    const list = [...st.slice(1), toHhmm(toMinutes(st.at(-1) ?? '20:45') + 15)].filter((t) => toMinutes(t) > toMinutes(f));
+    return list.length > 0 ? list : [toHhmm(Math.min(24 * 60 - 15, toMinutes(f) + 15))];
+  };
+  /** 끝을 그 목록 안에서 — 원하는 길이(want분) 이하에서 가장 늦은 끝, 없으면 첫 끝. 마감을 넘는 끝이 저장되지 않게(#76 리뷰). */
+  const fitEnd = (d: string, f: string, want: number) => {
+    const list = endsFor(d, f);
+    const limit = toMinutes(f) + want;
+    return list.filter((t) => toMinutes(t) <= limit).at(-1) ?? list[0]!;
+  };
   const [date, setDate] = useState(start.date);
   const [from, setFrom] = useState(start.time ?? '10:00');
-  const [to, setTo] = useState(toHhmm(Math.min(24 * 60 - 15, toMinutes(start.time ?? '10:00') + 120)));
+  const [to, setTo] = useState(() => fitEnd(start.date, start.time ?? '10:00', 120));
   const [allStaff, setAllStaff] = useState(false);
   const [who, setWho] = useState<string[]>(start.staffId ? [start.staffId] : staff.length === 1 ? [staff[0]!.id] : []);
   const [memo, setMemo] = useState('');
@@ -687,7 +738,7 @@ function BlockForm({
 
   const starts = startTimes(date, businessHours);
   // 끝: 시작보다 늦은 15분 단위, 마지막은 그날 마지막 시작 + 15분(영업 마감)
-  const ends = [...starts.slice(1), toHhmm(toMinutes(starts.at(-1) ?? '20:45') + 15)].filter((t) => toMinutes(t) > toMinutes(from));
+  const ends = endsFor(date, from);
   const startAt = shopIso(date, from);
   const endAt = shopIso(date, to);
   const valid = Date.parse(startAt) < Date.parse(endAt);
@@ -747,6 +798,7 @@ function BlockForm({
             value={date}
             onChange={(d) => {
               setDate(d);
+              if (!endsFor(d, from).includes(to)) setTo(fitEnd(d, from, 60));
               touch();
             }}
           />
@@ -763,7 +815,7 @@ function BlockForm({
               phone={phone}
               onChange={(t) => {
                 setFrom(t);
-                if (toMinutes(to) <= toMinutes(t)) setTo(toHhmm(Math.min(24 * 60 - 15, toMinutes(t) + 60)));
+                if (!endsFor(date, t).includes(to)) setTo(fitEnd(date, t, 60));
                 touch();
               }}
             />
