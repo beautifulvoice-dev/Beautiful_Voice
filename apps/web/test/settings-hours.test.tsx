@@ -60,17 +60,16 @@ describe('영업시간 값 바꾸기', () => {
     expect(remove.map((c) => c.id)).toEqual(['a', 'b']); // 화요일(t)은 이 화면에서 안 바꿨으니 그대로
   });
 
-  it('목록 한 줄 요약', () => {
+  it('목록 한 줄 요약(W13 디자인: 가장 흔한 시간 · 정기 휴무 요일)', () => {
     expect(hoursSummary(null)).toBe('아직 안 넣음');
     expect(hoursSummary({})).toBe('모두 쉬는 날');
-    expect(hoursSummary(seedSettings().businessHours)).toBe('화~일');
-    const w = [{ open: '10:00', close: '18:00' }];
-    expect(hoursSummary({ '1': w, '3': w, '5': w })).toBe('월·수·금');
-    expect(hoursSummary({ '6': w, '7': w })).toBe('토·일');
-    // 영업시간에 남아 있어도 매주 휴무 요일은 빼고 센다(#63 리뷰).
-    expect(hoursSummary({ '1': w, '2': w, '3': w, '4': w }, [2])).toBe('월·수·목');
+    expect(hoursSummary(seedSettings().businessHours, [1])).toBe('10:00–20:00 외 · 월요일 정기 휴무');
+    const w = [{ open: '10:00', close: '20:00' }];
+    const all = { '1': w, '2': w, '3': w, '4': w, '5': w, '6': w, '7': w };
+    expect(hoursSummary(all)).toBe('10:00–20:00');
+    // 영업시간에 남아 있어도 매주 휴무 요일은 쉬는 날로 센다(#63 리뷰).
+    expect(hoursSummary(all, [3])).toBe('10:00–20:00 · 수요일 정기 휴무');
   });
-
   it('30분 단위가 아닌 저장 값도 목록에 남긴다 · 오류 위치에서 요일을 꺼낸다', () => {
     expect(timeOptions(['10:00', '10:30'], '10:15')).toEqual(['10:00', '10:15', '10:30']);
     expect(weekdayAt('2[0]')).toBe(2);
@@ -84,7 +83,7 @@ describe('설정 목록', () => {
     setTestWidth(375);
     const router = renderAt('/settings');
     const list = await screen.findByRole('list', { name: '설정 항목' });
-    const info = await within(list).findByRole('link', { name: /매장 정보.*영업시간 화~일/ });
+    const info = await within(list).findByRole('link', { name: /매장 정보.*영업시간 10:00–20:00/ });
     expect(within(list).getAllByRole('link').map((a) => a.textContent?.split(/\d|영업|다음|없음|원장/)[0])).toEqual(['매장 정보', '휴무·휴가', '메뉴', '담당자']);
     for (const name of ['AI 반영 방식', '문자 양식', '마이크', '내 정보']) {
       expect(within(list).getByText(name).closest('[aria-disabled="true"]')).toHaveTextContent('곧 열려요');
@@ -98,7 +97,7 @@ describe('설정 목록', () => {
     const nav = await screen.findByRole('navigation', { name: '설정 항목' });
     expect(within(nav).getByRole('link', { name: '매장 정보' })).toHaveAttribute('aria-current');
     expect(await screen.findByRole('heading', { name: '매장 정보' })).toBeInTheDocument();
-    await userEvent.click(await screen.findByRole('link', { name: /화~일/ }));
+    await userEvent.click(await screen.findByRole('link', { name: /10:00–20:00/ }));
     expect(router.state.location.pathname).toBe('/settings/hours');
     await userEvent.click(within(nav).getByRole('link', { name: '메뉴' }));
     expect(router.state.location.pathname).toBe('/settings/menus');

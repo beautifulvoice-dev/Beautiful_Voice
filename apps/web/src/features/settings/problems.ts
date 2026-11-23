@@ -1,5 +1,6 @@
 // 저장이 실패했을 때 화면이 보여 줄 것. 오류 종류(클래스)를 원장이 읽을 문장과 칸 표시로 바꾼다.
 import type { ResourceField } from '@bv/scheduling/shop-settings';
+import { HttpError } from '@/lib/http';
 import { FieldsInvalidError, SettingsInvalidError, SettingsNotFoundError, VersionConflictError } from './api';
 import { CONFLICT_TEXT, fieldErrorText, SETTINGS_ERROR_TEXT } from './messages';
 
@@ -12,11 +13,14 @@ export type SaveProblem =
   | { kind: 'conflict'; message: string }
   /** 이미 지워진 항목 — 목록을 다시 불러와야 한다. */
   | { kind: 'gone'; message: string }
-  /** 연결 끊김 등 — 같은 내용으로 다시 시도할 수 있다. */
+  /** 서버가 쓰기를 거절함(세션 만료·4xx 등) — 이 키는 끝났으니 다음 저장은 새 키를 쓴다(#72 리뷰). */
+  | { kind: 'rejected'; message: string }
+  /** 연결 끊김·5xx 등 저장됐는지 모름 — 같은 키로 다시 보내야 중복 등록이 안 된다(#75 리뷰). */
   | { kind: 'failed'; message: string };
 
 export const GONE_TEXT = '이미 지워진 항목이에요. 목록을 새로 불러왔어요.';
 export const FAILED_TEXT = '저장하지 못했어요. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.';
+export const REJECTED_TEXT = '저장하지 못했어요. 잠시 뒤 다시 시도해 주세요.';
 
 export function toSaveProblem(err: unknown): SaveProblem {
   if (err instanceof FieldsInvalidError) {
@@ -30,6 +34,14 @@ export function toSaveProblem(err: unknown): SaveProblem {
   }
   if (err instanceof VersionConflictError) return { kind: 'conflict', message: CONFLICT_TEXT };
   if (err instanceof SettingsNotFoundError) return { kind: 'gone', message: GONE_TEXT };
+  if (err instanceof HttpError) {
+    // 5xx(502·504 포함)는 서버가 저장을 마친 뒤 응답만 잃었을 수 있다 — 같은 키를 남겨 재전송 시 응답 재생을 받는다(#75 리뷰).
+    // 연결 문제는 아니니 "인터넷 연결" 문구 대신 일반 문구를 쓴다.
+    if (err.status >= 500) return { kind: 'failed', message: REJECTED_TEXT };
+    // 4xx(세션 만료 등) — 서버가 쓰기를 거절했다. 다음 저장은 새 키.
+    return { kind: 'rejected', message: REJECTED_TEXT };
+  }
+  // 응답을 못 받았다(NetworkError 등) — 서버에 닿았는지 모르니 같은 키로 다시 보낸다.
   return { kind: 'failed', message: FAILED_TEXT };
 }
 

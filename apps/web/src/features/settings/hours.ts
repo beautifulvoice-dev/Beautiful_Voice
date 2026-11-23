@@ -77,18 +77,22 @@ export function fromDraft(draft: HoursDraft): BusinessHours {
 }
 
 /**
- * 설정 목록에 보일 한 줄. 예: "화~일", "월·수·금", "아직 안 넣음".
- * @param weeklyDays 매주 휴무 요일 — 영업시간에 남아 있어도 영업하는 날로 세지 않는다(#63 리뷰).
+ * 설정 목록에 보일 한 줄(W13 디자인 "영업시간 10:00–20:00 · 수요일 정기 휴무").
+ * 영업하는 날의 가장 흔한 시간을 보이고, 다른 시간이 섞이면 "외"를 붙인다. 쉬는 요일은 "○요일 정기 휴무"로.
+ * @param weeklyDays 매주 휴무 요일 — 영업시간에 남아 있어도 쉬는 날로 센다(#63 리뷰).
  */
 export function hoursSummary(hours: BusinessHours | null, weeklyDays: readonly Weekday[] = []): string {
   if (hours === null) return '아직 안 넣음';
-  const open = WEEKDAYS.filter((d) => (hours[String(d) as keyof BusinessHours]?.length ?? 0) > 0 && !weeklyDays.includes(d));
+  const windowOf = (d: Weekday) => (weeklyDays.includes(d) ? undefined : hours[String(d) as keyof BusinessHours]);
+  const open = WEEKDAYS.filter((d) => (windowOf(d)?.length ?? 0) > 0);
   if (open.length === 0) return '모두 쉬는 날';
-  const first = open[0]!;
-  const last = open[open.length - 1]!;
-  const continuous = last - first + 1 === open.length;
-  if (continuous && open.length >= 3) return `${WEEKDAY_TEXT[first]}~${WEEKDAY_TEXT[last]}`;
-  return open.map((d) => WEEKDAY_TEXT[d]).join('·');
+  const texts = open.map((d) => windowOf(d)!.map((w) => `${w.open}–${w.close}`).join(', '));
+  const counts = new Map<string, number>();
+  for (const t of texts) counts.set(t, (counts.get(t) ?? 0) + 1);
+  const common = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]![0];
+  const time = counts.size > 1 ? `${common} 외` : common;
+  const closed = WEEKDAYS.filter((d) => !open.includes(d));
+  return closed.length ? `${time} · ${closed.map((d) => WEEKDAY_TEXT[d]).join('·')}요일 정기 휴무` : time;
 }
 
 /** 저장 오류 위치("2[0]" 또는 "2")에서 요일만 꺼낸다. 화면에서 그 요일 줄에 문구를 단다. */

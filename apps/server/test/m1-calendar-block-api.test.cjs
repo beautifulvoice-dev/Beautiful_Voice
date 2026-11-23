@@ -241,6 +241,22 @@ test('RLS: 앱 역할은 다른 매장 차단을 보지 못하고, 부모 차단
   }
 });
 
+test('#85 역할: AI 실행기는 배정 매장 차단만 읽고 쓸 수 없다, 운영 감독은 모든 매장을 읽기만', async () => {
+  const b = await block({ startAt: at('10', '14:00'), endAt: at('10', '15:00') });
+  for (const [role, shop, visible] of [['bv_ai_executor', shopA, 1], ['bv_ai_executor', shopB, 0], ['bv_ops', shopB, 1]]) {
+    await admin.query('BEGIN');
+    try {
+      await admin.query(`SET LOCAL ROLE ${role}`);
+      await admin.query("SELECT set_config('app.shop_id', $1, true)", [shop]);
+      assert.equal((await admin.query('SELECT 1 FROM crm.calendar_block WHERE id = $1', [b.body.id])).rowCount, visible, `${role} ${shop === shopA ? 'A' : 'B'}`);
+      assert.equal((await admin.query('SELECT 1 FROM crm.calendar_block_staff WHERE block_id = $1', [b.body.id])).rowCount, visible);
+      await assert.rejects(admin.query("UPDATE crm.calendar_block SET memo = 'x' WHERE id = $1", [b.body.id]), { code: '42501' });
+    } finally {
+      await admin.query('ROLLBACK');
+    }
+  }
+});
+
 test('지연 제약: 지정 차단에 담당자가 없거나 전체 차단에 담당자가 있으면 커밋 실패, 제거된 차단은 다시 못 바꾼다', async () => {
   const orphan = randomUUID();
   await admin.query('BEGIN');
