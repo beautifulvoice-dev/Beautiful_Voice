@@ -30,7 +30,7 @@ export function ClosuresPage() {
 
   return (
     <div className="flex flex-col gap-4 px-4 pt-6 md:max-w-lg">
-      <Link to="/settings" className="text-sm text-ink-soft">
+      <Link to="/settings" className="text-sm text-ink-soft md:hidden">
         ‹ 설정
       </Link>
       <h1 className="text-xl font-semibold text-ink">휴무·휴가</h1>
