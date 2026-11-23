@@ -229,6 +229,13 @@ describe('동명이인 확인과 입력이 어긋나지 않는다 (#32 리뷰)',
   });
 });
 
+describe('등록 시트 주소 (#79 리뷰)', () => {
+  it('/customers/new/ 처럼 끝에 슬래시가 있어도 등록 시트가 열린다', async () => {
+    renderAt('/customers/new/');
+    expect(await screen.findByRole('dialog', { name: '고객 등록' })).toBeInTheDocument();
+  });
+});
+
 describe('고객 상세: 정보·예약·방문 이력 (명세 3 2A-2.4)', () => {
   it('다가오는 예약과 지난 방문을 나눠, 원장이 표시한 상태 그대로 보인다. 지갑·문자는 자리만 있다(W6 디자인, 웹 두 칸)', async () => {
     setTestWidth(1280);
