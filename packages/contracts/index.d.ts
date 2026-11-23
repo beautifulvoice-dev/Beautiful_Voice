@@ -31,6 +31,7 @@ export interface Page<T> {
 
 
 export interface OwnerSessionResponse {
+  consent?: { version: string; text: string };
   shopId: string;
 }
 

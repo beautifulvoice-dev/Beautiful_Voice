@@ -17,6 +17,7 @@ test('browser login issues a session and only authorizes the current shop', asyn
   let isOwner = true;
   let membership = shopId;
   let kakaoCalls = 0;
+  const accepted = new Map();
   let shopReads = 0;
   const browserFetch = globalThis.fetch;
   t.mock.method(globalThis, 'fetch', async (url) => {
@@ -34,6 +35,12 @@ test('browser login issues a session and only authorizes the current shop', asyn
       assert.equal(id, userId);
       return membership;
     },
+    async ownerConsentAccepted(id, version) {
+      return accepted.get(id)?.version === version;
+    },
+    async recordOwnerConsent(id, consent) {
+      accepted.set(id, consent);
+    },
     async withShop(id, run) {
       assert.equal(id, shopId);
       shopReads++;
@@ -46,10 +53,13 @@ test('browser login issues a session and only authorizes the current shop', asyn
     },
   };
   const settings = {
+    NODE_ENV: 'production',
     KAKAO_CLIENT_ID: 'test-app',
     KAKAO_CLIENT_SECRET: 'test-secret',
     KAKAO_REDIRECT_URI: 'https://example.test/api/auth/kakao/callback',
     BV_SESSION_SECRET: 'ab'.repeat(32),
+    BV_OWNER_CONSENT_VERSION: 'test-v1',
+    BV_OWNER_CONSENT_TEXT: 'Synthetic consent',
   };
   const originalEnv = Object.fromEntries(Object.keys(settings).map((key) => [key, process.env[key]]));
   Object.assign(process.env, settings);
@@ -97,7 +107,7 @@ test('browser login issues a session and only authorizes the current shop', asyn
   assert.equal(login.headers.get('referrer-policy'), 'no-referrer');
   const [cleared, issued] = login.headers.getSetCookie();
   assert.match(cleared, /^bv_oauth_state=; Max-Age=0/);
-  assert.match(issued, /^bv_session=.+Path=\/api; HttpOnly; SameSite=Lax; Secure$/);
+  assert.match(issued, /^bv_session=.+Max-Age=2592000; Path=\/api; HttpOnly; SameSite=Lax; Secure$/);
   const sessionCookie = issued.split(';')[0];
   const signatureAt = sessionCookie.lastIndexOf('.') + 1;
   const tampered = sessionCookie.slice(0, signatureAt) + (sessionCookie[signatureAt] === 'x' ? 'y' : 'x')
@@ -107,7 +117,33 @@ test('browser login issues a session and only authorizes the current shop', asyn
   assert.equal((await request('/api/shops/' + shopId)).status, 401);
   const session = await request('/api/auth/session', sessionCookie);
   assert.equal(session.status, 200);
-  assert.deepEqual(await session.json(), { shopId });
+  const pending = await session.json();
+  assert.equal(pending.shopId, shopId);
+  assert.equal(pending.consent.text, 'Synthetic consent');
+  assert.equal((await request('/api/shops/' + shopId, sessionCookie)).status, 403);
+  const accept = (version, origin) => browserFetch(base + '/api/auth/consent', {
+    method: 'POST',
+    headers: { Cookie: sessionCookie, Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ version }),
+  });
+  assert.equal((await accept(pending.consent.version, 'https://other.test')).status, 403);
+  assert.equal((await accept('old', 'https://example.test')).status, 409);
+  delete process.env.BV_OWNER_CONSENT_VERSION;
+  delete process.env.BV_OWNER_CONSENT_TEXT;
+  try {
+    assert.equal((await request('/api/auth/kakao/start')).status, 503);
+    assert.equal((await request(callback + state, stateCookie)).status, 503);
+    assert.equal((await request('/api/auth/session', sessionCookie)).status, 503);
+    assert.equal((await request('/api/shops/' + shopId, sessionCookie)).status, 503);
+    assert.equal((await accept(pending.consent.version, 'https://example.test')).status, 503);
+    assert.equal(accepted.size, 0);
+  } finally {
+    process.env.BV_OWNER_CONSENT_VERSION = settings.BV_OWNER_CONSENT_VERSION;
+    process.env.BV_OWNER_CONSENT_TEXT = settings.BV_OWNER_CONSENT_TEXT;
+  }
+  assert.equal((await accept(pending.consent.version, 'https://example.test')).status, 204);
+  assert.deepEqual(accepted.get(userId), pending.consent);
+  assert.deepEqual(await (await request('/api/auth/session', sessionCookie)).json(), { shopId });
   const blocked = await request('/api/shops/' + otherShop, sessionCookie);
   assert.equal(blocked.status, 404);
   assert.equal((await blocked.json()).code, 'SHOP_NOT_FOUND');

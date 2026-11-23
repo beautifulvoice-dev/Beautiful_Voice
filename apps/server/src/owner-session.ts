@@ -1,11 +1,23 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { ApiError } from './common/api-error';
 import type { KakaoLoginConfig } from './kakao-login';
 
 export const SESSION_COOKIE = 'bv_session';
 export const STATE_COOKIE = 'bv_oauth_state';
-export const SESSION_SECONDS = 8 * 60 * 60;
+export const SESSION_SECONDS = 30 * 24 * 60 * 60;
 export const STATE_SECONDS = 5 * 60;
 export const CALLBACK_PATH = '/api/auth/kakao/callback';
+
+export function ownerConsent() {
+  const { BV_OWNER_CONSENT_VERSION, BV_OWNER_CONSENT_TEXT } = process.env;
+  if (process.env.NODE_ENV !== 'production' && !BV_OWNER_CONSENT_VERSION && !BV_OWNER_CONSENT_TEXT) return null;
+  if (!BV_OWNER_CONSENT_VERSION?.trim() || !BV_OWNER_CONSENT_TEXT?.trim()) {
+    throw new ApiError(503, 'AUTH_UNAVAILABLE', '로그인을 사용할 수 없습니다.');
+  }
+  const text = BV_OWNER_CONSENT_TEXT;
+  const version = createHash('sha256').update(JSON.stringify([BV_OWNER_CONSENT_VERSION, text])).digest('hex');
+  return { version, text };
+}
 
 export function authConfig(): (KakaoLoginConfig & { key: Buffer; secure: boolean }) | null {
   const { KAKAO_CLIENT_ID, KAKAO_CLIENT_SECRET, KAKAO_REDIRECT_URI, BV_SESSION_SECRET } = process.env;

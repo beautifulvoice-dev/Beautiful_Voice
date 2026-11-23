@@ -80,12 +80,12 @@ export class AppointmentService {
         await this.reassign(client, shopId, decision.reassign);
         ({ lane, isForced } = decision);
       }
+      await this.eventContext(client, ctx);
       const { rows: [row] } = await client.query<Row>(
         `INSERT INTO crm.appointment (shop_id, period, prep_minutes, occupied, lane, is_forced, status)
          VALUES ($1, tstzrange($2, $3), $4, tstzrange($2, $5), $6, $7, $8) RETURNING ${COLUMNS}`,
         [shopId, input.start, input.end, prep, occupied({ ...input, prepMinutes: prep }).end, lane, isForced, initial.to],
       );
-      await this.event(client, shopId, row!.id, 'created', null, initial.to, ctx, null, snapshot(row!));
       return { status: 201, body: view(row!, now) };
     });
   }
@@ -101,13 +101,13 @@ export class AppointmentService {
       const prep = input.prepMinutes ?? current.prep_minutes;
       const decision = await this.decideOrThrow(client, shopId, { ...input, prepMinutes: prep }, id);
       await this.reassign(client, shopId, decision.reassign);
+      await this.eventContext(client, ctx);
       const { rows: [row] } = await client.query<Row>(
         `UPDATE crm.appointment SET period = tstzrange($3, $4), prep_minutes = $5, occupied = tstzrange($3, $6),
            lane = $7, is_forced = $8, version = version + 1, updated_at = now()
          WHERE shop_id = $1 AND id = $2 RETURNING ${COLUMNS}`,
         [shopId, id, input.start, input.end, prep, occupied({ ...input, prepMinutes: prep }).end, decision.lane, decision.isForced],
       );
-      await this.event(client, shopId, id, 'moved', current.status, row!.status, ctx, snapshot(current), snapshot(row!));
       return { status: 200, body: view(row!, now) };
     });
   }
@@ -120,12 +120,12 @@ export class AppointmentService {
       if (!result.ok) {
         throw new ApiError(result.error === 'ACTOR_NOT_ALLOWED' ? 403 : 409, result.error, 'This appointment cannot be canceled');
       }
+      await this.eventContext(client, ctx);
       const { rows: [row] } = await client.query<Row>(
         `UPDATE crm.appointment SET status = $3, version = version + 1, updated_at = now()
          WHERE shop_id = $1 AND id = $2 RETURNING ${COLUMNS}`,
         [shopId, id, result.to],
       );
-      await this.event(client, shopId, id, 'cancel', result.event.from, result.to, ctx, snapshot(current), snapshot(row!));
       return { status: 200, body: view(row!, now) };
     });
   }
@@ -217,14 +217,10 @@ export class AppointmentService {
     return row;
   }
 
-  private async event(
-    client: PoolClient, shopId: string, id: string, type: string, from: string | null, to: string,
-    ctx: WriteContext, before: object | null, after: object,
-  ) {
+  private async eventContext(client: PoolClient, ctx: WriteContext) {
     await client.query(
-      `INSERT INTO crm.appointment_event (shop_id, appointment_id, type, from_status, to_status, actor, source, before, after)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [shopId, id, type, from, to, ctx.actor, ctx.source, before && JSON.stringify(before), JSON.stringify(after)],
+      "SELECT set_config('app.event_actor', $1, true), set_config('app.event_source', $2, true)",
+      [ctx.actor, ctx.source],
     );
   }
 }
