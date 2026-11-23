@@ -1,11 +1,11 @@
 import type { CalendarBlock } from '@bv/contracts';
-import { Body, Controller, Delete, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Param, Patch, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { idempotentWrite, type WriteRequest, type WriteResponse } from '../common/idempotent-write';
 import { OwnerShopGuard } from '../common/owner-shop.guard';
 import { DatabaseService } from '../database.service';
 import { CalendarBlockService } from './calendar-block.service';
 
-// 계약 #42 캘린더 차단 등록·제거(BEA-179). 수정(PATCH)은 후속 PR(설계 09 D2).
+// 계약 #42 캘린더 차단 등록·수정·제거(BEA-179, 설계 09 D2).
 @Controller('api/shops/:shopId/calendar-blocks')
 @UseGuards(OwnerShopGuard)
 export class CalendarBlockController {
@@ -17,6 +17,14 @@ export class CalendarBlockController {
     @Req() request: WriteRequest, @Res({ passthrough: true }) response: WriteResponse,
   ): Promise<CalendarBlock> {
     return idempotentWrite(this.database, shopId, request, response, 201, (client) => this.blocks.create(client, shopId, body));
+  }
+
+  @Patch(':blockId')
+  update(
+    @Param('shopId') shopId: string, @Param('blockId') id: string, @Body() body: unknown,
+    @Req() request: WriteRequest, @Res({ passthrough: true }) response: WriteResponse,
+  ): Promise<CalendarBlock> {
+    return idempotentWrite(this.database, shopId, request, response, 200, (client) => this.blocks.update(client, shopId, id, body));
   }
 
   @Delete(':blockId')
