@@ -1,5 +1,5 @@
 // 설정 창구의 실제 API 구현(#45·#46 서버, 계약 #42). 화면은 SettingsApi만 안다 — 서버 오류 code를 기존 오류 클래스로 옮긴다.
-import type { BusinessHours, BusinessHoursBody, Closure, Menu, Staff } from '@bv/contracts';
+import type { BusinessHours, BusinessHoursBody, Closure, Menu, ShopInfo, Staff } from '@bv/contracts';
 import type { ResourceErrorCode, ResourceField, SettingsError } from '@bv/scheduling/shop-settings';
 import { HttpError, shopPath, type Http } from '@/lib/http';
 import { randomKey } from './useSaveAction';
@@ -37,6 +37,8 @@ export function createHttpSettingsApi(http: Http, shopId: string): SettingsApi {
       const r = await mapped(http.send<BusinessHoursBody>('PUT', path('settings', 'business-hours'), { body: { businessHours: hours }, ...key(o) }));
       return r.businessHours as BusinessHours | null;
     },
+    getShopInfo: () => mapped(http.get<ShopInfo>(path('settings', 'shop-info'))),
+    putShopInfo: (info, o) => mapped(http.send<ShopInfo>('PUT', path('settings', 'shop-info'), { body: info, ...key(o) })),
     async listClosures() {
       return (await mapped(http.get<{ items: Closure[] }>(path('closures')))).items;
     },

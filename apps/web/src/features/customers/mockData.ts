@@ -35,5 +35,7 @@ export function seedCustomers(): MemorySeed {
 /** 개발 서버 기본 데이터: 위 고객 + 캘린더 디자인 장면의 고객(같은 id, 예약 넣기 W3 검색에 나온다). */
 export function seedCustomersWithScene(): MemorySeed {
   const base = seedCustomers();
-  return { ...base, customers: [...base.customers, ...SCENE_CUSTOMERS.map((c) => ({ ...c }))] };
+  // 비활성 고객 하나(W5 비활성 칩 확인용, 합성)
+  const inactive = { id: 'c9', name: '한지우', phone: '01000000009', memo: null, active: false };
+  return { ...base, customers: [...base.customers, ...SCENE_CUSTOMERS.map((c) => ({ ...c })), inactive] };
 }

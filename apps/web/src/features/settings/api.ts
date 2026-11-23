@@ -2,11 +2,12 @@
 // 화면은 이 인터페이스만 안다. 모양은 M1 계약(@bv/contracts crm)과 같고, 서버가 생기면 구현만 바꾼다(고객 화면과 같은 방식).
 // 입력 검사는 서버와 같은 함수(@bv/scheduling/shop-settings)를 쓴다 — 규칙을 두 벌 두지 않는다(절대 규칙 4).
 // 설정은 사람만 바꾼다. AI 실행기에는 설정 쓰기 권한이 없다(결정 R0).
-import type { BusinessHours, Closure, ClosureInput, Menu, MenuInput, MenuPatch, Staff, StaffPatch } from '@bv/contracts';
+import type { BusinessHours, Closure, ClosureInput, Menu, MenuInput, MenuPatch, ShopInfo, Staff, StaffPatch } from '@bv/contracts';
 import {
   validateBusinessHours,
   validateClosure,
   validateMenu,
+  validateShopInfo,
   validateStaff,
   type ResourceErrorCode,
   type ResourceField,
@@ -68,6 +69,9 @@ export interface SettingsApi {
   getBusinessHours(): Promise<BusinessHours | null>;
   /** 통째로 바꾼다. 이미 있는 예약은 그대로 둔다(파생 S2). */
   putBusinessHours(hours: BusinessHours | null, options?: WriteOptions): Promise<BusinessHours | null>;
+  /** 매장 정보(W13): 위치·링크 3개·환불 정책. version 없이 통째로 바꾼다(#42). */
+  getShopInfo(): Promise<ShopInfo>;
+  putShopInfo(info: ShopInfo, options?: WriteOptions): Promise<ShopInfo>;
   listClosures(): Promise<Closure[]>;
   addClosure(input: ClosureInput, options?: WriteOptions): Promise<Closure>;
   /** 휴무는 고치지 않고 추가·삭제만 한다(그래서 version이 없다). */
@@ -83,6 +87,8 @@ export interface SettingsApi {
 
 export interface SettingsSeed {
   businessHours: BusinessHours | null;
+  /** 없으면 모든 칸이 빈 매장. */
+  shopInfo?: ShopInfo;
   closures: Closure[];
   menus: Menu[];
   staff: Staff[];
@@ -105,6 +111,9 @@ const clone = <T,>(v: T): T => structuredClone(v);
  */
 export function createMemorySettingsApi(seed: SettingsSeed = seedSettings(), now: () => Date = () => new Date()): SettingsApi {
   let businessHours = clone(seed.businessHours);
+  let shopInfo: ShopInfo = clone(
+    seed.shopInfo ?? { refundPolicy: null, naverPlaceUrl: null, instagramUrl: null, landingUrl: null, locationText: null },
+  );
   const closures = clone(seed.closures);
   const menus = clone(seed.menus);
   const staff = clone(seed.staff);
@@ -145,6 +154,18 @@ export function createMemorySettingsApi(seed: SettingsSeed = seedSettings(), now
       });
     },
 
+    async getShopInfo() {
+      return clone(shopInfo);
+    },
+    putShopInfo(info, options) {
+      return once(options, async () => {
+        const r = validateShopInfo(info);
+        // 칸 이름이 메뉴·담당자와 달라도 같은 422 VALIDATION_FAILED 모양이다.
+        if (!r.ok) throw new FieldsInvalidError(r.errors as unknown as FieldsInvalidError['errors']);
+        shopInfo = { ...r.value };
+        return clone(shopInfo);
+      });
+    },
     async listClosures() {
       return closures.map(clone);
     },

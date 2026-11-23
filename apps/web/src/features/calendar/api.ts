@@ -18,7 +18,8 @@ import { seedDesignScene, SCENE_MENUS } from './mockData';
 import { dayStart, type AppointmentStatus, type CalendarAppointment, type CalendarBlock, type CalendarData, type Menu } from './model';
 
 /** 가짜 저장소에 넣는 값. 영업시간·휴무를 빼면 "안 넣은 매장"으로 본다. */
-export type CalendarSeed = Omit<CalendarData, 'businessHours' | 'closures' | 'hoursUnavailable'> & Partial<Pick<CalendarData, 'businessHours' | 'closures'>>;
+export type CalendarSeed = Omit<CalendarData, 'businessHours' | 'closures' | 'hoursUnavailable'> &
+  Partial<Pick<CalendarData, 'businessHours' | 'closures'>>;
 
 /** 예약 넣기(W3) 입력. 시각은 UTC ISO. */
 export interface NewAppointment {
@@ -34,6 +35,14 @@ export interface NewAppointment {
   /** 실제 API는 메뉴를 id로 저장한다(계약 #42). 가짜 저장소는 이름만 쓴다. */
   menuId?: string | null;
 }
+
+/**
+ * 예약 바꾸기(W2 바꾸기 → W3 편집) 입력. 읽은 version과 바뀐 칸만 보낸다(계약 #42 PATCH).
+ * 이름 칸(customerName·customerPhone·menuName)은 가짜 저장소의 카드 표시용 — 실제 API는 보내지 않는다.
+ */
+export type AppointmentChange = Partial<
+  Pick<CalendarAppointment, 'customerId' | 'customerName' | 'customerPhone' | 'menuId' | 'menuName' | 'staffId' | 'startAt' | 'durationMin' | 'prepMin' | 'memo'>
+> & { version: number };
 
 /** 관리 불가 시간 넣기(W4) 입력. */
 export type NewBlock = Omit<CalendarBlock, 'id'>;
@@ -65,10 +74,16 @@ export interface CalendarWriteOptions {
 export interface CalendarApi {
   /** 실제 예약 저장 API가 연결됐을 때만 true. */
   readonly persistsAppointments?: true;
+  /** 관리 불가 시간(W4)을 넣을 수 있는가. 서버 API는 BEA-179 전까지 없음 — 가짜 저장소만 true. */
+  readonly supportsBlocks?: true;
   /** 매장 날짜 from ~ to(마지막 날 포함). 즉 from 0시 ~ to 다음 날 0시 사이에 점유·차단이 걸치는 것. 예약 API 계약도 같은 뜻으로 둔다. */
   range(from: string, to: string): Promise<CalendarData>;
   menus(): Promise<Menu[]>;
   createAppointment(input: NewAppointment, options?: CalendarWriteOptions): Promise<SaveResult<CalendarAppointment>>;
+  /** 예약 한 건의 최신 상세(바꾸기 전에 version을 받는다). 없으면 null. */
+  appointment(id: string): Promise<CalendarAppointment | null>;
+  /** 예약 바꾸기. 시간·담당자가 바뀌면 서버가 겹침·영업시간을 다시 본다(04 Q1·D2). */
+  updateAppointment(id: string, change: AppointmentChange, options?: CalendarWriteOptions): Promise<SaveResult<CalendarAppointment>>;
   /** 상태 바꾸기·고치기(W2, 결정 S5). 취소를 되살리면 겹침을 다시 검사한다. */
   setStatus(id: string, to: AppointmentStatus): Promise<SaveResult<CalendarAppointment>>;
   /** 관리 불가 시간은 기존 예약을 막지 않는다(결정 R50). start < end만 검사. */
@@ -129,6 +144,7 @@ export function createMemoryCalendarApi(seed: CalendarSeed = seedDesignScene(), 
   };
 
   return {
+    supportsBlocks: true,
     async range(from, to) {
       const f = dayStart(from);
       const t = dayStart(to) + 86_400_000;
@@ -155,6 +171,27 @@ export function createMemoryCalendarApi(seed: CalendarSeed = seedDesignScene(), 
       const created: CalendarAppointment = { id: `n${next++}`, ...input, status: 'scheduled' };
       store.appointments.push(created);
       return { ok: true, value: { ...created } };
+    },
+    async appointment(id) {
+      const a = store.appointments.find((x) => x.id === id);
+      return a ? { ...a, version: a.version ?? 1 } : null;
+    },
+    async updateAppointment(id, change) {
+      const a = store.appointments.find((x) => x.id === id);
+      if (!a) return { ok: false, reason: 'NOT_FOUND', conflictingIds: [] };
+      if ((a.version ?? 1) !== change.version) return { ok: false, reason: 'VERSION_CONFLICT', conflictingIds: [] };
+      const { version, ...fields } = change;
+      const after = { ...a, ...fields };
+      const end = (x: CalendarAppointment) => Date.parse(x.startAt) + x.durationMin * 60_000;
+      const moved = after.startAt !== a.startAt || end(after) !== end(a);
+      const timing = moved || after.prepMin !== a.prepMin || after.staffId !== a.staffId;
+      // 서버와 같은 재검사 범위(04 Q1·D2): 시작·끝이 바뀌면 영업시간까지, 준비·담당자만 바뀌면 겹침만.
+      if (timing && (after.status === 'scheduled' || after.status === 'completed' || after.status === 'no_show')) {
+        const r = check(after, a.id, !moved);
+        if (!r.ok) return r;
+      }
+      Object.assign(a, fields, { version: version + 1 });
+      return { ok: true, value: { ...a } };
     },
     async setStatus(id, to) {
       const a = store.appointments.find((x) => x.id === id);

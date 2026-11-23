@@ -9,9 +9,6 @@ import { HttpError, NetworkError, shopPath, type Http } from '@/lib/http';
 import type { CalendarApi, SaveReject, SaveResult } from './api';
 import { isShown, type CalendarAppointment, type Menu } from './model';
 
-/** 메뉴에 시간을 안 정했을 때 W3가 쓰는 기본값(설계 06 D3). ASSUMPTION: W3 실제 연결(06) 전까지 창구에서 채운다. */
-const DEFAULT_DURATION_MIN = 60;
-const DEFAULT_PREP_MIN = 10;
 
 const REJECTS: readonly string[] = [
   'STAFF_OVERLAP', 'BLOCKED', 'OUTSIDE_BUSINESS_HOURS', 'CLOSED_DAY', 'INVALID_TRANSITION', 'NO_CHANGE', 'VERSION_CONFLICT', 'NOT_FOUND',
@@ -45,6 +42,9 @@ function toReject(err: unknown): SaveResult<never> {
   if (err instanceof HttpError && err.status === 401) return { ok: false, reason: 'UNAUTHENTICATED', conflictingIds: [] };
   return { ok: false, reason: 'FAILED', conflictingIds: [] };
 }
+
+/** 화면 표시용 칸 — 바꾸기 요청에 싣지 않는다. */
+const DISPLAY_ONLY = new Set(['customerName', 'customerPhone', 'menuName']);
 
 export function createHttpCalendarApi(http: Http, shopId: string): CalendarApi {
   const path = (...s: string[]) => shopPath(shopId, ...s);
@@ -82,8 +82,9 @@ export function createHttpCalendarApi(http: Http, shopId: string): CalendarApi {
       return items.map((m) => ({
         id: m.id,
         name: m.name,
-        durationMin: m.defaultDurationMin ?? DEFAULT_DURATION_MIN,
-        prepMin: m.defaultPrepMin ?? DEFAULT_PREP_MIN,
+        // 안 정한 시간은 null 그대로 — W3가 지금 입력을 둔다(설계 06 D3).
+        durationMin: m.defaultDurationMin,
+        prepMin: m.defaultPrepMin,
       }));
     },
     async createAppointment(input, options) {
@@ -103,6 +104,24 @@ export function createHttpCalendarApi(http: Http, shopId: string): CalendarApi {
           idempotencyKey: options?.idempotencyKey ?? randomKey(),
         });
         return { ok: true, value: remember(toAppointment(created)) };
+      } catch (err) {
+        return toReject(err);
+      }
+    },
+    async appointment(id) {
+      try {
+        return remember(toAppointment(await http.get<Appointment>(path('appointments', id))));
+      } catch (err) {
+        if (err instanceof HttpError && err.status === 404) return null;
+        throw err;
+      }
+    },
+    async updateAppointment(id, change, options) {
+      // 화면 표시용 이름 칸은 보내지 않는다 — 계약에 없는 칸은 서버가 거부한다(UNKNOWN_FIELD).
+      const body = Object.fromEntries(Object.entries(change).filter(([k]) => !DISPLAY_ONLY.has(k)));
+      try {
+        const saved = await http.send<Appointment>('PATCH', path('appointments', id), { body, idempotencyKey: options?.idempotencyKey ?? randomKey() });
+        return { ok: true, value: remember(toAppointment(saved)) };
       } catch (err) {
         return toReject(err);
       }

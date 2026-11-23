@@ -15,8 +15,8 @@ import {
   useSnackbarAdapter,
 } from '@seed-design/react';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
-import { useCallback, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { useShopName } from '@/components/layout/AppShell';
 import { ErrorState } from '@/components/states/DataState';
 import { useCalendarApi, useHasCalendarApiProvider } from '@/features/calendar/api';
@@ -77,10 +77,6 @@ export function CalendarPage() {
   return (
     <Snackbar.RootProvider>
       <CalendarScreen />
-      {/* 폰은 아래 탭(74px) 위에 띄운다 */}
-      <Snackbar.Region className="!bottom-[74px] md:!bottom-0">
-        <Snackbar.Renderer />
-      </Snackbar.Region>
     </Snackbar.RootProvider>
   );
 }
@@ -111,7 +107,7 @@ function CalendarScreen() {
   const setOpen = (a: CalendarAppointment | null) => {
     if (a) opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setOpenId(a?.id ?? null);
-    if (!a) requestAnimationFrame(() => opener.current?.focus());
+    if (!a && !entry) requestAnimationFrame(() => opener.current?.focus());
   };
   // 담당자 거르기(W1). 주소에 두지 않는다 — 화면 안 보기 상태.
   const [staffId, setStaffId] = useState<string>(ALL);
@@ -125,9 +121,33 @@ function CalendarScreen() {
   const step = (n: number) => go({ date: view === 'week' ? addDays(date, 7 * n) : addMonths(date, n) });
 
   const staffName = (id: string) => data?.staff.find((s) => s.id === id)?.name ?? '담당자 미상';
-  const newEntry = (start?: Partial<EntryStart>) =>
+  const newEntry = (start?: Partial<EntryStart>) => {
+    if (openId !== null) {
+      setOpenId(null);
+      // 상세 뒤에 보존한 폼이 있으면 이어서 입력한다.
+      if (entry) return;
+    }
+    // 바꾸기(편집) 중에는 빈 칸·+ 예약으로 폼을 바꾸지 않는다 — 바꾼 입력이 확인 없이 사라지지 않게(#77 리뷰).
+    // 새 예약은 편집을 닫은 뒤(바꾼 게 있으면 닫기 확인) 연다.
+    if (entry?.editId) return;
     // `+ 예약`은 보고 있는 날짜만 채우고 시각은 원장이 고른다. 빈 칸은 그 날짜·시각·담당자 열(설계 06 D1).
-    setEntry({ date: start?.date ?? date, time: start?.time ?? null, staffId: start?.staffId ?? (staffId === ALL ? null : staffId) });
+    setEntry({
+      date: start?.date ?? date,
+      time: start?.time ?? null,
+      staffId: start?.staffId ?? (staffId === ALL ? null : staffId),
+      customer: start?.customer,
+    });
+  };
+
+  // 고객 상세(W6) `예약 넣기`로 왔으면 그 고객을 채운 예약 넣기를 연다. 한 번 열면 기록 상태를 지워 뒤로·새로고침에 다시 열리지 않게.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const entryFor = (location.state as { entryFor?: EntryStart['customer'] } | null)?.entryFor;
+  useEffect(() => {
+    if (!entryFor || !canEnter) return;
+    newEntry({ customer: entryFor });
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [entryFor, canEnter]);
 
   const changeStatus = async (a: CalendarAppointment, to: AppointmentStatus) => {
     const reason = (r: { reason: Parameters<typeof rejectText>[0]; conflictingIds: string[] }) =>
@@ -145,11 +165,11 @@ function CalendarScreen() {
     const show = (message: string, undo?: () => void) =>
       snackbar.create({
         render: () => (
-          <Snackbar.Root variant={undo ? 'default' : 'critical'}>
+          <Snackbar.Root variant={undo ? 'default' : 'critical'} className="!pointer-events-none">
             <Snackbar.Content>
               <Snackbar.Message>{message}</Snackbar.Message>
             </Snackbar.Content>
-            {undo && <Snackbar.ActionButton onClick={undo}>되돌리기</Snackbar.ActionButton>}
+            {undo && <Snackbar.ActionButton className="pointer-events-auto" onClick={undo}>되돌리기</Snackbar.ActionButton>}
           </Snackbar.Root>
         ),
       });
@@ -291,18 +311,40 @@ function CalendarScreen() {
         blocks={data?.blocks ?? []}
         onClose={() => setOpen(null)}
         onStatus={changeStatus}
+        editDisabled={entry !== null}
+        // W2 바꾸기 → 같은 자리에서 W3 편집(설계 06 D4). 닫으면 이 예약 보기로 돌아온다.
+        onEdit={
+          canEnter
+            ? (a) => {
+                setOpenId(null);
+                setEntry({ date: shopDate(Date.parse(a.startAt)), time: null, staffId: a.staffId, editId: a.id });
+              }
+            : undefined
+        }
       />
       <EntrySheet
         start={entry}
+        suspended={open !== null}
         staff={data?.staff ?? []}
         businessHours={data?.businessHours ?? null}
-        onClose={() => setEntry(null)}
+        onClose={() => {
+          // 바꾸기를 닫으면 원래 예약 보기(W2)로 돌아간다(설계 06 D4).
+          if (entry?.editId) setOpenId(entry.editId);
+          setEntry(null);
+        }}
         onSaved={(d) => {
           setEntry(null);
           go({ date: d });
           reload();
         }}
       />
+      {/* 패널이 열려 있으면 알림을 웹 패널 왼쪽이나 폰 시트 위쪽에 둔다. */}
+      <Snackbar.Region
+        className={cn('!pointer-events-none md:!bottom-0', open || entry ? '!top-0 !bottom-auto md:!top-auto' : '!bottom-[74px]')}
+        style={open || entry ? { right: phone ? undefined : PANEL_WIDTH } : undefined}
+      >
+        <Snackbar.Renderer />
+      </Snackbar.Region>
       {/* + 예약: 폰은 오른쪽 아래 떠 있는 버튼(디자인 .fab — 탭 바 위 오른쪽 18px), 웹은 제목 줄 오른쪽(설계서 W1). */}
       {phone && canEnter && (
         <button

@@ -11,6 +11,7 @@ import { closuresSummary, groupClosures, noLocalChanges, toClosureInput, withLoc
 import { seedSettings } from '@/features/settings/mockData';
 import { WEEKLY_MOVED_TEXT } from '@/pages/settings/ClosuresPage';
 import { routes } from '@/routes';
+import { setTestWidth } from './setup';
 
 // 매장 날짜를 2026-11-21(서울)로 고정한다 — 합성 휴가(12/24~26)가 "다가오는 휴무"에 머물도록. 날짜만 가짜로 둔다.
 beforeEach(() => {
@@ -91,6 +92,13 @@ describe('방금 바뀐 휴무 반영(#59·#60 리뷰)', () => {
 });
 
 describe('휴무·휴가 화면', () => {
+  it('폰 설정 목록에서 요약을 보고 들어간다', async () => {
+    setTestWidth(375); // 요약이 붙은 목록은 폰 배치(웹은 왼쪽 내비)
+    const router = renderAt('/settings');
+    await userEvent.click(await screen.findByRole('link', { name: /휴무·휴가.*다음 휴가 12\/24–12\/26/ }));
+    expect(router.state.location.pathname).toBe('/settings/closures');
+  });
+
   it('날짜 휴무만 보이고, 매주 쉬는 요일은 영업시간으로 안내한다(W13 디자인)', async () => {
     renderAt('/settings/closures');
     expect(texts(await section('다가오는 휴무'))).toEqual(['12월 24일 ~ 12월 26일 · 연말 휴가휴가지우기']);

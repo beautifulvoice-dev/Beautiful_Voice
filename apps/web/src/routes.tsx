@@ -12,6 +12,7 @@ import { HoursPage } from '@/pages/settings/HoursPage';
 import { MenusPage } from '@/pages/settings/MenusPage';
 import { StaffPage } from '@/pages/settings/StaffPage';
 import { SettingsLayout, SettingsPage } from '@/pages/settings/SettingsPage';
+import { ShopInfoPage } from '@/pages/settings/ShopInfoPage';
 
 export const routes: RouteObject[] = [
   { path: 'login', element: <LoginPage /> },
@@ -26,16 +27,24 @@ export const routes: RouteObject[] = [
       // ASSUMPTION: 첫 화면은 메뉴 첫 칸인 캘린더 — 와이어프레임(11/21)으로 확인.
       { index: true, element: <Navigate to="/calendar" replace /> },
       { path: 'calendar', element: <CalendarPage /> },
-      { path: 'customers', element: <CustomersPage /> },
-      { path: 'customers/new', element: <CustomerFormPage /> },
+      {
+        // 등록은 목록 위 시트(W5 디자인) — /customers/new 로 바로 들어와도 열린다.
+        // 같은 화면을 두 주소가 함께 써서, 시트를 열고 닫아도 목록이 새로 만들어지지 않는다.
+        path: 'customers',
+        element: <CustomersPage />,
+        children: [
+          { index: true, element: null },
+          { path: 'new', element: null },
+        ],
+      },
       { path: 'customers/:id', element: <CustomerDetailPage /> },
       { path: 'customers/:id/edit', element: <CustomerFormPage /> },
       {
-        // 설정 틀: 웹은 왼쪽 메뉴 + 오른쪽 내용, 폰은 목록 → 하위 화면(W13 디자인).
         path: 'settings',
         element: <SettingsLayout />,
         children: [
           { index: true, element: <SettingsPage /> },
+          { path: 'shop-info', element: <ShopInfoPage /> },
           { path: 'hours', element: <HoursPage /> },
           { path: 'closures', element: <ClosuresPage /> },
           { path: 'menus', element: <MenusPage /> },

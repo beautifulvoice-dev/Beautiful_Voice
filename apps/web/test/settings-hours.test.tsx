@@ -1,5 +1,5 @@
 // BEA-166 수용 기준(영업시간): 저장하고 다시 열면 그대로 · 잘못된 시각은 이유와 함께 거부 · 실패 ≠ 비어 있음. 데이터는 합성(절대 규칙 8).
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
@@ -10,6 +10,7 @@ import { fromDraft, hoursSummary, timeOptions, toDraft, weekdayAt, weeklyChanges
 import { seedSettings } from '@/features/settings/mockData';
 import { HOURS_RULE_TEXT, HOURS_SAVED_TEXT, HOURS_UNSET_TEXT } from '@/pages/settings/HoursPage';
 import { routes } from '@/routes';
+import { setTestWidth } from './setup';
 
 function renderAt(path: string, api: SettingsApi = createMemorySettingsApi()) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
@@ -74,6 +75,32 @@ describe('영업시간 값 바꾸기', () => {
     expect(weekdayAt('2[0]')).toBe(2);
     expect(weekdayAt('7')).toBe(7);
     expect(weekdayAt(undefined)).toBeNull();
+  });
+});
+
+describe('설정 목록', () => {
+  it('폰: 매장 이름·설정 목록(카본 순서), 매장 정보에 영업시간 요약, M1 밖 항목은 곧 열려요', async () => {
+    setTestWidth(375);
+    const router = renderAt('/settings');
+    const list = await screen.findByRole('list', { name: '설정 항목' });
+    const info = await within(list).findByRole('link', { name: /매장 정보.*영업시간 10:00–20:00/ });
+    expect(within(list).getAllByRole('link').map((a) => a.textContent?.split(/\d|영업|다음|없음|원장/)[0])).toEqual(['매장 정보', '휴무·휴가', '메뉴', '담당자']);
+    for (const name of ['AI 반영 방식', '문자 양식', '마이크', '내 정보']) {
+      expect(within(list).getByText(name).closest('[aria-disabled="true"]')).toHaveTextContent('곧 열려요');
+    }
+    await userEvent.click(info);
+    expect(router.state.location.pathname).toBe('/settings/shop-info');
+  });
+
+  it('웹: 왼쪽 설정 내비 + 오른쪽 매장 정보, 영업시간 줄을 누르면 영업시간 화면', async () => {
+    const router = renderAt('/settings');
+    const nav = await screen.findByRole('navigation', { name: '설정 항목' });
+    expect(within(nav).getByRole('link', { name: '매장 정보' })).toHaveAttribute('aria-current');
+    expect(await screen.findByRole('heading', { name: '매장 정보' })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('link', { name: /10:00–20:00/ }));
+    expect(router.state.location.pathname).toBe('/settings/hours');
+    await userEvent.click(within(nav).getByRole('link', { name: '메뉴' }));
+    expect(router.state.location.pathname).toBe('/settings/menus');
   });
 });
 

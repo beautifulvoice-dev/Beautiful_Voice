@@ -10,6 +10,7 @@ import { LAST_STAFF_TEXT } from '@/features/settings/messages';
 import { seedSettings } from '@/features/settings/mockData';
 import { STAFF_CONFLICT_TEXT, STAFF_HELP_TEXT } from '@/pages/settings/StaffPage';
 import { routes } from '@/routes';
+import { setTestWidth } from './setup';
 
 function renderAt(path: string, api: SettingsApi = createMemorySettingsApi()) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
@@ -37,6 +38,13 @@ const closed = () => waitFor(() => expect(screen.queryByRole('dialog')).toBeNull
 const save = async (d: HTMLElement) => userEvent.click(within(d).getByRole('button', { name: '저장' }));
 
 describe('담당자 화면', () => {
+  it('폰 설정 목록에서 이름 요약을 보고 들어간다', async () => {
+    setTestWidth(375); // 요약이 붙은 목록은 폰 배치(웹은 왼쪽 내비)
+    const router = renderAt('/settings');
+    await userEvent.click(await screen.findByRole('link', { name: /담당자.*원장/ }));
+    expect(router.state.location.pathname).toBe('/settings/staff');
+  });
+
   it('담당자를 보이고, 추가 시트에서 원장도 담당자로 넣을 수 있다고 한 번 안내한다', async () => {
     renderAt('/settings/staff');
     expect(await names()).toEqual(['원장']);
