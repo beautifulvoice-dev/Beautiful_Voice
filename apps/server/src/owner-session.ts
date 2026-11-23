@@ -1,4 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { ApiError } from './common/api-error';
 import type { KakaoLoginConfig } from './kakao-login';
 
 export const SESSION_COOKIE = 'bv_session';
@@ -9,9 +10,9 @@ export const CALLBACK_PATH = '/api/auth/kakao/callback';
 
 export function ownerConsent() {
   const { BV_OWNER_CONSENT_VERSION, BV_OWNER_CONSENT_TEXT } = process.env;
-  if (!BV_OWNER_CONSENT_VERSION && !BV_OWNER_CONSENT_TEXT) return null;
+  if (process.env.NODE_ENV !== 'production' && !BV_OWNER_CONSENT_VERSION && !BV_OWNER_CONSENT_TEXT) return null;
   if (!BV_OWNER_CONSENT_VERSION?.trim() || !BV_OWNER_CONSENT_TEXT?.trim()) {
-    throw new Error('Both owner consent version and text are required');
+    throw new ApiError(503, 'AUTH_UNAVAILABLE', '로그인을 사용할 수 없습니다.');
   }
   const text = BV_OWNER_CONSENT_TEXT;
   const version = createHash('sha256').update(JSON.stringify([BV_OWNER_CONSENT_VERSION, text])).digest('hex');

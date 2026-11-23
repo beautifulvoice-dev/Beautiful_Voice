@@ -53,6 +53,7 @@ test('browser login issues a session and only authorizes the current shop', asyn
     },
   };
   const settings = {
+    NODE_ENV: 'production',
     KAKAO_CLIENT_ID: 'test-app',
     KAKAO_CLIENT_SECRET: 'test-secret',
     KAKAO_REDIRECT_URI: 'https://example.test/api/auth/kakao/callback',
@@ -127,6 +128,19 @@ test('browser login issues a session and only authorizes the current shop', asyn
   });
   assert.equal((await accept(pending.consent.version, 'https://other.test')).status, 403);
   assert.equal((await accept('old', 'https://example.test')).status, 409);
+  delete process.env.BV_OWNER_CONSENT_VERSION;
+  delete process.env.BV_OWNER_CONSENT_TEXT;
+  try {
+    assert.equal((await request('/api/auth/kakao/start')).status, 503);
+    assert.equal((await request(callback + state, stateCookie)).status, 503);
+    assert.equal((await request('/api/auth/session', sessionCookie)).status, 503);
+    assert.equal((await request('/api/shops/' + shopId, sessionCookie)).status, 503);
+    assert.equal((await accept(pending.consent.version, 'https://example.test')).status, 503);
+    assert.equal(accepted.size, 0);
+  } finally {
+    process.env.BV_OWNER_CONSENT_VERSION = settings.BV_OWNER_CONSENT_VERSION;
+    process.env.BV_OWNER_CONSENT_TEXT = settings.BV_OWNER_CONSENT_TEXT;
+  }
   assert.equal((await accept(pending.consent.version, 'https://example.test')).status, 204);
   assert.deepEqual(accepted.get(userId), pending.consent);
   assert.deepEqual(await (await request('/api/auth/session', sessionCookie)).json(), { shopId });

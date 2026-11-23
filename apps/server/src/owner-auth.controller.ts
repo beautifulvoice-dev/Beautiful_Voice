@@ -22,6 +22,7 @@ export class OwnerAuthController {
   @Header('Cache-Control', 'no-store')
   start(@Res({ passthrough: true }) response: ServerResponse): { url: string } {
     const config = requireConfig();
+    ownerConsent();
     const state = randomBytes(32).toString('base64url');
     const cookie = signCookie(config.key, 'oauth-state', state, STATE_SECONDS);
     response.setHeader('Set-Cookie', makeCookie(STATE_COOKIE, cookie, STATE_SECONDS, CALLBACK_PATH, config.secure));
@@ -44,6 +45,7 @@ export class OwnerAuthController {
     const stateCookie = readCookie(request.headers.cookie, STATE_COOKIE);
     const expected = verifyCookie(config.key, 'oauth-state', stateCookie);
     if (!expected || typeof code !== 'string' || typeof state !== 'string') throw unauthorized();
+    ownerConsent();
     const owner = await authenticateKakaoOwner(config, { code, state }, expected, this.database).catch((error: unknown) => {
       if (!(error instanceof KakaoLoginError)) throw error;
       if (error.reason === 'unavailable') {
