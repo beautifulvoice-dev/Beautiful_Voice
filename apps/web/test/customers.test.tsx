@@ -7,7 +7,8 @@ import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
 import { describe, expect, it } from 'vitest';
 import { SessionLoaderProvider } from '@/features/auth/session';
-import { createMemoryCustomerApi, CustomerApiProvider, type CustomerApi } from '@/features/customers/api';
+import { createMemoryCustomerApi, CustomerApiProvider, CustomerConflictError, type CustomerApi } from '@/features/customers/api';
+import { NetworkError } from '@/lib/http';
 import { formatBirthdate, shopToday, visitHistory, type Visit } from '@/features/customers/model';
 import { routes } from '@/routes';
 import { setTestWidth } from './setup';
@@ -318,6 +319,59 @@ describe('비활성 고객 (BEA-173, 결정 R30·S4)', () => {
     await userEvent.click(await screen.findByRole('button', { name: '다시 활성으로' }));
     await waitFor(() => expect(screen.queryByText('비활성')).not.toBeInTheDocument());
     expect(screen.getByRole('button', { name: '예약 넣기' })).toBeEnabled();
+  });
+});
+
+describe('비활성 바꾸기 — 응답 유실·충돌 (#81 리뷰)', () => {
+  const seed = () => ({ customers: [{ id: 'a', name: '합성가', phone: null, memo: null, version: 1 }], visits: {} });
+  const deactivate = async () => {
+    await userEvent.click(screen.getByRole('button', { name: '더보기' }));
+    await userEvent.click(await screen.findByRole('button', { name: '비활성으로 바꾸기' }));
+    await userEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: '비활성으로 바꾸기' }));
+  };
+
+  it('응답을 못 받고 다시 누르면 같은 Idempotency-Key로 보낸다', async () => {
+    setTestWidth(1280);
+    const real = createMemoryCustomerApi(seed());
+    const keys: (string | undefined)[] = [];
+    let lose = true;
+    const api: CustomerApi = {
+      ...real,
+      setActive: async (id, active, o) => {
+        keys.push(o?.idempotencyKey);
+        if (lose) {
+          lose = false;
+          throw new NetworkError();
+        }
+        return real.setActive(id, active, o);
+      },
+    };
+    renderAt('/customers/a', api);
+    await screen.findByRole('heading', { level: 1, name: '합성가' });
+    await deactivate();
+    expect(await screen.findByRole('alert')).toHaveTextContent('바꾸지 못했어요');
+    await userEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '비활성으로 바꾸기' }));
+    expect(await screen.findByText('비활성')).toBeInTheDocument();
+    expect(keys).toHaveLength(2);
+    expect(keys[1]).toBe(keys[0]);
+  });
+
+  it('version 충돌이면 최신 고객을 다시 읽어 보여 주고 알린다(다른 기기에서 이미 비활성으로 바꾼 경우)', async () => {
+    setTestWidth(1280);
+    const real = createMemoryCustomerApi(seed());
+    const api: CustomerApi = {
+      ...real,
+      setActive: async (id) => {
+        await real.setActive(id, false); // 다른 기기에서 먼저 바꿈
+        throw new CustomerConflictError();
+      },
+    };
+    renderAt('/customers/a', api);
+    await screen.findByRole('heading', { level: 1, name: '합성가' });
+    await deactivate();
+    expect(await screen.findByRole('alert')).toHaveTextContent('다른 곳에서 이 고객이 바뀌어 최신 상태를 다시 불러왔어요');
+    expect(await screen.findByText('비활성')).toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 });
 

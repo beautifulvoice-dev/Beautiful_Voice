@@ -10,11 +10,12 @@ import { ActionButton, AlertDialog, Badge, Icon, Popover, Tabs, useBreakpointVal
 import { Ellipsis, MessageSquare } from 'lucide-react';
 import { useCallback, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { randomKey } from '@/features/settings/useSaveAction';
+import { NetworkError } from '@/lib/http';
+import { useRetryKey } from '@/lib/retryKey';
 import { shortDate } from '@/features/calendar/bookingText';
 import { shopDate, shopTime } from '@/features/calendar/model';
 import { EmptyState, ErrorState } from '@/components/states/DataState';
-import { useCustomerApi } from '@/features/customers/api';
+import { CustomerConflictError, useCustomerApi } from '@/features/customers/api';
 import { formatBirthdate, formatPhone, visitHistory, VISIT_STATUS_TEXT, type CustomerDetail } from '@/features/customers/model';
 import { useLoad } from '@/lib/useLoad';
 
@@ -60,15 +61,28 @@ function CustomerView({ customer: c, onChanged }: { customer: CustomerDetail; on
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // 같은 바꾸기를 다시 보내면(응답 유실 뒤) 같은 Idempotency-Key — 서버가 첫 결과를 돌려준다(#81 리뷰, 설계 05 D5).
+  const retryKey = useRetryKey();
   const setActive = async (active: boolean) => {
     setBusy(true);
     setError(null);
     try {
-      await api.setActive(c.id, active, { version: c.version, idempotencyKey: randomKey() });
+      const idempotencyKey = retryKey.keyFor(JSON.stringify([c.id, c.version ?? null, active]));
+      await api.setActive(c.id, active, { version: c.version, idempotencyKey });
+      retryKey.settle();
       setConfirming(false);
       onChanged();
-    } catch {
-      setError('바꾸지 못했어요. 잠시 뒤 다시 해 주세요.');
+    } catch (err) {
+      // 응답을 못 받았으면 키를 남겨 다시 누를 때 같은 요청으로 보낸다. 그 밖(서버 거절)은 확정.
+      if (!(err instanceof NetworkError)) retryKey.settle();
+      if (err instanceof CustomerConflictError) {
+        // 그사이 다른 곳에서 고객을 바꿨다 — 최신 고객을 다시 읽어 상태를 보여 주고, 필요하면 다시 고르게 한다(#81 리뷰).
+        setConfirming(false);
+        setError('다른 곳에서 이 고객이 바뀌어 최신 상태를 다시 불러왔어요. 확인한 뒤 다시 해 주세요.');
+        onChanged();
+      } else {
+        setError('바꾸지 못했어요. 잠시 뒤 다시 해 주세요.');
+      }
     } finally {
       setBusy(false);
     }
@@ -154,7 +168,7 @@ function CustomerView({ customer: c, onChanged }: { customer: CustomerDetail; on
           </Popover.Root>
         </div>
         {inactive && <p className="text-sm text-ink-soft md:hidden">비활성 고객은 새 예약에 고를 수 없어요.</p>}
-        {error && (
+        {error && !confirming && (
           <p role="alert" className="text-sm text-critical-text">
             {error}
           </p>
@@ -168,6 +182,12 @@ function CustomerView({ customer: c, onChanged }: { customer: CustomerDetail; on
             <AlertDialog.Header>
               <AlertDialog.Title>{c.name} 님을 비활성으로 바꿀까요?</AlertDialog.Title>
               <AlertDialog.Description>비활성으로 바꿔도 예약과 지갑 기록은 그대로 남아요. 예약도 취소되지 않아요.</AlertDialog.Description>
+              {error && (
+                // 확인 창은 모달이라 창 안에 알린다(뒤 화면은 가려짐)
+                <p role="alert" className="text-sm text-critical-text">
+                  {error}
+                </p>
+              )}
             </AlertDialog.Header>
             <AlertDialog.Footer>
               <AlertDialog.Action asChild>
