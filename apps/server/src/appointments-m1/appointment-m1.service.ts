@@ -3,7 +3,9 @@ import { changeStatus, OCCUPYING } from '@bv/scheduling/appointment-status';
 import { type BookingReject, checkBooking, type Closure, type ExistingBooking, type Interval, minutesIn, occupiedOf, type ShopHours } from '@bv/scheduling/booking';
 import { Injectable } from '@nestjs/common';
 import type { PoolClient } from 'pg';
+import { activeBlocksFor, blockedByOf, blocksInRange } from '../calendar-blocks/block-queries';
 import { ApiError } from '../common/api-error';
+import { lockShopWrites } from '../common/shop-lock';
 import type { DatabaseService } from '../database.service';
 
 // M1 예약 쓰기(BEA-176·160) — `crm.appointment_m1`만 쓴다. 006 `crm.appointment`(옛 C-07 서비스, src/appointments)는
@@ -15,13 +17,15 @@ export class AppointmentM1Service {
     if (!UUID.test(id)) throw appointmentNotFound();
     const { rows: [row] } = await client.query<ViewRow>(`${VIEW_SELECT} WHERE a.shop_id = $1 AND a.id = $2`, [shopId, id]);
     if (!row) throw appointmentNotFound();
-    return toAppointment(row);
+    // 차단 겹침은 조회 때 계산한다(설계 09 D5) — 예약 행에 저장하지 않는다.
+    return toAppointment(row, (await blockedByOf(client, shopId, [row.id])).get(row.id));
   }
 
   /**
    * 캘린더 한 화면치(#42 GET …/calendar, 설계 04 보강 D5~D7). from·to는 매장 날짜(양 끝 포함, 1~42일).
    * 점유 [시작−준비, 시작+관리)가 [from 0시, to 다음 날 0시)와 겹치는 예약 — 경계에 닿기만 하면 빠진다.
-   * 취소·무효도 보낸다(D6, 화면이 뺀다). 담당자는 활성 + 응답 예약이 가리키는 비활성(D7). 차단은 BEA-179 전까지 빈 배열.
+   * 취소·무효도 보낸다(D6, 화면이 뺀다). 담당자는 활성 + 응답 예약·차단이 가리키는 비활성(04 D7·09 D6).
+   * 차단은 기간과 겹치는 활성 차단, blockedBy는 예약 전체 점유와 겹치는 활성 차단(09 D5). 컨트롤러가 한 스냅샷에서 부른다.
    */
   async calendar(client: PoolClient, shopId: string, query: { from?: unknown; to?: unknown }): Promise<CalendarResponse> {
     const range = readRange(query.from, query.to);
@@ -32,22 +36,26 @@ export class AppointmentM1Service {
           AND a.occupied && tstzrange($2::date::timestamp AT TIME ZONE '${SHOP_TIME_ZONE}',
                                       ($3::date + 1)::timestamp AT TIME ZONE '${SHOP_TIME_ZONE}', '[)')
         ORDER BY a.start_at, a.id`, [shopId, range.from, range.to]);
-    const appointments = rows.map(toAppointment);
+    const blockedBy = await blockedByOf(client, shopId, rows.map((r) => r.id));
+    const appointments = rows.map((r) => toAppointment(r, blockedBy.get(r.id)));
+    // ASSUMPTION: 매장 시간대 Asia/Seoul(+09:00, 일광절약 없음) 고정 — 위 SQL과 같은 경계.
+    const blocks = await blocksInRange(client, shopId, new Date(`${range.from}T00:00:00+09:00`), new Date(`${nextDay(range.to)}T00:00:00+09:00`));
     const { rows: staff } = await client.query<Staff>(
       `SELECT id, version, created_at AS "createdAt", updated_at AS "updatedAt", name, active
          FROM crm.staff WHERE shop_id = $1 AND (active OR id = ANY($2::uuid[])) ORDER BY created_at, id`,
-      [shopId, [...new Set(appointments.map((a) => a.staffId))]]);
-    return { staff, appointments, blocks: [] };
+      [shopId, [...new Set([...appointments.map((a) => a.staffId), ...blocks.flatMap((b) => b.staffIds)])]]);
+    return { staff, appointments, blocks };
   }
 
   /**
    * 상태 바꾸기·정정(#42 PUT …/status, 설계 04 보강 §예약 취소와 상태 API). 판정은 @bv/scheduling changeStatus(결정 S5).
-   * 취소를 되살리면 같은 담당자 점유 겹침만 다시 본다(Q2) — 영업시간·휴무·차단으로는 거부하지 않는다.
+   * 취소를 되살리면 같은 담당자 점유 겹침만 다시 본다(Q2) — 영업시간·휴무·차단으로는 거부하지 않는다(차단과 겹치면 blockedBy로 표시).
    * 지갑·문자는 건드리지 않는다.
    */
   async setStatus(client: PoolClient, shopId: string, id: string, input: unknown): Promise<Appointment> {
     if (!UUID.test(id)) throw appointmentNotFound();
     const { version, status } = readStatusInput(input);
+    await lockShopWrites(client, shopId);
     const { rows: [current] } = await client.query<StoredRow>(
       `SELECT customer_id, menu_id, staff_id, start_at, duration_min, prep_min, memo, status, version
          FROM crm.appointment_m1 WHERE shop_id = $1 AND id = $2 FOR UPDATE`, [shopId, id]);
@@ -72,6 +80,8 @@ export class AppointmentM1Service {
   async create(client: PoolClient, shopId: string, input: unknown): Promise<Appointment> {
     const { values } = readInput(input, false);
     const next = { menuId: null, prepMin: 0, memo: null, ...values } as Fields;
+    // 업무 조회 전에 매장 쓰기 잠금 — 차단 등록과 순서를 맞춘다(Q3). 이후 조회는 먼저 커밋된 차단을 본다.
+    await lockShopWrites(client, shopId);
     await checkReferences(client, shopId, next);
     await judge(client, shopId, next, { hours: true, overlap: true });
     const { rows: [row] } = await rejectOverlapRace(next, undefined, () => client.query<{ id: string }>(
@@ -85,6 +95,7 @@ export class AppointmentM1Service {
   async update(client: PoolClient, shopId: string, id: string, input: unknown): Promise<Appointment> {
     if (!UUID.test(id)) throw appointmentNotFound();
     const { values, version } = readInput(input, true);
+    await lockShopWrites(client, shopId);
     const { rows: [current] } = await client.query<StoredRow>(
       `SELECT customer_id, menu_id, staff_id, start_at, duration_min, prep_min, memo, status, version
          FROM crm.appointment_m1 WHERE shop_id = $1 AND id = $2 FOR UPDATE`, [shopId, id]);
@@ -103,7 +114,7 @@ export class AppointmentM1Service {
       staffId: has('staffId') ? after.staffId : undefined,
       menuId: has('menuId') ? after.menuId : undefined,
     });
-    // D2: 관리 시작이나 종료가 바뀌면 영업시간·휴무 재검사. Q1: 시작·관리·준비·담당자가 바뀌면 겹침 재검사(점유 중인 상태만).
+    // D2: 관리 시작이나 종료가 바뀌면 영업시간·휴무 재검사. Q1: 시작·관리·준비·담당자가 바뀌면 겹침·차단 재검사(점유 중인 상태만).
     // 메뉴·메모·고객만 바뀌면 재검사하지 않는다. 겹침 검사에서 자기 자신은 뺀다.
     const hours = has('start') || endOf(after) !== endOf(before);
     const overlap = OCCUPYING.has(current.status) && (['start', 'durationMin', 'prepMin', 'staffId'] as const).some(has);
@@ -155,9 +166,11 @@ async function judge(
   client: PoolClient, shopId: string, next: Fields, check: { hours: boolean; overlap: boolean; excludeId?: string },
 ): Promise<void> {
   const hours = check.hours ? await shopHours(client, shopId) : { businessHours: null, closures: [] };
-  const existing = check.overlap ? await occupyingRows(client, shopId, next.staffId, occupiedOf(toRequest(next)), check.excludeId) : [];
-  // 차단은 BEA-179 전까지 없다(빈 배열).
-  const result = checkBooking(toRequest(next), hours, existing, [], { excludeId: check.excludeId, skipHoursCheck: !check.hours });
+  const occupied = occupiedOf(toRequest(next));
+  const existing = check.overlap ? await occupyingRows(client, shopId, next.staffId, occupied, check.excludeId) : [];
+  // 활성 차단(담당자 지정·매장 전체)은 겹침 검사와 같은 조건에서 본다(09 §예약 저장 2·3, Q1). 판정 순서는 checkBooking 그대로.
+  const blocks = check.overlap ? await activeBlocksFor(client, shopId, next.staffId, occupied) : [];
+  const result = checkBooking(toRequest(next), hours, existing, blocks, { excludeId: check.excludeId, skipHoursCheck: !check.hours });
   if (!result.ok) throw bookingRejected(result.reason, result.conflictingIds);
 }
 
@@ -207,8 +220,8 @@ const COLUMN: Record<keyof Fields, string> = {
   durationMin: 'duration_min', prepMin: 'prep_min', memo: 'memo',
 };
 const BODY_FIELDS = ['customerId', 'menuId', 'staffId', 'startAt', 'durationMin', 'prepMin', 'memo'];
-type FieldError = { field: string; code: string };
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export type FieldError = { field: string; code: string };
+export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // 시각은 offset을 꼭 붙인다(계약: ISO-8601+offset). offset 없는 시각은 서버 시간대에 따라 뜻이 달라진다.
 const ISO = /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/;
 
@@ -262,7 +275,7 @@ function readInput(input: unknown, patch: boolean): { values: Partial<Fields>; v
   return { values, version };
 }
 
-function parseInstant(value: unknown): Date | null {
+export function parseInstant(value: unknown): Date | null {
   if (typeof value !== 'string') return null;
   const m = ISO.exec(value);
   if (!m) return null;
@@ -323,7 +336,7 @@ const VIEW_SELECT = `SELECT a.id, a.customer_id, a.menu_id, a.staff_id, a.start_
          JOIN crm.customer c ON c.shop_id = a.shop_id AND c.id = a.customer_id
          LEFT JOIN crm.menu m ON m.shop_id = a.shop_id AND m.id = a.menu_id`;
 
-function versionConflict(currentVersion: number): ApiError<'VERSION_CONFLICT'> {
+export function versionConflict(currentVersion: number): ApiError<'VERSION_CONFLICT'> {
   return new ApiError(409, 'VERSION_CONFLICT', '다른 곳에서 먼저 고쳤습니다. 새로 불러와 주세요.', { currentVersion });
 }
 interface StoredRow {
@@ -342,12 +355,12 @@ function endOf(f: Fields): number {
   return f.start.getTime() + f.durationMin * 60_000;
 }
 
-function toAppointment(r: ViewRow): Appointment {
+function toAppointment(r: ViewRow, blockedBy: string[] = []): Appointment {
   return {
     id: r.id, customerId: r.customer_id, menuId: r.menu_id, staffId: r.staff_id, startAt: r.start_at.toISOString(),
     durationMin: r.duration_min, prepMin: r.prep_min, memo: r.memo, status: r.status, version: r.version,
     createdAt: r.created_at.toISOString(), updatedAt: r.updated_at.toISOString(),
-    customerName: r.customer_name, menuName: r.menu_name, blockedBy: [],
+    customerName: r.customer_name, menuName: r.menu_name, blockedBy,
   };
 }
 
@@ -356,7 +369,9 @@ function bookingRejected(reason: BookingReject, conflictingIds: string[]): ApiEr
     case 'STAFF_OVERLAP': return staffOverlap(conflictingIds);
     case 'OUTSIDE_BUSINESS_HOURS': return new ApiError(422, reason, '영업시간 밖이라 저장할 수 없습니다.');
     case 'CLOSED_DAY': return new ApiError(422, reason, '휴무일이라 저장할 수 없습니다.');
-    // 차단(BLOCKED)은 BEA-179 전까지 생기지 않는다. 형식 오류는 입력 검사에서 먼저 걸러진다.
+    // 활성 차단과 겹침 — 충돌 id는 차단 UUID(09 §예약 저장 3).
+    case 'BLOCKED': return new ApiError(409, reason, '관리 불가 시간과 겹칩니다.', { conflictingIds });
+    // 형식 오류는 입력 검사에서 먼저 걸러진다.
     default: return new ApiError(422, 'VALIDATION_FAILED', '입력값을 확인해 주세요.', { reason });
   }
 }
@@ -365,10 +380,21 @@ function staffOverlap(conflictingIds: string[]): ApiError<'STAFF_OVERLAP'> {
   return new ApiError(409, 'STAFF_OVERLAP', '같은 담당자의 다른 예약과 시간이 겹칩니다.', { conflictingIds });
 }
 
-function invalid(fields: FieldError[]): ApiError<'VALIDATION_FAILED'> {
+export function invalid(fields: FieldError[]): ApiError<'VALIDATION_FAILED'> {
   return new ApiError(422, 'VALIDATION_FAILED', '입력값을 확인해 주세요.', { fields });
 }
 
 function appointmentNotFound(): ApiError<'NOT_FOUND'> {
-  return new ApiError(404, 'NOT_FOUND', '예약을 찾을 수 없습니다.');
+  return notFound('예약을 찾을 수 없습니다.');
+}
+
+export function notFound(message: string): ApiError<'NOT_FOUND'> {
+  return new ApiError(404, 'NOT_FOUND', message);
+}
+
+/** 'YYYY-MM-DD' 다음 날. */
+function nextDay(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
 }

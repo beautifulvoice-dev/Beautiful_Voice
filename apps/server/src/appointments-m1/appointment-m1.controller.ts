@@ -55,6 +55,7 @@ export class CalendarM1Controller {
   @Get()
   @Header('Cache-Control', 'no-store')
   calendar(@Param('shopId') shopId: string, @Query('from') from: unknown, @Query('to') to: unknown): Promise<CalendarResponse> {
-    return this.database.withShop(shopId, (client) => this.appointments.calendar(client, shopId, { from, to }));
+    // 예약·차단·담당자를 한 읽기 스냅샷에서 조립한다(설계 09 D5).
+    return this.database.withShopSnapshot(shopId, (client) => this.appointments.calendar(client, shopId, { from, to }));
   }
 }
