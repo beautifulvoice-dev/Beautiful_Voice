@@ -8,7 +8,7 @@
 import type { Customer } from '@/features/customers/model';
 import { ActionButton, Chip, RadioGroupItemHiddenInput, ResponsiveDialog, SearchInput } from '@seed-design/react';
 import { useCallback } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router';
+import { Link, useLocation, useMatch, useNavigate } from 'react-router';
 import { PhoneShopName } from '@/components/layout/PhoneShopName';
 import { EmptyState, ErrorState } from '@/components/states/DataState';
 import { useCustomerApi } from '@/features/customers/api';
@@ -36,7 +36,8 @@ export function CustomersPage() {
   };
   const setQ = (v: string) => keep({ q: v });
   // 디자인(W5 "+ 고객: 시트"): /customers/new 는 목록 위에 등록 시트를 연다. 닫으면 목록(검색어 유지).
-  const adding = location.pathname === '/customers/new';
+  // 라우터 매칭으로 판단한다 — `/customers/new/`(끝 슬래시)로 바로 들어와도 시트가 열리게(#79 리뷰).
+  const adding = useMatch('/customers/new') !== null;
   const closeAdd = () => navigate('/customers', { replace: true, state: location.state });
 
   const addButton = (
