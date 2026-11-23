@@ -77,10 +77,6 @@ export function CalendarPage() {
   return (
     <Snackbar.RootProvider>
       <CalendarScreen />
-      {/* 폰은 아래 탭(74px) 위에 띄운다 */}
-      <Snackbar.Region className="!bottom-[74px] md:!bottom-0">
-        <Snackbar.Renderer />
-      </Snackbar.Region>
     </Snackbar.RootProvider>
   );
 }
@@ -111,7 +107,7 @@ function CalendarScreen() {
   const setOpen = (a: CalendarAppointment | null) => {
     if (a) opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setOpenId(a?.id ?? null);
-    if (!a) requestAnimationFrame(() => opener.current?.focus());
+    if (!a && !entry) requestAnimationFrame(() => opener.current?.focus());
   };
   // 담당자 거르기(W1). 주소에 두지 않는다 — 화면 안 보기 상태.
   const [staffId, setStaffId] = useState<string>(ALL);
@@ -126,6 +122,11 @@ function CalendarScreen() {
 
   const staffName = (id: string) => data?.staff.find((s) => s.id === id)?.name ?? '담당자 미상';
   const newEntry = (start?: Partial<EntryStart>) => {
+    if (openId !== null) {
+      setOpenId(null);
+      // 상세 뒤에 보존한 폼이 있으면 이어서 입력한다.
+      if (entry) return;
+    }
     // 바꾸기(편집) 중에는 빈 칸·+ 예약으로 폼을 바꾸지 않는다 — 바꾼 입력이 확인 없이 사라지지 않게(#77 리뷰).
     // 새 예약은 편집을 닫은 뒤(바꾼 게 있으면 닫기 확인) 연다.
     if (entry?.editId) return;
@@ -164,11 +165,11 @@ function CalendarScreen() {
     const show = (message: string, undo?: () => void) =>
       snackbar.create({
         render: () => (
-          <Snackbar.Root variant={undo ? 'default' : 'critical'}>
+          <Snackbar.Root variant={undo ? 'default' : 'critical'} className="!pointer-events-none">
             <Snackbar.Content>
               <Snackbar.Message>{message}</Snackbar.Message>
             </Snackbar.Content>
-            {undo && <Snackbar.ActionButton onClick={undo}>되돌리기</Snackbar.ActionButton>}
+            {undo && <Snackbar.ActionButton className="pointer-events-auto" onClick={undo}>되돌리기</Snackbar.ActionButton>}
           </Snackbar.Root>
         ),
       });
@@ -310,6 +311,7 @@ function CalendarScreen() {
         blocks={data?.blocks ?? []}
         onClose={() => setOpen(null)}
         onStatus={changeStatus}
+        editDisabled={entry !== null}
         // W2 바꾸기 → 같은 자리에서 W3 편집(설계 06 D4). 닫으면 이 예약 보기로 돌아온다.
         onEdit={
           canEnter
@@ -322,6 +324,7 @@ function CalendarScreen() {
       />
       <EntrySheet
         start={entry}
+        suspended={open !== null}
         staff={data?.staff ?? []}
         businessHours={data?.businessHours ?? null}
         onClose={() => {
@@ -335,6 +338,13 @@ function CalendarScreen() {
           reload();
         }}
       />
+      {/* 패널이 열려 있으면 알림을 웹 패널 왼쪽이나 폰 시트 위쪽에 둔다. */}
+      <Snackbar.Region
+        className={cn('!pointer-events-none md:!bottom-0', open || entry ? '!top-0 !bottom-auto md:!top-auto' : '!bottom-[74px]')}
+        style={open || entry ? { right: phone ? undefined : PANEL_WIDTH } : undefined}
+      >
+        <Snackbar.Renderer />
+      </Snackbar.Region>
       {/* + 예약: 폰은 오른쪽 아래 떠 있는 버튼(디자인 .fab — 탭 바 위 오른쪽 18px), 웹은 제목 줄 오른쪽(설계서 W1). */}
       {phone && canEnter && (
         <button

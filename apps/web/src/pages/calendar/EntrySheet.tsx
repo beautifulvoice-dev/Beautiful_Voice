@@ -42,6 +42,7 @@ export interface EntryStart {
 
 interface Props {
   start: EntryStart | null;
+  suspended?: boolean;
   staff: Staff[];
   /** 시작 시각 목록(영업시간 안 15분)을 만드는 데 쓴다. 없으면 09:00~21:00. */
   businessHours?: CalendarData['businessHours'];
@@ -50,7 +51,7 @@ interface Props {
   onSaved: (date: string) => void;
 }
 
-export function EntrySheet({ start, staff, businessHours = null, onClose, onSaved }: Props) {
+export function EntrySheet({ start, suspended = false, staff, businessHours = null, onClose, onSaved }: Props) {
   const phone = useIsPhone();
   // 입력을 바꿨으면 닫기 전에 묻는다(설계 06 D4). 저장 중에는 닫지 않는다.
   const [dirty, setDirty] = useState(false);
@@ -71,7 +72,7 @@ export function EntrySheet({ start, staff, businessHours = null, onClose, onSave
     setAsking(false);
   };
   return (
-    <CalendarSheet open={start !== null} onClose={close} full>
+    <CalendarSheet open={start !== null && !suspended} onClose={close} full keepMounted={start !== null}>
       {start && (
         <>
           <ResponsiveSidePanel.Header className={sheetHeadClass(phone)}>
@@ -106,7 +107,7 @@ export function EntrySheet({ start, staff, businessHours = null, onClose, onSave
                 <AlertDialog.Header>
                   <AlertDialog.Title>입력한 내용이 저장되지 않았어요. 닫을까요?</AlertDialog.Title>
                 </AlertDialog.Header>
-                <AlertDialog.Footer>
+                <AlertDialog.Footer className="gap-[5px]">
                   <AlertDialog.Action asChild>
                     <ActionButton variant="neutralWeak" size="large" flexGrow={1}>
                       계속 입력
@@ -178,6 +179,7 @@ function AppointmentForm({
   const api = useCalendarApi();
   const customers = useCustomerApi();
   const phone = useIsPhone();
+  const datePopoverContainer = useRef<HTMLDivElement>(null);
   // 새 예약에는 사용 중인 담당자만(설계 04 D3·06 ⑤). 1명이면 자동, 0명이면 저장할 수 없다.
   // 바꾸기에서는 이 예약의 기존 담당자가 숨김이어도 그대로 둘 수 있다(06 ⑤).
   const [base, setBase] = useState<CalendarAppointment | null>(null);
@@ -636,6 +638,7 @@ function AppointmentForm({
             </label>
             <DateField
               id="entry-date"
+              popoverContainer={phone ? datePopoverContainer : undefined}
               value={date}
               onChange={(d) => {
                 touched(setDate)(d);
@@ -771,6 +774,8 @@ function AppointmentForm({
           </ActionButton>
         </div>
       </ResponsiveSidePanel.Footer>
+      {/* 폰에서는 팝업을 모달 안에 두되 스크롤 영역 밖에 렌더링한다. */}
+      {phone && <div ref={datePopoverContainer} />}
     </>
   );
 }
