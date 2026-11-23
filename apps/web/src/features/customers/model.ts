@@ -41,7 +41,8 @@ export function visitHistory(visits: readonly Visit[]): (Visit & { status: Exclu
 }
 
 export interface CustomerDetail extends Customer {
-  visits: Visit[];
+  /** null = 이력을 아직 받아 올 수 없음(실제 API에 고객별 이력 창구가 없다, #42). 빈 배열(이력 없음)과 구분한다. */
+  visits: Visit[] | null;
 }
 
 // 표시는 매장 시간대 기준(절대 규칙 7). 2A는 서울 고정(#19 결정).

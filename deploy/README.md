@@ -37,9 +37,11 @@ KAKAO_CLIENT_ID=
 KAKAO_CLIENT_SECRET=
 KAKAO_REDIRECT_URI=
 BV_SESSION_SECRET=
+BV_OWNER_CONSENT_VERSION=
+BV_OWNER_CONSENT_TEXT=
 ```
 
-`BV_SESSION_SECRET`은 `openssl rand -hex 32`로 생성한다. 도메인이 아직 없으면 카카오 설정은 비워둔 채 EC2 내부에서 웹과 API 기동을 먼저 확인할 수 있다.
+`BV_SESSION_SECRET`은 `openssl rand -hex 32`로 생성한다. `BV_OWNER_CONSENT_VERSION`과 `BV_OWNER_CONSENT_TEXT`에는 팀에서 확정한 동의 버전과 문구를 함께 입력한다. 한 값이라도 비어 있으면 배포 환경의 로그인과 인증된 CRM 요청은 `503`을 반환한다. 도메인이나 동의 문구가 준비되기 전에도 EC2 내부 헬스 체크는 실행할 수 있다.
 
 ## 2. 빌드와 DB 마이그레이션
 
@@ -63,6 +65,19 @@ curl -fsS http://127.0.0.1:8080/login >/dev/null
 ## 3. HTTPS와 카카오 시연
 
 팀 dev 도메인을 EC2 주소에 연결하고 인바운드는 웹 포트 80·443을 대상으로 설정한다. RDS와 NestJS는 내부에서 접근한다. 아래 예시의 주소를 팀 도메인으로 바꾸고 카카오 앱의 리다이렉트 URI와 `.env.dev-server`의 `KAKAO_REDIRECT_URI`를 모두 `https://dev.example.com/api/auth/kakao/callback`으로 맞춘다.
+
+브라우저 로그인 검증 전에 API 컨테이너가 동의 설정을 모두 읽는지 확인한다. 이 명령은 값의 내용을 출력하지 않는다.
+
+```bash
+"${compose[@]}" run --rm -T --no-deps --entrypoint node api -e '
+  for (const key of ["BV_OWNER_CONSENT_VERSION", "BV_OWNER_CONSENT_TEXT"]) {
+    if (!process.env[key]?.trim()) {
+      console.error(key + " is required");
+      process.exitCode = 1;
+    }
+  }
+'
+```
 
 ### 시연 원장 ID 확인
 
@@ -98,6 +113,6 @@ sudo env BV_WEB_SITE_ADDRESS=dev.example.com BV_WEB_BIND_ADDRESS=0.0.0.0 \
 curl -fsS https://dev.example.com/api/health
 ```
 
-브라우저에서 로그인 성공 후 시연 매장 조회와 다른 매장 조회 거부를 확인한다. 재배포에도 같은 공개 주소·포트 설정을 사용한다. 장애 시 `"${compose[@]}" ps`와 `"${compose[@]}" logs --tail=100 api web`으로 어느 서비스에서 실패했는지 확인한다.
+브라우저에서 카카오 로그인 후 최초 동의 문구가 표시되는지 확인한다. 동의를 저장하면 시연 매장이 열리고, 새로고침해도 동의 화면이 다시 뜨지 않아야 한다. 다른 매장 조회도 거부되는지 확인한다. 재배포에도 같은 공개 주소·포트 설정을 사용한다. 장애 시 `"${compose[@]}" ps`와 `"${compose[@]}" logs --tail=100 api web`으로 어느 서비스에서 실패했는지 확인한다.
 
 Caddy 접근 로그를 켜는 경우 고객 목록 요청의 `q`와 `cursor` 쿼리 값을 로그에서 가린다. 검색어와 페이지 커서에는 고객 이름이나 전화번호가 포함될 수 있다.

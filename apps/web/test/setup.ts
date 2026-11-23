@@ -28,17 +28,23 @@ afterEach(() => {
 });
 globalThis.matchMedia ??= ((query: string) => {
   const min = Number(/min-width:\s*(\d+)px/.exec(query)?.[1] ?? 0);
+  const wrappers = new Map<unknown, () => void>();
   return {
     get matches() {
       return (state.__testWidth ?? 1280) >= min;
     },
     media: query,
     onchange: null,
-    addEventListener(_type: string, fn: () => void) {
-      state.__mediaListeners!.add(fn);
+    // 듣는 쪽이 e.matches를 읽는다(SEED SideNavigation 접기) — 이 질의 기준 값을 담아 부른다.
+    addEventListener(_type: string, fn: (e: { matches: boolean; media: string }) => void) {
+      const wrapped = () => fn({ matches: (state.__testWidth ?? 1280) >= min, media: query });
+      wrappers.set(fn, wrapped);
+      state.__mediaListeners!.add(wrapped);
     },
     removeEventListener(_type: string, fn: () => void) {
-      state.__mediaListeners!.delete(fn);
+      const wrapped = wrappers.get(fn);
+      if (wrapped) state.__mediaListeners!.delete(wrapped);
+      wrappers.delete(fn);
     },
     addListener() {},
     removeListener() {},

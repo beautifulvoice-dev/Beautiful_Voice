@@ -103,3 +103,19 @@ GRANT SELECT ON crm.calendar_block, crm.calendar_block_staff TO bv_app;
 GRANT INSERT (shop_id, start_at, end_at, all_staff, memo) ON crm.calendar_block TO bv_app;
 GRANT UPDATE (start_at, end_at, all_staff, memo, status) ON crm.calendar_block TO bv_app;
 GRANT INSERT, DELETE ON crm.calendar_block_staff TO bv_app;
+
+-- 012-crm-roles와 같은 방식: AI 실행기는 배정된 매장의 차단을 읽기만(예약 판단에 필요, 차단 쓰기 없음),
+-- 운영 감독은 모든 매장을 읽기만. 프로비저닝·시스템 역할은 예약 테이블처럼 권한 없음.
+DO $$
+DECLARE
+  relation text;
+BEGIN
+  FOREACH relation IN ARRAY ARRAY['calendar_block', 'calendar_block_staff'] LOOP
+    EXECUTE format(
+      'CREATE POLICY ai_shop_read ON crm.%I FOR SELECT TO bv_ai_executor
+       USING (shop_id = nullif(current_setting(''app.shop_id'', true), '''')::uuid)', relation);
+    EXECUTE format('CREATE POLICY supervisor_read ON crm.%I FOR SELECT TO bv_ops USING (true)', relation);
+  END LOOP;
+END
+$$;
+GRANT SELECT ON crm.calendar_block, crm.calendar_block_staff TO bv_ai_executor, bv_ops;

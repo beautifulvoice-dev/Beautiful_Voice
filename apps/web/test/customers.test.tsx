@@ -265,6 +265,17 @@ describe('고객 상세: 정보·예약·방문 이력 (명세 3 2A-2.4)', () =>
     expect(await screen.findByRole('region', { name: '정보' })).toHaveTextContent('특이사항민감성 피부');
   });
 
+  it('이력을 아직 받아 올 수 없으면(실제 API) "없어요"가 아니라 준비 중으로 보인다(#72 리뷰)', async () => {
+    const memory = createMemoryCustomerApi();
+    const api: CustomerApi = { ...memory, get: async (id) => {
+      const c = await memory.get(id);
+      return c && { ...c, visits: null };
+    } };
+    renderAt('/customers/c1', api);
+    expect(await screen.findByRole('region', { name: '예약' })).toHaveTextContent('예약·방문 이력은 준비 중이에요');
+    expect(screen.queryByText('예약·방문 이력이 없어요')).not.toBeInTheDocument();
+  });
+
   it('없는 고객은 안내를 보여 준다', async () => {
     renderAt('/customers/nope');
     expect(await screen.findByText('없는 고객이에요')).toBeInTheDocument();

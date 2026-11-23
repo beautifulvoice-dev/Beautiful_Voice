@@ -1,11 +1,20 @@
 import { type CanActivate, type ExecutionContext, Injectable } from '@nestjs/common';
 import type { IncomingMessage } from 'node:http';
 import { DatabaseService } from '../database.service';
-import { authConfig, readCookie, SESSION_COOKIE, verifyCookie } from '../owner-session';
+import { authConfig, ownerConsent, readCookie, SESSION_COOKIE, verifyCookie } from '../owner-session';
 import { ApiError } from './api-error';
 
 // 로그인한 원장의 매장을 확인한다. 쿠키 서명·만료를 보고, 지금도 그 매장 소속인지 DB에서 다시 확인한다.
 export async function requireOwnerShop(database: DatabaseService, request: IncomingMessage): Promise<string> {
+  const { userId, shopId } = await requireOwnerIdentity(database, request);
+  const consent = ownerConsent();
+  if (consent && !await database.ownerConsentAccepted(userId, consent.version)) {
+    throw new ApiError(403, 'OWNER_CONSENT_REQUIRED', '매장을 열려면 먼저 동의해 주세요.');
+  }
+  return shopId;
+}
+
+export async function requireOwnerIdentity(database: DatabaseService, request: IncomingMessage) {
   const cookie = readCookie(request.headers.cookie, SESSION_COOKIE);
   if (!cookie) throw unauthorized();
   const config = authConfig();
@@ -14,7 +23,7 @@ export async function requireOwnerShop(database: DatabaseService, request: Incom
   if (!session) throw unauthorized();
   const [userId, shopId] = session.split(':');
   if (!userId || !shopId || await database.findOwnerShop(userId) !== shopId) throw unauthorized();
-  return shopId;
+  return { userId, shopId };
 }
 
 export function shopNotFound(): ApiError<'SHOP_NOT_FOUND'> {
