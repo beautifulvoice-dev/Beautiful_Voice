@@ -56,7 +56,11 @@ before(async () => {
 after(async () => {
   await app?.close();
   try {
-    for (const table of ['idempotency_key', 'calendar_block_staff', 'calendar_block', 'appointment_m1', 'staff', 'customer', 'shop_closure', 'shop_settings', 'user_membership']) {
+    // 연결과 부모 차단은 한 트랜잭션에서 지운다 — 연결만 먼저 지우면 지연 제약(지정 차단 = 연결 1개 이상)이 커밋에서 막는다.
+    await admin.query('BEGIN');
+    for (const table of ['calendar_block_staff', 'calendar_block']) await admin.query(`DELETE FROM crm.${table} WHERE shop_id IN ($1, $2)`, [shopA, shopB]);
+    await admin.query('COMMIT');
+    for (const table of ['idempotency_key', 'appointment_m1', 'staff', 'customer', 'shop_closure', 'shop_settings', 'user_membership']) {
       await admin.query(`DELETE FROM crm.${table} WHERE shop_id IN ($1, $2)`, [shopA, shopB]);
     }
     await admin.query('DELETE FROM crm.shop WHERE id IN ($1, $2)', [shopA, shopB]);
