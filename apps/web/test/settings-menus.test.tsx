@@ -9,6 +9,7 @@ import { createMemorySettingsApi, SettingsApiProvider, type SettingsApi } from '
 import { menuTimeText, parseMinutes } from '@/features/settings/menus';
 import { MENU_CONFLICT_TEXT } from '@/pages/settings/MenusPage';
 import { routes } from '@/routes';
+import { setTestWidth } from './setup';
 
 function renderAt(path: string, api: SettingsApi = createMemorySettingsApi()) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
@@ -50,7 +51,8 @@ describe('메뉴 문구·값', () => {
 });
 
 describe('메뉴 화면', () => {
-  it('설정 목록에서 개수를 보고 들어간다', async () => {
+  it('폰 설정 목록에서 개수를 보고 들어간다', async () => {
+    setTestWidth(375); // 요약이 붙은 목록은 폰 배치(웹은 왼쪽 내비)
     const router = renderAt('/settings');
     await userEvent.click(await screen.findByRole('link', { name: /메뉴.*2개/ }));
     expect(router.state.location.pathname).toBe('/settings/menus');

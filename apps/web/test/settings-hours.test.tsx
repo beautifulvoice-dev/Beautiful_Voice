@@ -10,6 +10,7 @@ import { fromDraft, hoursSummary, timeOptions, toDraft, weekdayAt, weeklyChanges
 import { seedSettings } from '@/features/settings/mockData';
 import { HOURS_RULE_TEXT, HOURS_SAVED_TEXT, HOURS_UNSET_TEXT } from '@/pages/settings/HoursPage';
 import { routes } from '@/routes';
+import { setTestWidth } from './setup';
 
 function renderAt(path: string, api: SettingsApi = createMemorySettingsApi()) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
@@ -79,15 +80,28 @@ describe('영업시간 값 바꾸기', () => {
 });
 
 describe('설정 목록', () => {
-  it('영업시간 요약을 보이고, 누르면 영업시간 화면으로 간다. 메뉴·담당자도 화면이 있다', async () => {
+  it('폰: 매장 이름·설정 목록(카본 순서), 매장 정보에 영업시간 요약, M1 밖 항목은 곧 열려요', async () => {
+    setTestWidth(375);
     const router = renderAt('/settings');
     const list = await screen.findByRole('list', { name: '설정 항목' });
-    const hours = await within(list).findByRole('link', { name: /영업시간.*화~일/ });
-    // 메뉴(#61)·담당자(#65)까지 생겨 M1 설정 항목에 "준비 중"은 없다.
-    for (const name of [/^메뉴/, /^담당자/]) expect(within(list).getByRole('link', { name })).toBeInTheDocument();
-    expect(list.querySelector('[aria-disabled="true"]')).toBeNull();
-    await userEvent.click(hours);
+    const info = await within(list).findByRole('link', { name: /매장 정보.*영업시간 화~일/ });
+    expect(within(list).getAllByRole('link').map((a) => a.textContent?.split(/\d|영업|다음|없음|원장/)[0])).toEqual(['매장 정보', '휴무·휴가', '메뉴', '담당자']);
+    for (const name of ['AI 반영 방식', '문자 양식', '마이크', '내 정보']) {
+      expect(within(list).getByText(name).closest('[aria-disabled="true"]')).toHaveTextContent('곧 열려요');
+    }
+    await userEvent.click(info);
+    expect(router.state.location.pathname).toBe('/settings/shop-info');
+  });
+
+  it('웹: 왼쪽 설정 내비 + 오른쪽 매장 정보, 영업시간 줄을 누르면 영업시간 화면', async () => {
+    const router = renderAt('/settings');
+    const nav = await screen.findByRole('navigation', { name: '설정 항목' });
+    expect(within(nav).getByRole('link', { name: '매장 정보' })).toHaveAttribute('aria-current');
+    expect(await screen.findByRole('heading', { name: '매장 정보' })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('link', { name: /화~일/ }));
     expect(router.state.location.pathname).toBe('/settings/hours');
+    await userEvent.click(within(nav).getByRole('link', { name: '메뉴' }));
+    expect(router.state.location.pathname).toBe('/settings/menus');
   });
 });
 

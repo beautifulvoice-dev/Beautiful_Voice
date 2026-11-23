@@ -16,6 +16,14 @@ export function seedSettings(): SettingsSeed {
       '6': [{ open: '10:00', close: '20:00' }],
       '7': [{ open: '11:00', close: '18:00' }],
     },
+    // 합성 매장 링크(실제 매장 아님).
+    shopInfo: {
+      locationText: '합성시 가상구 예시로 12, 2층',
+      naverPlaceUrl: 'https://naver.me/example',
+      instagramUrl: 'https://instagram.com/example.beauty',
+      landingUrl: null,
+      refundPolicy: '예약 하루 전까지 취소하면 전액 돌려드려요.',
+    },
     closures: [
       { id: 'closure-1', kind: 'weekly', weekday: 1, note: null },
       { id: 'closure-2', kind: 'vacation', startDate: '2026-12-24', endDate: '2026-12-26', note: '연말 휴가' },
