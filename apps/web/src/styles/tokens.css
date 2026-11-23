@@ -20,6 +20,14 @@
   --track-color: var(--seed-color-palette-purple-200);
 }
 
+/* 레시피 보정: SEED 시트·창의 기본 층 번호(2)는 웹셸의 위·아래 줄(z-10, #53에서 z-30)보다 낮아 시트 버튼이 가려진다 → 그 위로. */
+.seed-bottom-sheet__positioner {
+  --sheet-z-index: 40;
+}
+.seed-dialog__positioner {
+  --dialog-z-index: 40;
+}
+
 :root {
   color-scheme: light;
 
@@ -41,6 +49,9 @@
 
   /* 브랜드 */
   --brand: var(--seed-color-bg-brand-solid);
+  /* 카카오 로그인 버튼 — 카카오 디자인 가이드 색(노랑 #FEE500, 글자 85% 검정). SEED 색이 아니라 브랜드 규정값이라 여기서만 정한다(W0). */
+  --kakao: #fee500;
+  --on-kakao: rgb(0 0 0 / 0.85);
   --brand-pressed: var(--seed-color-bg-brand-solid-pressed);
   --brand-weak: var(--seed-color-bg-brand-weak);
   --brand-text: var(--seed-color-fg-brand);

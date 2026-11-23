@@ -140,6 +140,27 @@ describe('고객 실제 어댑터', () => {
     ]);
   });
 
+  it('비활성 포함 목록은 includeInactive=true를 보낸다(W5 비활성 칩)', async () => {
+    const { fetcher, sent } = fakeFetch(json(200, { items: [row({ active: false })], nextCursor: null }));
+    const api = createHttpCustomerApi(createHttp(fetcher), 'shop-1');
+    expect((await api.list('', { includeInactive: true }))[0]!.active).toBe(false);
+    expect(sent[0]!.url).toBe('/api/shops/shop-1/customers?limit=100&includeInactive=true');
+  });
+
+  it('활성 바꾸기는 PUT …/active에 version·active와 키를 보내고, 409 NO_CHANGE면 최신 행을 다시 읽는다(BEA-173)', async () => {
+    const { fetcher, sent } = fakeFetch(
+      json(200, row({ version: 4, active: false })),
+      fail(409, 'NO_CHANGE'),
+      json(200, row({ version: 5, active: true })),
+    );
+    const api = createHttpCustomerApi(createHttp(fetcher), 'shop-1');
+    expect((await api.setActive('c-1', false, { version: 3, idempotencyKey: 'k-1' })).active).toBe(false);
+    expect(sent[0]).toMatchObject({ method: 'PUT', url: '/api/shops/shop-1/customers/c-1/active', body: { version: 3, active: false } });
+    expect(sent[0]!.headers['Idempotency-Key']).toBe('k-1');
+    expect((await api.setActive('c-1', true, { version: 4 })).version).toBe(5);
+    expect(sent[2]).toMatchObject({ method: 'GET', url: '/api/shops/shop-1/customers/c-1' });
+  });
+
   it('상세 404는 null, 고치기는 읽은 version과 키를 보내고 409·422를 옮긴다', async () => {
     const { fetcher, sent } = fakeFetch(
       fail(404, 'NOT_FOUND'),

@@ -20,7 +20,7 @@ function renderAt(path: string, loader: SessionLoader) {
 describe('로그인 확인', () => {
   it('로그인하지 않았으면 로그인 화면으로 보낸다', async () => {
     const router = renderAt('/customers', async () => null);
-    const button = await screen.findByRole('link', { name: '카카오로 로그인' });
+    const button = await screen.findByRole('link', { name: '카카오 로그인' });
     expect(router.state.location.pathname).toBe('/login');
     expect(button).toHaveAttribute('href', '/api/auth/kakao/start');
     expect(screen.queryByRole('navigation', { name: '주 메뉴' })).not.toBeInTheDocument();

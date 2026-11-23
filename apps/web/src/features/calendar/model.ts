@@ -33,6 +33,10 @@ export interface CalendarAppointment {
   prepMin: number;
   memo: string | null;
   status: AppointmentStatus;
+  /** 실제 API의 행 버전 — 상태·내용을 고칠 때 보낸다(계약 #42 동시 수정). 가짜 저장소는 비워 둔다. */
+  version?: number;
+  /** 고른 메뉴(없으면 null). 가짜 저장소는 이름만 둔다. */
+  menuId?: string | null;
 }
 
 /** 캘린더 차단. allStaff면 매장 전체, 아니면 staffIds의 담당자만 막는다(명세 01 §2.2). */
@@ -48,14 +52,17 @@ export interface CalendarBlock {
 export interface Staff {
   id: string;
   name: string;
+  /** false = 숨긴 담당자. 그 담당자의 예약이 화면에 남아 있을 때만 받는다(설계 04 D7). 새 예약에는 못 고른다. */
+  active?: boolean;
 }
 
 /** 메뉴(설정 2A-1). 예약 넣기(W3)에서 칩을 고르면 관리·준비 시간이 채워진다(결정 S3). */
 export interface Menu {
   id: string;
   name: string;
-  durationMin: number;
-  prepMin: number;
+  /** 메뉴에 정해 둔 관리·준비 시간. null = 안 정함 → 고르면 지금 입력을 그대로 둔다(설계 06 D3). */
+  durationMin: number | null;
+  prepMin: number | null;
 }
 
 export interface CalendarData {
@@ -66,6 +73,8 @@ export interface CalendarData {
   businessHours: BusinessHours | null;
   /** 휴무(계약 #42 closures). 그날은 격자 전체를 회색으로 덮는다(결정 S2). */
   closures: Closure[];
+  /** 영업시간·휴무만 못 불러옴(설계 05 D3). 예약은 보이고, 회색 덮기는 보류하고 따로 다시 시도한다. */
+  hoursUnavailable?: boolean;
 }
 
 // ── 날짜 계산(매장 날짜 'YYYY-MM-DD') ─────────────────────────────
@@ -225,6 +234,26 @@ export function outsideHours(date: string, hours: BusinessHours | null): [number
   }
   if (at < 24 * 60) out.push([at, 24 * 60]);
   return out;
+}
+
+const DEFAULT_BUSINESS_WINDOWS = [{ open: '09:00', close: '21:00' }];
+
+export function businessWindowsForDate(date: string, hours: BusinessHours | null) {
+  const key = String(weekdayIndex(date) + 1) as keyof BusinessHours;
+  return hours ? hours[key] ?? [] : DEFAULT_BUSINESS_WINDOWS;
+}
+
+/**
+ * 예약 넣기(W3) 시작 시각 목록: 그날 영업시간 안의 15분 단위(설계서 W3 "15분 간격").
+ * 영업시간을 안 넣었거나 그 요일 구간이 없으면 09:00~21:00. 끝나는 시각 자체는 시작으로 고를 수 없다.
+ */
+export function startTimes(date: string, hours: BusinessHours | null, stepMin = 15): string[] {
+  const toMin = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+  const configured = businessWindowsForDate(date, hours);
+  const windows = (configured.length ? configured : DEFAULT_BUSINESS_WINDOWS).map(({ open, close }) => [toMin(open), toMin(close)] as const);
+  const out = new Set<number>();
+  for (const [o, c] of windows) for (let m = Math.ceil(o / stepMin) * stepMin; m < c; m += stepMin) out.add(m);
+  return [...out].sort((a, b) => a - b).map((m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
 }
 
 /** 세로 시간 범위의 기본값: 보이는 날들의 영업시간 ±1시간(설계서 W1). 영업시간이 없으면 9~21시. */

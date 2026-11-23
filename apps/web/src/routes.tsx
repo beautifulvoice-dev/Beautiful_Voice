@@ -7,8 +7,12 @@ import { LoginPage } from '@/pages/LoginPage';
 import { CustomerDetailPage } from '@/pages/customers/CustomerDetailPage';
 import { CustomerFormPage } from '@/pages/customers/CustomerFormPage';
 import { CustomersPage } from '@/pages/customers/CustomersPage';
+import { ClosuresPage } from '@/pages/settings/ClosuresPage';
 import { HoursPage } from '@/pages/settings/HoursPage';
-import { SettingsPage } from '@/pages/settings/SettingsPage';
+import { MenusPage } from '@/pages/settings/MenusPage';
+import { StaffPage } from '@/pages/settings/StaffPage';
+import { SettingsLayout, SettingsPage } from '@/pages/settings/SettingsPage';
+import { ShopInfoPage } from '@/pages/settings/ShopInfoPage';
 
 export const routes: RouteObject[] = [
   { path: 'login', element: <LoginPage /> },
@@ -23,12 +27,30 @@ export const routes: RouteObject[] = [
       // ASSUMPTION: 첫 화면은 메뉴 첫 칸인 캘린더 — 와이어프레임(11/21)으로 확인.
       { index: true, element: <Navigate to="/calendar" replace /> },
       { path: 'calendar', element: <CalendarPage /> },
-      { path: 'customers', element: <CustomersPage /> },
-      { path: 'customers/new', element: <CustomerFormPage /> },
+      {
+        // 등록은 목록 위 시트(W5 디자인) — /customers/new 로 바로 들어와도 열린다.
+        // 같은 화면을 두 주소가 함께 써서, 시트를 열고 닫아도 목록이 새로 만들어지지 않는다.
+        path: 'customers',
+        element: <CustomersPage />,
+        children: [
+          { index: true, element: null },
+          { path: 'new', element: null },
+        ],
+      },
       { path: 'customers/:id', element: <CustomerDetailPage /> },
       { path: 'customers/:id/edit', element: <CustomerFormPage /> },
-      { path: 'settings', element: <SettingsPage /> },
-      { path: 'settings/hours', element: <HoursPage /> },
+      {
+        path: 'settings',
+        element: <SettingsLayout />,
+        children: [
+          { index: true, element: <SettingsPage /> },
+          { path: 'shop-info', element: <ShopInfoPage /> },
+          { path: 'hours', element: <HoursPage /> },
+          { path: 'closures', element: <ClosuresPage /> },
+          { path: 'menus', element: <MenusPage /> },
+          { path: 'staff', element: <StaffPage /> },
+        ],
+      },
       { path: '*', element: <EmptyState title="없는 화면이에요" /> },
     ],
   },

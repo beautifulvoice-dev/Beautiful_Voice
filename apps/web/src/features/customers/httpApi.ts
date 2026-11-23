@@ -33,12 +33,12 @@ export function createHttpCustomerApi(http: Http, shopId: string): CustomerApi {
   const mapped = <T,>(p: Promise<T>) => p.catch((e: unknown) => Promise.reject(toCustomerError(e)));
 
   return {
-    async list(query) {
+    async list(query, options) {
       const out: Customer[] = [];
       let cursor: string | null = null;
       for (let i = 0; i < MAX_PAGES; i++) {
         const page: { items: ContractCustomer[]; nextCursor: string | null } = await http.get(path(), {
-          query: { q: query.trim(), limit: PAGE, cursor },
+          query: { q: query.trim(), limit: PAGE, cursor, includeInactive: options?.includeInactive ? 'true' : undefined },
         });
         out.push(...page.items.map(toCustomer));
         cursor = page.nextCursor;
@@ -75,6 +75,20 @@ export function createHttpCustomerApi(http: Http, shopId: string): CustomerApi {
         }),
       );
       return toCustomer(saved);
+    },
+    async setActive(id, active, options) {
+      if (options?.version === undefined) throw new Error('활성 바꾸기에는 읽은 version이 필요하다');
+      try {
+        const saved = await http.send<ContractCustomer>('PUT', path(id, 'active'), {
+          body: { version: options.version, active },
+          idempotencyKey: options.idempotencyKey ?? randomKey(),
+        });
+        return toCustomer(saved);
+      } catch (err) {
+        // 이미 그 상태(다른 기기에서 먼저 바꿈) — 실패로 보지 않고 최신 행을 돌려준다.
+        if (err instanceof HttpError && err.code === 'NO_CHANGE') return toCustomer(await http.get<ContractCustomer>(path(id)));
+        throw toCustomerError(err);
+      }
     },
   };
 }
