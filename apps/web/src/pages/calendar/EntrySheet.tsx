@@ -34,6 +34,8 @@ export interface EntryStart {
   /** 'HH:MM'. null = `+ 예약`으로 열었다 — 시각은 원장이 직접 고른다(설계 06 D1). */
   time: string | null;
   staffId: string | null;
+  /** 고객 상세(W6)의 `예약 넣기`로 열면 그 고객이 골라져 있다. */
+  customer?: { id: string; name: string; phone: string | null };
   /** 있으면 W2 "바꾸기" — 이 예약의 최신 상세를 읽어 편집한다(설계 06 ①·D4). */
   editId?: string;
 }
@@ -182,7 +184,7 @@ function AppointmentForm({
   const staff = allStaff.filter((s) => s.active !== false || s.id === base?.staffId);
   const [menus, setMenus] = useState<Menu[]>([]);
   const [query, setQuery] = useState('');
-  const [picked, setPicked] = useState<Picked | null>(null);
+  const [picked, setPicked] = useState<Picked | null>(start.customer ?? null);
   /** 검색 결과. null = 아직 결과를 받지 못함(새 고객 제안은 결과가 비었을 때만, 06 ③). */
   const [candidates, setCandidates] = useState<Customer[] | null>(null);
   /** 새 고객 등록 전 같은 이름 후보 — 고르거나 "새 고객이 맞아요"로 확인한다(06 ③). */

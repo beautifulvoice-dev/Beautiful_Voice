@@ -15,8 +15,8 @@ import {
   useSnackbarAdapter,
 } from '@seed-design/react';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
-import { useCallback, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router';
 import { useShopName } from '@/components/layout/AppShell';
 import { ErrorState } from '@/components/states/DataState';
 import { useCalendarApi, useHasCalendarApiProvider } from '@/features/calendar/api';
@@ -130,8 +130,23 @@ function CalendarScreen() {
     // 새 예약은 편집을 닫은 뒤(바꾼 게 있으면 닫기 확인) 연다.
     if (entry?.editId) return;
     // `+ 예약`은 보고 있는 날짜만 채우고 시각은 원장이 고른다. 빈 칸은 그 날짜·시각·담당자 열(설계 06 D1).
-    setEntry({ date: start?.date ?? date, time: start?.time ?? null, staffId: start?.staffId ?? (staffId === ALL ? null : staffId) });
+    setEntry({
+      date: start?.date ?? date,
+      time: start?.time ?? null,
+      staffId: start?.staffId ?? (staffId === ALL ? null : staffId),
+      customer: start?.customer,
+    });
   };
+
+  // 고객 상세(W6) `예약 넣기`로 왔으면 그 고객을 채운 예약 넣기를 연다. 한 번 열면 기록 상태를 지워 뒤로·새로고침에 다시 열리지 않게.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const entryFor = (location.state as { entryFor?: EntryStart['customer'] } | null)?.entryFor;
+  useEffect(() => {
+    if (!entryFor || !canEnter) return;
+    newEntry({ customer: entryFor });
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [entryFor, canEnter]);
 
   const changeStatus = async (a: CalendarAppointment, to: AppointmentStatus) => {
     const reason = (r: { reason: Parameters<typeof rejectText>[0]; conflictingIds: string[] }) =>
