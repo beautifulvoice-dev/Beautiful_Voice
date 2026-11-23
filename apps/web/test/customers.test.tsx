@@ -37,6 +37,7 @@ describe('고객 목록·검색', () => {
     renderAt('/customers');
     await screen.findByRole('list', { name: '고객 목록' });
     expect(screen.getByText('고객 4명')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '고객' }).previousElementSibling).toHaveTextContent('내 매장'); // 폰 제목 위 매장 이름
     expect(screen.getAllByText('동명 2')).toHaveLength(2); // 김하늘 두 명
   });
 
