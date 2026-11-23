@@ -42,16 +42,19 @@ function useEntries(): Entry[] {
   ];
 }
 
-/** 설정 칸(W13): 폰은 목록 → 하위 화면, 웹(≥768)은 왼쪽 SEED SideNavigation + 오른쪽 내용. */
+/**
+ * 설정 칸(W13): 폰은 목록 → 하위 화면, 웹(≥768)은 왼쪽 SEED SideNavigation + 오른쪽 내용.
+ * 폰·웹 배치는 CSS로만 바꾼다 — Outlet 자리가 바뀌면 하위 화면이 새로 그려져 저장 전 입력이 사라진다(#78 리뷰).
+ */
 export function SettingsLayout() {
-  const phone = useIsPhone();
   // 셸이 넘긴 매장 이름 등을 하위 화면에 그대로 전한다(useShopName).
   const context = useOutletContext();
-  if (phone) return <Outlet context={context} />;
   return (
-    <div className="flex items-start gap-8 p-6">
-      <SettingsNav />
-      <div className="min-w-0 max-w-2xl flex-1">
+    <div className="md:flex md:items-start md:gap-8 md:p-6">
+      <div data-testid="settings-nav" className="hidden md:block">
+        <SettingsNav />
+      </div>
+      <div className="min-w-0 md:max-w-2xl md:flex-1">
         <Outlet context={context} />
       </div>
     </div>
