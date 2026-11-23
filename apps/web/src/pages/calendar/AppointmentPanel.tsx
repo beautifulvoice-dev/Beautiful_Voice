@@ -1,7 +1,7 @@
 // 예약 보기 W2 (화면 설계서 §5 W2, 디자인 w2.png·phase2-screens.html .panel/.sheet): 폰은 아래 시트, 웹은 오른쪽 패널.
 // 예정이면 주 버튼 "시술 완료"(11/22 옵마 결정 — 디자인 문구는 "완료"), 보조 노쇼·문자 보내기, 더보기. 완료·노쇼·취소면 상태 고치기 하나(결정 S5).
 // 완료·노쇼·상태 고치기는 가짜 저장소에서 실제로 바뀐다(@bv/scheduling changeStatus, 11/21 옵마 결정). 저장되면 패널을 닫고 스낵바 + 되돌리기(CalendarPage).
-// 문자 보내기(M3)·더보기(바꾸기·예약 취소)는 아직 꺼 둔다.
+// 더보기 → 바꾸기(W3 편집, 설계 06 ①)·예약 취소(확인 뒤). 문자 보내기(M3)는 아직 꺼 둔다.
 import { ActionButton, AlertDialog, Icon, PrefixIcon, Badge, Callout, ResponsiveSidePanel } from '@seed-design/react';
 import { ChevronRight, Ellipsis, MessageSquare, X } from 'lucide-react';
 import { useRef, useState } from 'react';
@@ -31,12 +31,16 @@ interface Props {
   onClose: () => void;
   /** 상태 바꾸기. 실패하면 이유 문구를 돌려준다. */
   onStatus: (a: CalendarAppointment, to: AppointmentStatus) => Promise<string | null>;
+  /** 예약 바꾸기(W3 편집)를 연다. 없으면 더보기가 꺼진다(저장할 곳이 없는 시안). */
+  onEdit?: (a: CalendarAppointment) => void;
 }
 
-export function AppointmentPanel({ appointment: a, staffName, blocks, onClose, onStatus }: Props) {
+export function AppointmentPanel({ appointment: a, staffName, blocks, onClose, onStatus, onEdit }: Props) {
   return (
     <CalendarSheet open={a !== null} onClose={onClose}>
-      {a && <Body key={`${a.id}-${a.status}`} a={a} staffName={staffName} blocks={blocks} onStatus={onStatus} onClose={onClose} />}
+      {a && (
+        <Body key={`${a.id}-${a.status}`} a={a} staffName={staffName} blocks={blocks} onStatus={onStatus} onClose={onClose} onEdit={onEdit} />
+      )}
     </CalendarSheet>
   );
 }
@@ -50,18 +54,35 @@ function Body({
   blocks,
   onStatus,
   onClose,
+  onEdit,
 }: {
   a: CalendarAppointment;
   staffName: string;
   blocks: readonly CalendarBlock[];
   onStatus: Props['onStatus'];
   onClose: () => void;
+  onEdit: Props['onEdit'];
 }) {
   const phone = useIsPhone();
   const [time, prep] = appointmentPanelTime(a);
   const overlaps = overlappingBlocks(a, blocks);
   const scheduled = a.status === 'scheduled';
   const [fixing, setFixing] = useState(false);
+  // 더보기(예정 예약): 바꾸기·예약 취소를 보인다.
+  const [more, setMore] = useState(false);
+  const moreButton = (sz: 'small' | 'medium') => (
+    <ActionButton
+      variant="ghost"
+      size={sz}
+      layout="iconOnly"
+      aria-label="더보기"
+      aria-expanded={more}
+      disabled={!onEdit || busy}
+      onClick={() => setMore((m) => !m)}
+    >
+      <Icon svg={<Ellipsis />} />
+    </ActionButton>
+  );
   // 예약 취소는 캘린더에서 빠지므로 한 번 더 묻는다(설계서 W2 확인, 원칙 8 — #68 리뷰).
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -123,11 +144,7 @@ function Body({
               a.customerName
             )}
           </ResponsiveSidePanel.Title>
-          {phone && scheduled && (
-            <ActionButton variant="ghost" size="small" layout="iconOnly" aria-label="더보기" disabled>
-              <Icon svg={<Ellipsis />} />
-            </ActionButton>
-          )}
+          {phone && scheduled && moreButton('small')}
         </div>
         {a.customerPhone && <p className="text-[15px] text-ink-soft tabular-nums">{phoneText(a.customerPhone)}</p>}
       </ResponsiveSidePanel.Header>
@@ -165,7 +182,19 @@ function Body({
         )}
       </ResponsiveSidePanel.Body>
       <ResponsiveSidePanel.Footer className={sheetFootClass(phone)}>
-        {fixing ? (
+        {more && scheduled && onEdit ? (
+          <div role="group" aria-label="더보기" className="flex w-full gap-2">
+            <ActionButton variant="neutralWeak" size={size} flexGrow={1} onClick={() => onEdit(a)}>
+              바꾸기
+            </ActionButton>
+            <ActionButton variant="neutralWeak" size={size} flexGrow={1} disabled={busy} onClick={() => setConfirmCancel(true)}>
+              예약 취소
+            </ActionButton>
+            <ActionButton variant="ghost" size={size} onClick={() => setMore(false)}>
+              접기
+            </ActionButton>
+          </div>
+        ) : fixing ? (
           // 상태 고치기: 예정·완료·노쇼·취소 중 고른다(결정 S5). 지금 상태는 뺀다.
           <div role="group" aria-label="상태 고치기" className="flex w-full flex-wrap gap-2">
             {(['scheduled', 'completed', 'no_show', 'cancelled'] as const)
@@ -202,9 +231,7 @@ function Body({
                   <PrefixIcon svg={<MessageSquare />} />
                   문자 보내기
                 </ActionButton>
-                <ActionButton variant="ghost" size="medium" layout="iconOnly" aria-label="더보기" disabled>
-                  <Icon svg={<Ellipsis />} />
-                </ActionButton>
+                {moreButton('medium')}
               </>
             )}
           </div>
