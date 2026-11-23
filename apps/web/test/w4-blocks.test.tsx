@@ -117,6 +117,38 @@ describe('W4 관리 불가 시간 보기·지우기', () => {
   });
 });
 
+describe('패널은 하나씩, 월 보기에서도 연다(#86 리뷰)', () => {
+  it('웹 월 보기의 관리 불가 줄을 눌러도 보기·지우기가 열린다', async () => {
+    const router = createMemoryRouter(routes, { initialEntries: ['/calendar?view=month&date=2026-11-18'] });
+    render(
+      <SessionLoaderProvider value={async () => ({ shopId: 'shop-1' })}>
+        <CalendarApiProvider value={createMemoryCalendarApi(seedCalendar('2026-11-18'))}>
+          <RouterProvider router={router} />
+        </CalendarApiProvider>
+      </SessionLoaderProvider>,
+    );
+    const day = await screen.findByRole('region', { name: '11월 19일' });
+    await userEvent.click(within(day).getByRole('button', { name: /관리 불가 · 점심/ }));
+    expect(await screen.findByRole('dialog', { name: '관리 불가 시간' })).toHaveTextContent('11/19(목) 12:00–13:00');
+  });
+
+  it('관리 불가 패널을 연 채 예약 칸이나 + 예약을 누르면 관리 불가 패널은 닫힌다', async () => {
+    renderAt(createMemoryCalendarApi(seedCalendar('2026-11-18')));
+    await userEvent.click(await lunch());
+    await screen.findByRole('dialog', { name: '관리 불가 시간' });
+    const tuesday = await screen.findByRole('region', { name: '11월 17일' });
+    await userEvent.click(within(tuesday).getByRole('button', { name: /최유나/ }));
+    expect(await screen.findByRole('dialog', { name: '최유나' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '관리 불가 시간' })).not.toBeInTheDocument());
+
+    await userEvent.click(await lunch());
+    await screen.findByRole('dialog', { name: '관리 불가 시간' });
+    await userEvent.click(screen.getByRole('button', { name: '예약' }));
+    expect(await screen.findByRole('dialog', { name: '예약 넣기' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '관리 불가 시간' })).not.toBeInTheDocument());
+  });
+});
+
 describe('W3: 서버가 409 BLOCKED로 거부하면 관리 불가 문구', () => {
   it('화면이 모르는 차단(다른 곳에서 방금 생김)이면 일반 관리 불가 문구', async () => {
     const base = createMemoryCalendarApi(seedCalendar('2026-11-18'));

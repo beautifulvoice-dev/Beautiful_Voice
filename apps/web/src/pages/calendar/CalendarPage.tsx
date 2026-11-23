@@ -108,7 +108,11 @@ function CalendarScreen() {
   // 닫히면 누른 예약 칸으로 초점을 돌려준다(키보드 사용자, 설계 §6).
   const opener = useRef<HTMLElement | null>(null);
   const setOpen = (a: CalendarAppointment | null) => {
-    if (a) opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (a) {
+      opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      // 패널은 한 번에 하나 — 관리 불가 시간 패널이 열려 있으면 닫는다(#86 리뷰).
+      setBlockId(null);
+    }
     setOpenId(a?.id ?? null);
     if (!a && !entry) requestAnimationFrame(() => opener.current?.focus());
   };
@@ -132,6 +136,8 @@ function CalendarScreen() {
 
   const staffName = (id: string) => data?.staff.find((s) => s.id === id)?.name ?? '담당자 미상';
   const newEntry = (start?: Partial<EntryStart>) => {
+    // 예약 넣기를 열면 관리 불가 시간 패널은 닫는다(#86 리뷰).
+    setBlockId(null);
     if (openId !== null) {
       setOpenId(null);
       // 상세 뒤에 보존한 폼이 있으면 이어서 입력한다.
@@ -308,6 +314,7 @@ function CalendarScreen() {
           data={shown}
           today={today}
           onOpen={setOpen}
+          onOpenBlock={openBlock}
           phone={phone}
           selected={date}
           onPick={(d) => go({ date: d })}
