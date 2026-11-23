@@ -1,15 +1,15 @@
 import type { OwnerSessionResponse, OwnerShopResponse } from '@bv/contracts';
 import {
-  Controller, Get, Header, Param, Query, Redirect, Req, Res,
+  Body, Controller, Get, Header, HttpCode, Param, Post, Query, Redirect, Req, Res,
 } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { ApiError } from './common/api-error';
-import { requireOwnerShop, shopNotFound } from './common/owner-shop.guard';
+import { requireOwnerIdentity, requireOwnerShop, shopNotFound } from './common/owner-shop.guard';
 import { DatabaseService } from './database.service';
 import { authenticateKakaoOwner, KakaoLoginError, kakaoAuthorizationUrl } from './kakao-login';
 import {
-  authConfig, CALLBACK_PATH, makeCookie, readCookie, SESSION_COOKIE,
+  authConfig, CALLBACK_PATH, makeCookie, ownerConsent, readCookie, SESSION_COOKIE,
   SESSION_SECONDS, signCookie, STATE_COOKIE, STATE_SECONDS, verifyCookie,
 } from './owner-session';
 
@@ -59,7 +59,24 @@ export class OwnerAuthController {
   @Get('auth/session')
   @Header('Cache-Control', 'no-store')
   async session(@Req() request: IncomingMessage): Promise<OwnerSessionResponse> {
-    return { shopId: await this.requireShop(request) };
+    const { userId, shopId } = await requireOwnerIdentity(this.database, request);
+    const consent = ownerConsent();
+    if (consent && !await this.database.ownerConsentAccepted(userId, consent.version)) return { shopId, consent };
+    return { shopId };
+  }
+
+  @Post('auth/consent')
+  @HttpCode(204)
+  @Header('Cache-Control', 'no-store')
+  async acceptConsent(@Req() request: IncomingMessage, @Body('version') version: unknown): Promise<void> {
+    const origin = new URL(requireConfig().redirectUri).origin;
+    if (request.headers.origin !== origin) throw new ApiError(403, 'INVALID_ORIGIN', '허용되지 않은 요청입니다.');
+    const { userId } = await requireOwnerIdentity(this.database, request);
+    const consent = ownerConsent();
+    if (!consent || consent.version !== version) {
+      throw new ApiError(409, 'OWNER_CONSENT_CHANGED', '동의 내용이 바뀌었습니다. 다시 확인해 주세요.');
+    }
+    await this.database.recordOwnerConsent(userId, consent);
   }
 
   @Get('shops/:shopId')
