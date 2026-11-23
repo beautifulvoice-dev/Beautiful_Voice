@@ -8,6 +8,8 @@ import { SessionLoaderProvider } from '@/features/auth/session';
 import { CalendarApiProvider, createMemoryCalendarApi, type CalendarApi } from '@/features/calendar/api';
 import { createHttpCalendarApi } from '@/features/calendar/httpApi';
 import { createMemoryCustomerApi, CustomerApiProvider } from '@/features/customers/api';
+import { blockRejectText } from '@/pages/calendar/EntrySheet';
+import { HttpError } from '@/lib/http';
 import { seedCalendar } from '@/features/calendar/mockData';
 import { overlapsBlock, overlappingBlocks, type CalendarAppointment } from '@/features/calendar/model';
 import { createHttp, type Fetcher } from '@/lib/http';
@@ -49,6 +51,16 @@ describe('창구: 차단 넣기·지우기', () => {
     expect(await api.removeBlock('b9', 1)).toMatchObject({ ok: false, reason: 'NOT_FOUND' });
     expect(await api.removeBlock('b9', 1)).toMatchObject({ ok: false, reason: 'VERSION_CONFLICT' });
     expect(await api.removeBlock('b9', 1)).toMatchObject({ ok: false, reason: 'NETWORK' });
+  });
+});
+
+describe('W4 넣기 거절 문구(#86 리뷰)', () => {
+  it('담당자 칸 422는 고르기 안내, 시각 칸은 시각 안내, 그 밖 422는 입력 확인, 서버 오류는 다시 시도', () => {
+    const v = (field: string) => new HttpError(422, 'VALIDATION_FAILED', { fields: [{ field, code: 'INACTIVE' }] });
+    expect(blockRejectText(v('staffIds'))).toBe('담당자를 다시 골라 주세요. 숨긴 담당자는 고를 수 없어요.');
+    expect(blockRejectText(v('endAt'))).toBe('시작과 끝 시각을 확인해 주세요.');
+    expect(blockRejectText(v('memo'))).toBe('입력값을 확인해 주세요.');
+    expect(blockRejectText(new HttpError(500, 'UNKNOWN'))).toBe('저장하지 못했어요. 잠시 뒤 다시 해 주세요.');
   });
 });
 

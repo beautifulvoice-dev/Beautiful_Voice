@@ -26,7 +26,7 @@ import { occupancyText, rejectText, shopIso, shortDate } from '@/features/calend
 import { addDays, businessWindowsForDate, shopDate, shopTime, startTimes, type CalendarAppointment, type CalendarData, type Menu, type Staff } from '@/features/calendar/model';
 import { CustomerValidationError, useCustomerApi } from '@/features/customers/api';
 import type { Customer } from '@/features/customers/model';
-import { NetworkError } from '@/lib/http';
+import { HttpError, NetworkError } from '@/lib/http';
 import { useRetryKey } from '@/lib/retryKey';
 import { useIsPhone } from '@/lib/useLayout';
 import { cn } from '@/lib/utils';
@@ -933,6 +933,20 @@ function fitBlockTimes(choices: ReturnType<typeof blockTimeChoices>, from: strin
  * ASSUMPTION: 하루 안의 구간만 넣는다(밤을 넘는 차단은 두 번 넣기). 끝 목록은 시작보다 늦은 15분 단위 + 영업 마감 시각.
  * ASSUMPTION: 담당자가 1명이면 스위치·칩을 숨기고 그 담당자로 넣는다(앞으로 생길 담당자는 포함하지 않음).
  */
+/**
+ * 관리 불가 시간 저장 거절 → 문구. 담당자 칸이 거절되면(숨긴 담당자·다른 매장, 422 VALIDATION_FAILED)
+ * 다시 해도 같은 오류라 "잠시 뒤 다시"가 아니라 고르기를 안내한다(#86 리뷰).
+ */
+export function blockRejectText(err: unknown): string {
+  if (err instanceof HttpError && err.code === 'VALIDATION_FAILED') {
+    const fields = Array.isArray(err.details.fields) ? (err.details.fields as { field?: string }[]) : [];
+    if (fields.some((f) => f.field === 'staffIds')) return '담당자를 다시 골라 주세요. 숨긴 담당자는 고를 수 없어요.';
+    if (fields.some((f) => f.field === 'startAt' || f.field === 'endAt')) return '시작과 끝 시각을 확인해 주세요.';
+    return '입력값을 확인해 주세요.';
+  }
+  return '저장하지 못했어요. 잠시 뒤 다시 해 주세요.';
+}
+
 function BlockForm({
   start,
   staff,
@@ -1014,7 +1028,7 @@ function BlockForm({
       if (err instanceof NetworkError) setError(NETWORK_TEXT);
       else {
         blockKey.settle();
-        setError('저장하지 못했어요. 잠시 뒤 다시 해 주세요.');
+        setError(blockRejectText(err));
       }
     } finally {
       setSaving(false);
