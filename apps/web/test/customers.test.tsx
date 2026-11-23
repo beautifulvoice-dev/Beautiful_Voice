@@ -1,5 +1,7 @@
 // C-03 수용 기준: 모바일 화면에서 등록 → 검색 → 수정. 데이터는 합성(절대 규칙 8).
 import { render, screen, waitFor, within } from '@testing-library/react';
+import { CalendarApiProvider, createMemoryCalendarApi } from '@/features/calendar/api';
+import { seedCalendar } from '@/features/calendar/mockData';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
@@ -36,7 +38,7 @@ describe('고객 목록·검색', () => {
   it('고객 수와, 같은 이름이면 "동명 n"을 보인다(W5 디자인)', async () => {
     renderAt('/customers');
     await screen.findByRole('list', { name: '고객 목록' });
-    expect(screen.getByText('고객 4명')).toBeInTheDocument();
+    expect(screen.getByText('활성 고객 4명')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '고객' }).previousElementSibling).toHaveTextContent('내 매장'); // 폰 제목 위 매장 이름
     expect(screen.getAllByText('동명 2')).toHaveLength(2); // 김하늘 두 명
   });
@@ -237,8 +239,10 @@ describe('고객 상세: 정보·예약·방문 이력 (명세 3 2A-2.4)', () =>
     expect(upcoming.map((v) => v.lastChild?.textContent)).toEqual(['예정']);
     const past = within(screen.getByRole('list', { name: '지난 방문' })).getAllByRole('listitem');
     expect(past.map((v) => v.lastChild?.textContent)).toEqual(['완료', '취소', '노쇼', '완료']);
-    expect(screen.getByRole('region', { name: '지갑' })).toHaveTextContent('다음 단계에서 열려요');
-    expect(screen.getByRole('region', { name: '문자' })).toHaveTextContent('다음 단계에서 열려요');
+    expect(screen.getByRole('region', { name: '지갑' })).toHaveTextContent('준비 중');
+    expect(screen.getByRole('region', { name: '문자' })).toHaveTextContent('준비 중');
+    // 날짜는 캘린더와 같은 "11/24(화) 16:00" 형식
+    expect(upcoming[0]!.textContent).toMatch(/^\d{1,2}\/\d{1,2}\([월화수목금토일]\) \d{2}:\d{2}/);
     expect(screen.queryByRole('tablist')).toBeNull();
   });
 
@@ -269,5 +273,65 @@ describe('고객 상세: 정보·예약·방문 이력 (명세 3 2A-2.4)', () =>
       ['next', 'scheduled'],
       ['past', 'scheduled'],
     ]);
+  });
+});
+
+describe('비활성 고객 (BEA-173, 결정 R30·S4)', () => {
+  const seed = () => ({
+    customers: [
+      { id: 'a', name: '합성가', phone: '01000000011', memo: null },
+      { id: 'b', name: '합성나', phone: null, memo: null, active: false },
+    ],
+    visits: {},
+  });
+
+  it('W5: 기본은 활성 고객만, 비활성 칩을 누르면 비활성 고객만', async () => {
+    renderAt('/customers', createMemoryCustomerApi(seed()));
+    await waitFor(() => expect(names()).toHaveLength(1));
+    expect(names()[0]).toContain('합성가');
+    expect(screen.getByText('활성 고객 1명')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('radio', { name: '비활성' }));
+    await waitFor(() => expect(names()[0]).toContain('합성나'));
+    expect(names()).toHaveLength(1);
+  });
+
+  it('W6: ⋯ → 비활성으로 바꾸기는 확인을 묻고, 바꾸면 배지 + 예약 넣기 꺼짐, 다시 활성으로 되돌린다', async () => {
+    setTestWidth(1280);
+    renderAt('/customers/a', createMemoryCustomerApi(seed()));
+    await screen.findByRole('heading', { level: 1, name: '합성가' });
+    expect(screen.getByRole('button', { name: '예약 넣기' })).toBeEnabled();
+    await userEvent.click(screen.getByRole('button', { name: '더보기' }));
+    await userEvent.click(await screen.findByRole('button', { name: '비활성으로 바꾸기' }));
+    const confirm = await screen.findByRole('alertdialog');
+    expect(confirm).toHaveTextContent('비활성으로 바꿔도 예약과 지갑 기록은 그대로 남아요. 예약도 취소되지 않아요.');
+    await userEvent.click(within(confirm).getByRole('button', { name: '비활성으로 바꾸기' }));
+    expect(await screen.findByText('비활성')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '예약 넣기' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: '더보기' }));
+    await userEvent.click(await screen.findByRole('button', { name: '다시 활성으로' }));
+    await waitFor(() => expect(screen.queryByText('비활성')).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: '예약 넣기' })).toBeEnabled();
+  });
+});
+
+describe('W6 예약 넣기', () => {
+  it('고객 상세의 예약 넣기는 캘린더의 예약 넣기를 그 고객으로 채워 연다', async () => {
+    setTestWidth(1280);
+    const router = createMemoryRouter(routes, { initialEntries: ['/customers/c3'] });
+    render(
+      <SessionLoaderProvider value={async () => ({ shopId: 'shop-1' })}>
+        <CalendarApiProvider value={createMemoryCalendarApi(seedCalendar('2026-11-18'))}>
+          <CustomerApiProvider value={createMemoryCustomerApi()}>
+            <RouterProvider router={router} />
+          </CustomerApiProvider>
+        </CalendarApiProvider>
+      </SessionLoaderProvider>,
+    );
+    await screen.findByRole('heading', { level: 1, name: '이서윤' });
+    await userEvent.click(screen.getByRole('button', { name: '예약 넣기' }));
+    const sheet = await screen.findByRole('dialog', { name: '예약 넣기' });
+    expect(router.state.location.pathname).toBe('/calendar');
+    expect(within(sheet).getByPlaceholderText('이름 두 글자')).toHaveValue('이서윤');
+    expect(router.state.location.state).toBeNull(); // 다시 열리지 않게 지움
   });
 });
