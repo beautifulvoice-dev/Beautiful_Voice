@@ -123,13 +123,13 @@ test('등록 201: UTC 시각·전체는 빈 staffIds·메모 정리, 같은 키 
   assert.equal((await call('POST', `/api/shops/${shopA}/calendar-blocks`, { cookie: ownerB, body })).status, 404, '다른 매장 원장');
 });
 
-test('담당자 A 차단: A 등록·이동은 409 BLOCKED, B는 허용, 준비만 겹쳐도 거부, 맞닿으면 허용, 메모만 고치면 재검사 없음', async () => {
+test('담당자 A 차단: A 등록·이동은 409 BLOCKED, B는 허용, 정리만 겹쳐도 거부, 맞닿으면 허용, 메모만 고치면 재검사 없음', async () => {
   const b = await block({ startAt: at('02', '14:00'), endAt: at('02', '16:00') });
   assert.equal(b.status, 201);
   const clash = await book({ startAt: at('02', '15:00') });
   assert.deepEqual([clash.status, clash.body.code, clash.body.details], [409, 'BLOCKED', { conflictingIds: [b.body.id] }]);
   assert.equal((await book({ startAt: at('02', '15:00'), staffId: staffB })).status, 201, '다른 담당자는 허용');
-  assert.equal((await book({ startAt: at('02', '16:10'), prepMin: 20 })).body.code, 'BLOCKED', '준비(15:50~)만 겹쳐도 거부');
+  assert.equal((await book({ startAt: at('02', '12:50'), prepMin: 20 })).body.code, 'BLOCKED', '정리(~14:10)만 겹쳐도 거부');
   assert.equal((await book({ startAt: at('02', '16:00') })).status, 201, '차단 끝과 예약 점유 시작이 맞닿음');
   const early = await book({ startAt: at('02', '13:00') });
   assert.equal(early.status, 201, '예약 끝 14:00이 차단 시작과 맞닿음');

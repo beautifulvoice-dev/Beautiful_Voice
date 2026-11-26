@@ -25,7 +25,7 @@ export class CatalogService {
     if (!checked.ok) throw invalid(checked.errors);
     const v = checked.value;
     const { rows: [row] } = await client.query<Menu>(
-      `INSERT INTO crm.menu (shop_id, name, default_duration_min, default_prep_min)
+      `INSERT INTO crm.menu (shop_id, name, default_duration_min, default_cleanup_min)
        VALUES ($1, $2, $3, $4) RETURNING ${MENU_COLUMNS}`,
       [shopId, v.name, v.defaultDurationMin, v.defaultPrepMin]);
     return row!;
@@ -45,7 +45,7 @@ export class CatalogService {
     if (!checked.ok || errors.length > 0) throw invalid(errors);
     const v = checked.value;
     const { rows: [row] } = await client.query<Menu>(
-      `UPDATE crm.menu SET name = $3, default_duration_min = $4, default_prep_min = $5, active = $6
+      `UPDATE crm.menu SET name = $3, default_duration_min = $4, default_cleanup_min = $5, active = $6
         WHERE shop_id = $1 AND id = $2 RETURNING ${MENU_COLUMNS}`,
       [shopId, menuId, v.name, v.defaultDurationMin, v.defaultPrepMin, active]);
     return row!;
@@ -84,7 +84,7 @@ export class CatalogService {
 }
 
 const META = 'id, version, created_at AS "createdAt", updated_at AS "updatedAt"';
-const MENU_COLUMNS = `${META}, name, default_duration_min AS "defaultDurationMin", default_prep_min AS "defaultPrepMin", active`;
+const MENU_COLUMNS = `${META}, name, default_duration_min AS "defaultDurationMin", default_cleanup_min AS "defaultPrepMin", active`;
 const STAFF_COLUMNS = `${META}, name, active`;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

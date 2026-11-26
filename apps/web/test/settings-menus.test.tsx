@@ -81,7 +81,7 @@ describe('메뉴 화면', () => {
 
   it.each([
     ['63', '7'],
-    ['1200', '1007'],
+    ['600', '180'], // rev.3.1 상한(시술 600·정리 180) — 세 자리도 잘리지 않는다
   ])('관리 %s분·준비 %s분을 잘리지 않고 직접 입력해 저장한다(#78 리뷰)', async (duration, prep) => {
     const api = createMemorySettingsApi();
     renderAt('/settings/menus', api);

@@ -87,10 +87,10 @@ const calendar = (from, to, cookie) => call('GET', `${A}/calendar?from=${from}&t
 const setStatus = (id, body, opts = {}) => call('PUT', `${A}/appointments/${id}/status`, { body, ...opts });
 
 /** 영업시간 검사를 거치지 않고 행을 직접 넣는다(자정 근처·휴무일 예약 — 설정을 바꾸기 전 예약과 같은 상태). */
-async function insert({ shop = shopA, customer = customerA, staff = staff1, start, duration = 60, prep = 0, status = 'scheduled', menu = null }) {
+async function insert({ shop = shopA, customer = customerA, staff = staff1, start, duration = 60, cleanup = 0, status = 'scheduled', menu = null }) {
   const { rows: [{ id }] } = await admin.query(`INSERT INTO crm.appointment_m1
-    (shop_id, customer_id, staff_id, menu_id, start_at, duration_min, prep_min, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-  [shop, customer, staff, menu, start, duration, prep, status]);
+    (shop_id, customer_id, staff_id, menu_id, start_at, duration_min, cleanup_min, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+  [shop, customer, staff, menu, start, duration, cleanup, status]);
   return id;
 }
 
@@ -105,18 +105,18 @@ test('기간: 1일·42일은 200, 43일·역순·없는 날짜·빠짐·다른 �
   assert.equal((await call('GET', `${A}/calendar?from=2027-01-04`)).body.code, 'INVALID_RANGE');
 });
 
-test('점유 교차: 매장 자정(UTC−9h) 경계 — 걸치면 포함, 닿기만 하면 제외, 준비가 걸쳐도 포함', async () => {
+test('점유 교차: 매장 자정(UTC−9h) 경계 — 걸치면 포함, 닿기만 하면 제외, 정리만 걸쳐도 포함', async () => {
   // 2027-01-11(월) 서울 = [2027-01-10T15:00Z, 2027-01-11T15:00Z)
   const endsAtMidnight = await insert({ start: '2027-01-10T14:00:00Z' }); // 서울 1/10 23:00~1/11 00:00 — 닿기만
   const crossesIn = await insert({ start: '2027-01-10T14:30:00Z', staff: staff2 }); // 1/10 23:30~1/11 00:30
-  const prepIntoNext = await insert({ start: '2027-01-11T15:20:00Z', prep: 30 }); // 1/12 00:20 시작, 준비 1/11 23:50~
+  const cleanupInto = await insert({ start: '2027-01-10T13:50:00Z', cleanup: 30 }); // 1/10 22:50~23:50 시술, 정리 ~1/11 00:20
   const startsAtNextMidnight = await insert({ start: '2027-01-11T15:00:00Z', staff: staff2 }); // 1/12 00:00 — 닿기만
   const day = await calendar('2027-01-11', '2027-01-11');
   assert.equal(day.status, 200);
   const ids = day.body.appointments.map((a) => a.id);
   assert.ok(!ids.includes(endsAtMidnight), '전날 자정에 끝나는 예약은 빠진다');
-  assert.ok(!ids.includes(startsAtNextMidnight), '다음 날 자정에 시작하는 예약(준비 0)은 빠진다');
-  assert.deepEqual(ids, [crossesIn, prepIntoNext], '걸친 예약 + 준비만 걸친 예약');
+  assert.ok(!ids.includes(startsAtNextMidnight), '다음 날 자정에 시작하는 예약은 빠진다');
+  assert.deepEqual(ids, [cleanupInto, crossesIn], '정리만 걸친 예약 + 걸친 예약(시작 순)');
   assert.deepEqual(day.body.blocks, []);
 });
 
