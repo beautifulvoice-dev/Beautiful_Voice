@@ -4,7 +4,7 @@ import { CustomerConflictError, CustomerValidationError } from '@/features/custo
 import { createHttpCustomerApi } from '@/features/customers/httpApi';
 import { FieldsInvalidError, SettingsInvalidError, SettingsNotFoundError, VersionConflictError } from '@/features/settings/api';
 import { createHttpSettingsApi } from '@/features/settings/httpApi';
-import { createHttp, HttpError, NetworkError, shopPath, type Fetcher } from '@/lib/http';
+import { createHttp, HttpError, NetworkError, sessionPath, shopPath, type Fetcher } from '@/lib/http';
 import { createRetryKey } from '@/lib/retryKey';
 
 interface Sent {
@@ -40,6 +40,7 @@ describe('공통 요청부', () => {
     const { fetcher, sent } = fakeFetch(json(200, { ok: 1 }), new Response(null, { status: 204 }));
     const h = createHttp(fetcher);
     expect(shopPath('s 1', 'customers', 'a/b')).toBe('/api/shops/s%201/customers/a%2Fb');
+    expect(sessionPath('actions', 'a/b', 'resolve')).toBe('/api/actions/a%2Fb/resolve');
     expect(await h.get('/x', { query: { q: '김 하늘', cursor: null, limit: 20, empty: '' } })).toEqual({ ok: 1 });
     expect(sent[0]!.url).toBe('/x?q=%EA%B9%80+%ED%95%98%EB%8A%98&limit=20');
     expect(sent[0]!.headers).toEqual({ Accept: 'application/json' });
