@@ -4,7 +4,7 @@
 Phase 1: 음성 기록 → 전사·구조화 → 웹앱 정리함 / Phase 2: 같은 웹앱의 CRM을 음성·채팅으로 조작 / Phase 3: AI 전화 수신.
 
 ## 반드시 읽을 문서
-- **Phase 2 명세 정본(11/19 최종판, 최우선):** Linear 프로젝트 「Phase 2 : AI CRM」의 「[P2] 명세 0. README」~「[P2] 명세 3. 기능 모듈과 마일스톤」(본문은 첨부 md). 옛 「[P2] 2. 상세 기능 명세서」·「[P2] 4. 데이터」와 백로그 v1.0과 다르면 이 명세를 따른다. 본문을 저장소에 옮기지 않는다.
+- **Phase 2·3 명세 정본(rev.3.1, 2026-11-25, 최우선):** PM 전달 패키지「실서비스 개발자 전달 패키지 rev.3.1」(정책·상세 기능 명세서, 스프린트 기준서, 데이터·API 계약 검토본, 디자인 시스템). 원본은 로컬 전용(`.private/`)이고 PM 파일럿 저장소의 `docs/developer-handoff/`와 같다. 11/19 Linear「[P2] 명세 0~3」과 다르면 rev.3.1을 따른다. 데이터 스키마·아키텍처·AI 내부 구조는 개발팀 재량. 본문을 저장소에 옮기지 않는다.
 - 제품 요구사항(원천, **수정 금지**): `docs/product/source/product-backlog-v1.0.md` — 초기 백로그. Phase 2는 위 명세가 대체한다
   - 공개 저장소라 git에 포함되지 않는 로컬 전용 폴더다. 파일이 없으면 사용자에게 Slack 기획 자료 채널에서 받아 넣어 달라고 요청한다. 절대 커밋하지 않는다.
 - 아키텍처: `docs/kickoff/02-architecture.md` · 개발 규칙: `docs/kickoff/04-dev-rules.md`
@@ -12,9 +12,10 @@ Phase 1: 음성 기록 → 전사·구조화 → 웹앱 정리함 / Phase 2: 같
 - 회의 입장·첫 주 계획: `docs/kickoff/07-dev-position.md`
 
 ## 현재 단계
-1차 스프린트(2026-11-18 ~ 11-25 자정): **Phase 2 마일스톤 M1 손으로 쓰는 CRM**(2F 기반·2P-1 운영 등록·2A-1 설정·2A-2 고객·2A-3 캘린더·예약, Linear BEA-155~179). 기준은 Linear「[P2] 명세 0~3」(11/19 최종판), 작업 분해는 `docs/kickoff/09-sprint1-2a-breakdown.md`. Phase 1은 PM이 별도 저장소에서 만들며, 여기서는 플로우·정책만 참고한다.
+2차 스프린트(2026-11-26 ~ 12-01, rev.3.1의 Sprint 1): **웹 CRM + 지갑 + 문자 + 종료 5분 전 완료 카드 + CSV + 행동 로그 + 모바일 API 계약**. 작업 분해·분담은 `docs/kickoff/10-sprint2-breakdown.md`(기능별 분담 — 화면 + 서버를 한 사람이). 이후 Sprint 2(12/02~ AI 에이전트·앱 API) → Sprint 3(정확도·GPT) → Sprint 4(전화·안정화, 12/21 기능 동결) → 12/28 데모. 1차 스프린트(M1, `09-sprint1-2a-breakdown.md`)는 끝났다.
+PM의 파일럿 저장소(Phase 2 웹·앱)는 **참고용**이다. 규칙·흐름만 보고 우리 구조로 새로 작성한다(ADR-0005와 같은 방식). 안드로이드 앱·캡슐 마이크는 PM이 만든다.
 **기술 스택 확정: ADR-0006**(Accepted, 11/17) — TS 모노레포(pnpm+Turborepo) / React+Vite PWA / NestJS API·워커 / PostgreSQL. 로컬 실행은 README.md를 따른다. 빌드·검사는 pnpm build, pnpm lint, pnpm typecheck, pnpm test를 사용한다(직접 테스트 안내: `docs/dev/testing.md`). PR은 CI `verify` 통과가 머지 필수 조건이다. 호스팅은 AWS EC2 + RDS(ADR-0007).
-역할: 리더·서버 기반 주드 / CRM·웹앱 옵마 / 음성·AI 해나 (`docs/kickoff/05-rnr.md`).
+역할(2차 스프린트): 리더·계정·문자 엔진·워커·행동 로그 주드 / 캘린더·지갑·완료 카드·홈 옵마 / 테마·고객·CSV·문자 설정 화면 해나 — 각자 화면과 서버를 함께(`docs/kickoff/10-sprint2-breakdown.md`). 처음 서버를 맡으면 `docs/dev/server-onboarding.md`.
 이전 프로젝트 코드는 **설계만 참고하고 새로 작성**한다(ADR-0005, Accepted). `.private/`의 이전 코드를 복사해 넣지 않는다.
 
 ## 절대 규칙
