@@ -28,7 +28,7 @@
 
 ## 3. API 하나 만드는 순서
 1. **설계 초안(사람이 직접):** 하려는 일 / 데이터 / API 표(메서드·주소·성공 코드) / 요청·응답 예시 / 실패 표. 표본: 고객 API를 만든 계약 #42와 예약 설계 노트.
-2. **계약 먼저:** `packages/contracts/*.openapi.yaml`과 `crm.d.ts`에 주소·요청·응답·오류를 적는다. [contract-change 스킬](../../.claude/skills/contract-change/SKILL.md) 절차를 따른다. 새 주소는 ADR-0009대로 **주소에 매장 ID를 넣지 않는다**(세션에서 정함).
+2. **계약 먼저:** `packages/contracts/*.openapi.yaml`과 `crm.d.ts`에 주소·요청·응답·오류를 적는다. [contract-change 스킬](../../.claude/skills/contract-change/SKILL.md) 절차를 따른다. 주소 규칙(ADR-0009, Accepted 뒤 적용 — 그 전에는 리더와 확인): **새 리소스 묶음**(지갑·카드·문자·템플릿 등)은 주소에 매장 ID를 넣지 않는다(세션에서 정함). **기존 리소스를 넓히는 일**(고객에 칸 추가, 고객 하위 기록 등)은 B단계 통일 전까지 기존 `/api/shops/{shopId}/…`를 그대로 쓴다. 웹은 `lib/http.ts`의 공용 경로 함수로 두 방식을 만든다(세션 기준 경로 함수는 S1에서 추가).
 3. **DB가 필요하면 초안만:** 테이블·칸이 필요하면 설계 초안에 적고, 2차 스프린트는 **마이그레이션을 한 PR로 모아** 리더가 리뷰한다. 각자 마이그레이션 파일을 따로 만들지 않는다.
 4. **컨트롤러:** `customer.controller.ts`를 그대로 따라 한다. 읽기 = `withShop`, 쓰기 = `idempotentWrite`. 새 컨트롤러는 `app.module.ts`의 `controllers`·`providers`에 등록.
 5. **서비스:** 입력 검사(`unknown`을 받아 필드별로 확인, 실패는 422 `VALIDATION_FAILED` + `fields`) → 필요하면 잠금 → 저장 → 저장한 행을 다시 읽어 응답. 도메인 규칙(번호 정규화 등)은 DB 없이 도는 순수 함수로 `packages/*`에 두면 테스트가 쉽다(예: `packages/customers`).
