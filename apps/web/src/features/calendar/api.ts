@@ -1,14 +1,10 @@
 // 캘린더 화면이 데이터를 가져오고 쓰는 창구. 화면은 이 인터페이스만 알고, 예약 API(BEA-176)·설정 API(#45)가 생기면 구현만 바꾼다.
-// 저장 검사는 서버와 같은 @bv/scheduling 규칙(checkBooking·changeStatus)을 쓴다 — 웹·음성 같은 규칙(절대 규칙 4).
+// 경고 판정은 서버와 같은 @bv/scheduling 규칙(appointmentWarnings·changeStatus)을 쓴다 — 웹·음성 같은 규칙(절대 규칙 4).
+// rev.3.1: 웹 수동 저장은 겹침·차단·영업시간 밖·휴무를 거부하지 않고 경고(warnings)와 함께 저장한다(설계 12 §5-1).
+import type { BookingWarning } from '@bv/contracts';
 import { changeStatus } from '@bv/scheduling/appointment-status';
-import {
-  checkBooking,
-  occupiedOf,
-  type ActiveBlock,
-  type BookingReject,
-  type ExistingBooking,
-  type ShopHours,
-} from '@bv/scheduling/booking';
+import type { ActiveBlock, ShopHours } from '@bv/scheduling/booking';
+import { appointmentWarnings, occupancyOf, type OccupyingAppointment } from '@bv/scheduling/warnings';
 import { createContext, useContext, useMemo } from 'react';
 import { useOptionalSession } from '@/features/auth/session';
 import { FAKE_API } from '@/lib/apiMode';
@@ -27,10 +23,11 @@ export interface NewAppointment {
   customerName: string;
   customerPhone: string | null;
   menuName: string | null;
-  staffId: string;
+  /** null = 담당자 미지정. */
+  staffId: string | null;
   startAt: string;
   durationMin: number;
-  prepMin: number;
+  cleanupMin: number;
   memo: string | null;
   /** 실제 API는 메뉴를 id로 저장한다(계약 #42). 가짜 저장소는 이름만 쓴다. */
   menuId?: string | null;
@@ -41,18 +38,30 @@ export interface NewAppointment {
  * 이름 칸(customerName·customerPhone·menuName)은 가짜 저장소의 카드 표시용 — 실제 API는 보내지 않는다.
  */
 export type AppointmentChange = Partial<
-  Pick<CalendarAppointment, 'customerId' | 'customerName' | 'customerPhone' | 'menuId' | 'menuName' | 'staffId' | 'startAt' | 'durationMin' | 'prepMin' | 'memo'>
+  Pick<CalendarAppointment, 'customerId' | 'customerName' | 'customerPhone' | 'menuId' | 'menuName' | 'staffId' | 'startAt' | 'durationMin' | 'cleanupMin' | 'memo'>
 > & { version: number };
 
 /** 관리 불가 시간 넣기(W4) 입력. */
 export type NewBlock = Omit<CalendarBlock, 'id'>;
 
+/** 미리 보기 요청: 새 예약 입력, 또는 고치는 예약 id·version + 바꿀 칸(계약 preview-warnings). */
+export type WarningPreview =
+  | { appointmentId?: undefined; customerId: string; staffId: string | null; startAt: string; durationMin: number; cleanupMin: number }
+  | ({ appointmentId: string; version: number } & Partial<Pick<NewAppointment, 'staffId' | 'startAt' | 'durationMin' | 'cleanupMin'>>);
+
+/** 저장된 예약 + 그 저장 시점의 경고(rev.3.1 — 없으면 []). */
+export type SavedAppointment = CalendarAppointment & { warnings: BookingWarning[] };
+
 /**
- * 저장이 안 된 이유. 예약 규칙(@bv/scheduling) + 계약 #42의 상태·동시 수정 오류 + 응답을 못 받음(NETWORK).
+ * 저장이 안 된 이유. 계약의 상태·동시 수정·담당자 필수 오류 + 응답을 못 받음(NETWORK).
+ * 겹침·차단·영업시간·휴무는 rev.3.1부터 거부가 아니라 경고다.
  * NETWORK는 저장됐는지 모른다 — 같은 내용으로 다시 보내면 같은 키라 두 번 저장되지 않는다(설계 05 D5).
  */
 export type SaveReject =
-  | BookingReject
+  /** 담당자 필수 설정이 켜졌는데 미지정(422 staffId REQUIRED). */
+  | 'STAFF_REQUIRED'
+  /** 그 밖의 입력 오류(422 VALIDATION_FAILED) — 숨긴 고객·메뉴·담당자, 범위 밖 분 등. */
+  | 'INVALID_INPUT'
   | 'INVALID_TRANSITION'
   | 'NO_CHANGE'
   | 'VERSION_CONFLICT'
@@ -63,8 +72,8 @@ export type SaveReject =
   /** 그 밖의 서버 오류(500 등). 저장되지 않았다 — 다시 시도할 수 있다. */
   | 'FAILED';
 
-/** 저장 결과. 거부면 이유와 걸린 예약·차단 id(문구에 쓴다, W3 거부 표). */
-export type SaveResult<T> = { ok: true; value: T } | { ok: false; reason: SaveReject; conflictingIds: string[] };
+/** 저장 결과. 거부면 이유(문구에 쓴다, W3 거부 표). */
+export type SaveResult<T> = { ok: true; value: T } | { ok: false; reason: SaveReject };
 
 /** 쓰기 옵션. 실제 API는 Idempotency-Key로 보낸다(절대 규칙 6). 비우면 창구가 만든다. */
 export interface CalendarWriteOptions {
@@ -79,23 +88,27 @@ export interface CalendarApi {
   /** 매장 날짜 from ~ to(마지막 날 포함). 즉 from 0시 ~ to 다음 날 0시 사이에 점유·차단이 걸치는 것. 예약 API 계약도 같은 뜻으로 둔다. */
   range(from: string, to: string): Promise<CalendarData>;
   menus(): Promise<Menu[]>;
-  createAppointment(input: NewAppointment, options?: CalendarWriteOptions): Promise<SaveResult<CalendarAppointment>>;
+  /** 예약 규칙(settings/appointment-rules). 켜면 새 예약·시간·담당자 변경에 담당자 필수. */
+  appointmentRules(): Promise<{ requireStaffSelection: boolean }>;
+  /** 저장 전 경고 미리 보기(읽기 전용). 실패는 던진다 — 화면은 미리 보기 없이도 저장할 수 있다. */
+  previewWarnings(input: WarningPreview): Promise<BookingWarning[]>;
+  createAppointment(input: NewAppointment, options?: CalendarWriteOptions): Promise<SaveResult<SavedAppointment>>;
   /** 예약 한 건의 최신 상세(바꾸기 전에 version을 받는다). 없으면 null. */
   appointment(id: string): Promise<CalendarAppointment | null>;
   /** 예약 바꾸기. 시간·담당자가 바뀌면 서버가 겹침·영업시간을 다시 본다(04 Q1·D2). */
-  updateAppointment(id: string, change: AppointmentChange, options?: CalendarWriteOptions): Promise<SaveResult<CalendarAppointment>>;
-  /** 상태 바꾸기·고치기(W2, 결정 S5). 취소를 되살리면 겹침을 다시 검사한다. */
-  setStatus(id: string, to: AppointmentStatus): Promise<SaveResult<CalendarAppointment>>;
+  updateAppointment(id: string, change: AppointmentChange, options?: CalendarWriteOptions): Promise<SaveResult<SavedAppointment>>;
+  /** 상태 바꾸기·고치기(W2, 결정 S5). 취소를 되살리면 겹침을 다시 판정해 경고로 돌려준다. */
+  setStatus(id: string, to: AppointmentStatus): Promise<SaveResult<SavedAppointment>>;
   /** 관리 불가 시간은 기존 예약을 막지 않는다(결정 R50). start < end만 검사. 실패는 던진다(NetworkError면 같은 키로 다시). */
   createBlock(input: NewBlock, options?: CalendarWriteOptions): Promise<CalendarBlock>;
   /** 관리 불가 시간 지우기(#42 DELETE ?version, 설계 09 D3). 결과를 돌려준다 — 화면이 저장 중에서 멈추지 않게. */
   removeBlock(id: string, version: number | undefined, options?: CalendarWriteOptions): Promise<SaveResult<null>>;
 }
 
-/** 캘린더 데이터 → @bv/scheduling 검사 입력. */
-export function toBookingInputs(data: Pick<CalendarData, 'appointments' | 'blocks' | 'businessHours' | 'closures'>): {
+/** 캘린더 데이터 → @bv/scheduling 경고 판정 입력. */
+export function toWarningInputs(data: Pick<CalendarData, 'appointments' | 'blocks' | 'businessHours' | 'closures'>): {
   hours: ShopHours;
-  existing: ExistingBooking[];
+  existing: OccupyingAppointment[];
   blocks: ActiveBlock[];
 } {
   return {
@@ -105,7 +118,7 @@ export function toBookingInputs(data: Pick<CalendarData, 'appointments' | 'block
       id: a.id,
       staffId: a.staffId,
       status: a.status,
-      occupied: occupiedOf({ start: new Date(a.startAt), durationMin: a.durationMin, prepMin: a.prepMin }),
+      occupied: occupancyOf({ start: new Date(a.startAt), durationMin: a.durationMin, cleanupMin: a.cleanupMin }),
     })),
     blocks: data.blocks.map((b) => ({
       id: b.id,
@@ -121,7 +134,11 @@ export function toBookingInputs(data: Pick<CalendarData, 'appointments' | 'block
  * 서버 API 전 임시 저장소(브라우저 메모리). 새로고침하면 처음 값으로 돌아간다.
  * ASSUMPTION: 한 매장 데이터만 담는다. 매장 격리(shop_id)는 실제 API가 로그인 정보로 보장한다.
  */
-export function createMemoryCalendarApi(seed: CalendarSeed = seedDesignScene(), menus: readonly Menu[] = SCENE_MENUS): CalendarApi {
+export function createMemoryCalendarApi(
+  seed: CalendarSeed = seedDesignScene(),
+  menus: readonly Menu[] = SCENE_MENUS,
+  rules: { requireStaffSelection: boolean } = { requireStaffSelection: false },
+): CalendarApi {
   const store = {
     staff: seed.staff.map((s) => ({ ...s })),
     appointments: seed.appointments.map((a) => ({ ...a })),
@@ -130,20 +147,31 @@ export function createMemoryCalendarApi(seed: CalendarSeed = seedDesignScene(), 
     closures: (seed.closures ?? []).map((c) => ({ ...c })),
   };
   let next = 1;
-  const check = (
-    a: Pick<CalendarAppointment, 'staffId' | 'startAt' | 'durationMin' | 'prepMin'>,
+  /** 서버와 같은 경고 판정(설계 12 D4). 겹침에서 자기 자신은 뺀다. */
+  const judge = (
+    a: Pick<CalendarAppointment, 'staffId' | 'startAt' | 'durationMin' | 'cleanupMin'>,
     excludeId?: string,
     skipHoursCheck = false,
   ) => {
-    const { hours, existing, blocks } = toBookingInputs(store);
-    return checkBooking(
-      { staffId: a.staffId, start: new Date(a.startAt), durationMin: a.durationMin, prepMin: a.prepMin },
+    const { hours, existing, blocks } = toWarningInputs(store);
+    return appointmentWarnings(
+      { staffId: a.staffId, start: new Date(a.startAt), durationMin: a.durationMin, cleanupMin: a.cleanupMin },
       hours,
       existing,
       blocks,
       { excludeId, skipHoursCheck },
     );
   };
+  const staffMissing = (staffId: string | null) => rules.requireStaffSelection && staffId === null;
+  const reject = (reason: SaveReject): SaveResult<never> => ({ ok: false, reason });
+  const end = (x: Pick<CalendarAppointment, 'startAt' | 'durationMin'>) => Date.parse(x.startAt) + x.durationMin * 60_000;
+  /** 고치기에서 다시 볼 것(서버 planUpdate와 같은 범위, 04 Q1·D2): 시작·끝이 바뀌면 영업시간까지, 정리·담당자만이면 겹침만. */
+  const editScope = (before: CalendarAppointment, after: CalendarAppointment) => {
+    const moved = after.startAt !== before.startAt || end(after) !== end(before);
+    const timing = moved || after.cleanupMin !== before.cleanupMin || after.staffId !== before.staffId;
+    return { moved, timing };
+  };
+  const OCCUPYING = new Set<AppointmentStatus>(['scheduled', 'completed', 'no_show']);
 
   return {
     supportsBlocks: true,
@@ -156,7 +184,7 @@ export function createMemoryCalendarApi(seed: CalendarSeed = seedDesignScene(), 
         appointments: store.appointments
           .filter((a) => {
             const start = Date.parse(a.startAt);
-            return hit(start - a.prepMin * 60_000, start + a.durationMin * 60_000);
+            return hit(start, start + (a.durationMin + a.cleanupMin) * 60_000);
           })
           .map((a) => ({ ...a })),
         blocks: store.blocks.filter((b) => hit(Date.parse(b.startAt), Date.parse(b.endAt))).map((b) => ({ ...b })),
@@ -167,12 +195,26 @@ export function createMemoryCalendarApi(seed: CalendarSeed = seedDesignScene(), 
     async menus() {
       return menus.map((m) => ({ ...m }));
     },
+    async appointmentRules() {
+      return { ...rules };
+    },
+    async previewWarnings(input) {
+      if (input.appointmentId === undefined) return judge(input);
+      const a = store.appointments.find((x) => x.id === input.appointmentId);
+      if (!a) throw new Error('APPOINTMENT_NOT_FOUND');
+      const after = {
+        ...a,
+        ...Object.fromEntries(Object.entries(input).filter(([k]) => k !== 'appointmentId' && k !== 'version')),
+      } as CalendarAppointment;
+      const { moved, timing } = editScope(a, after);
+      return timing && OCCUPYING.has(a.status) ? judge(after, a.id, !moved) : [];
+    },
     async createAppointment(input) {
-      const r = check(input);
-      if (!r.ok) return r;
+      if (staffMissing(input.staffId)) return reject('STAFF_REQUIRED');
+      const warnings = judge(input);
       const created: CalendarAppointment = { id: `n${next++}`, ...input, status: 'scheduled' };
       store.appointments.push(created);
-      return { ok: true, value: { ...created } };
+      return { ok: true, value: { ...created, warnings } };
     },
     async appointment(id) {
       const a = store.appointments.find((x) => x.id === id);
@@ -180,33 +222,26 @@ export function createMemoryCalendarApi(seed: CalendarSeed = seedDesignScene(), 
     },
     async updateAppointment(id, change) {
       const a = store.appointments.find((x) => x.id === id);
-      if (!a) return { ok: false, reason: 'NOT_FOUND', conflictingIds: [] };
-      if ((a.version ?? 1) !== change.version) return { ok: false, reason: 'VERSION_CONFLICT', conflictingIds: [] };
+      if (!a) return reject('NOT_FOUND');
+      if ((a.version ?? 1) !== change.version) return reject('VERSION_CONFLICT');
       const { version, ...fields } = change;
       const after = { ...a, ...fields };
-      const end = (x: CalendarAppointment) => Date.parse(x.startAt) + x.durationMin * 60_000;
-      const moved = after.startAt !== a.startAt || end(after) !== end(a);
-      const timing = moved || after.prepMin !== a.prepMin || after.staffId !== a.staffId;
-      // 서버와 같은 재검사 범위(04 Q1·D2): 시작·끝이 바뀌면 영업시간까지, 준비·담당자만 바뀌면 겹침만.
-      if (timing && (after.status === 'scheduled' || after.status === 'completed' || after.status === 'no_show')) {
-        const r = check(after, a.id, !moved);
-        if (!r.ok) return r;
-      }
+      const { moved, timing } = editScope(a, after);
+      // 설계 12 D3: 담당자 필수는 시간·담당자 변경에만 — 기존 미지정 예약의 메모 수정은 된다.
+      if (timing && staffMissing(after.staffId)) return reject('STAFF_REQUIRED');
+      const warnings = timing && OCCUPYING.has(after.status) ? judge(after, a.id, !moved) : [];
       Object.assign(a, fields, { version: version + 1 });
-      return { ok: true, value: { ...a } };
+      return { ok: true, value: { ...a, warnings } };
     },
     async setStatus(id, to) {
       const a = store.appointments.find((x) => x.id === id);
       if (!a) throw new Error('APPOINTMENT_NOT_FOUND');
       const change = changeStatus(a.status, to, { undoOfTask: false });
-      if (!change.ok) return { ok: false, reason: 'INVALID_TRANSITION', conflictingIds: [] };
-      if (change.needsOverlapCheck) {
-        // 상태 고치기는 시각을 바꾸지 않으므로 영업시간은 다시 보지 않고 겹침·차단만 본다.
-        const r = check(a, a.id, true);
-        if (!r.ok) return r;
-      }
+      if (!change.ok) return reject('INVALID_TRANSITION');
+      // 상태 고치기는 시각을 바꾸지 않으므로 영업시간은 다시 보지 않고 겹침·차단만 본다(경고만, 저장은 한다).
+      const warnings = change.needsOverlapCheck ? judge(a, a.id, true) : [];
       a.status = to;
-      return { ok: true, value: { ...a } };
+      return { ok: true, value: { ...a, warnings } };
     },
     async createBlock(input) {
       if (!(Date.parse(input.startAt) < Date.parse(input.endAt))) throw new Error('INVALID_PERIOD');
@@ -216,8 +251,8 @@ export function createMemoryCalendarApi(seed: CalendarSeed = seedDesignScene(), 
     },
     async removeBlock(id, version) {
       const i = store.blocks.findIndex((b) => b.id === id);
-      if (i < 0) return { ok: false, reason: 'NOT_FOUND', conflictingIds: [] };
-      if (version !== undefined && (store.blocks[i]!.version ?? 1) !== version) return { ok: false, reason: 'VERSION_CONFLICT', conflictingIds: [] };
+      if (i < 0) return reject('NOT_FOUND');
+      if (version !== undefined && (store.blocks[i]!.version ?? 1) !== version) return reject('VERSION_CONFLICT');
       store.blocks.splice(i, 1);
       return { ok: true, value: null };
     },
