@@ -14,7 +14,7 @@ const ops = (doc) =>
   );
 
 test('모든 $ref가 풀린다', () => {
-  for (const f of ['crm.openapi.yaml', 'auth.openapi.yaml']) {
+  for (const f of ['crm.openapi.yaml', 'auth.openapi.yaml', 'wallet.openapi.yaml']) {
     const doc = load(f);
     const refs = [];
     (function walk(o) {
