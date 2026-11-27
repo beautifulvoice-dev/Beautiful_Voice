@@ -84,15 +84,25 @@ describe("휴무·휴가", () => {
 });
 
 describe("메뉴와 담당자", () => {
-  it("메뉴: 이름 필수, 기본 시술 5~600분·기본 정리 0~180분 정수, 둘 다 비울 수 있다", () => {
-    assert.deepEqual(validateMenu({ name: "  합성 관리 A ", defaultDurationMin: 60, defaultPrepMin: 10 }), {
-      ok: true, value: { name: "합성 관리 A", defaultDurationMin: 60, defaultPrepMin: 10 },
+  it("메뉴: 이름 필수, 기본 시술 5~600분·기본 정리 0~180분 정수(비울 수 있음), 가격은 0 이상 정수(생략 = 0)", () => {
+    assert.deepEqual(validateMenu({ name: "  합성 관리 A ", defaultDurationMin: 60, defaultCleanupMin: 10, defaultPrice: 50000 }), {
+      ok: true, value: { name: "합성 관리 A", defaultDurationMin: 60, defaultCleanupMin: 10, defaultPrice: 50000, defaultPrepMin: 10 },
     });
     assert.deepEqual(validateMenu({ name: "합성 관리 B" }), {
-      ok: true, value: { name: "합성 관리 B", defaultDurationMin: null, defaultPrepMin: null },
+      ok: true, value: { name: "합성 관리 B", defaultDurationMin: null, defaultCleanupMin: null, defaultPrice: 0, defaultPrepMin: null },
     });
+    for (const defaultPrice of [-1, 1.5, Number.NaN, 2_147_483_648]) {
+      assert.deepEqual(validateMenu({ name: "합성", defaultPrice }), { ok: false, errors: [{ field: "defaultPrice", code: "INVALID_PRICE" }] });
+    }
+  });
+
+  it("S3 전환: 옛 이름 defaultPrepMin도 정리 시간으로 받고, 새 이름과 함께 보내면 DUPLICATE_FIELD", () => {
     assert.deepEqual(validateMenu({ name: "합성", defaultPrepMin: 0 }), {
-      ok: true, value: { name: "합성", defaultDurationMin: null, defaultPrepMin: 0 },
+      ok: true, value: { name: "합성", defaultDurationMin: null, defaultCleanupMin: 0, defaultPrice: 0, defaultPrepMin: 0 },
+    });
+    assert.deepEqual(validateMenu({ name: "합성", defaultCleanupMin: 5, defaultPrepMin: 5 }).ok, false);
+    assert.deepEqual(validateMenu({ name: "합성", defaultCleanupMin: 181 }), {
+      ok: false, errors: [{ field: "defaultCleanupMin", code: "INVALID_MINUTES" }],
     });
   });
 

@@ -1,5 +1,5 @@
 // BEA-179 캘린더 차단 — 실제 PostgreSQL + Nest 앱으로 설계 09 "확인 기준"을 확인한다. 합성 데이터만(절대 규칙 8).
-// 등록·제거(D3), 예약 등록·이동의 409 BLOCKED(Q1)와 예외(Q2·메모만), 조회 blocks·blockedBy(D5), 숨긴 담당자(D6),
+// 등록·제거(D3), 예약 등록·이동의 OVERLAP_BLOCK 경고(Q1, S3 rev.3.1 — 거부하지 않고 저장)와 예외(Q2·메모만), 조회 blocks·blockedBy(D5), 숨긴 담당자(D6),
 // 두 연결의 커밋 순서(매장 쓰기 잠금 Q3), 매장 격리·RLS·지연 제약.
 require('reflect-metadata');
 const assert = require('node:assert/strict');
@@ -123,34 +123,38 @@ test('등록 201: UTC 시각·전체는 빈 staffIds·메모 정리, 같은 키 
   assert.equal((await call('POST', `/api/shops/${shopA}/calendar-blocks`, { cookie: ownerB, body })).status, 404, '다른 매장 원장');
 });
 
-test('담당자 A 차단: A 등록·이동은 409 BLOCKED, B는 허용, 정리만 겹쳐도 거부, 맞닿으면 허용, 메모만 고치면 재검사 없음', async () => {
+/** 저장 응답의 차단 겹침 경고 대상(없으면 []). */
+const blockedOf = (res) => res.body.warnings.find((w) => w.code === 'OVERLAP_BLOCK')?.relatedIds ?? [];
+
+test('담당자 A 차단: A 등록·이동은 저장 + OVERLAP_BLOCK, B는 경고 없음, 정리만 겹쳐도 경고, 맞닿으면 없음, 메모만 고치면 판정 없음', async () => {
   const b = await block({ startAt: at('02', '14:00'), endAt: at('02', '16:00') });
   assert.equal(b.status, 201);
   const clash = await book({ startAt: at('02', '15:00') });
-  assert.deepEqual([clash.status, clash.body.code, clash.body.details], [409, 'BLOCKED', { conflictingIds: [b.body.id] }]);
-  assert.equal((await book({ startAt: at('02', '15:00'), staffId: staffB })).status, 201, '다른 담당자는 허용');
-  assert.equal((await book({ startAt: at('02', '12:50'), prepMin: 20 })).body.code, 'BLOCKED', '정리(~14:10)만 겹쳐도 거부');
-  assert.equal((await book({ startAt: at('02', '16:00') })).status, 201, '차단 끝과 예약 점유 시작이 맞닿음');
-  const early = await book({ startAt: at('02', '13:00') });
-  assert.equal(early.status, 201, '예약 끝 14:00이 차단 시작과 맞닿음');
+  assert.deepEqual([clash.status, blockedOf(clash)], [201, [b.body.id]]);
+  assert.deepEqual(blockedOf(await book({ startAt: at('02', '15:00'), staffId: staffB })), [], '다른 담당자는 경고 없음');
+  assert.deepEqual(blockedOf(await book({ startAt: at('02', '12:50'), cleanupMin: 20 })), [b.body.id], '정리(~14:10)만 겹쳐도 경고');
+  assert.deepEqual(blockedOf(await book({ startAt: at('02', '16:00') })), [], '차단 끝과 예약 점유 시작이 맞닿음');
+  const early = await book({ startAt: at('02', '13:00'), staffId: staffB });
+  assert.deepEqual(blockedOf(early), [], 'B는 대상이 아님');
 
-  const moved = await call('PATCH', `${A}/appointments/${early.body.id}`, { body: { version: 1, startAt: at('02', '13:30') } });
-  assert.equal(moved.body.code, 'BLOCKED', '이동해서 겹치면 거부');
-  const toA = await book({ startAt: at('02', '11:00'), staffId: staffB });
-  assert.equal((await call('PATCH', `${A}/appointments/${toA.body.id}`, { body: { version: 1, staffId: staffA, startAt: at('02', '14:30') } })).body.code, 'BLOCKED');
-  assert.equal((await call('PATCH', `${A}/appointments/${early.body.id}`, { body: { version: 1, memo: '메모만' } })).status, 200);
+  const toA = await call('PATCH', `${A}/appointments/${early.body.id}`, { body: { version: 1, staffId: staffA, startAt: at('02', '13:30') } });
+  assert.deepEqual([toA.status, blockedOf(toA)], [200, [b.body.id]], 'A로 옮겨 겹치면 경고');
+  const memo = await call('PATCH', `${A}/appointments/${early.body.id}`, { body: { version: 2, memo: '메모만' } });
+  assert.deepEqual([memo.status, memo.body.warnings, memo.body.blockedBy], [200, [], [b.body.id]], '판정은 없지만 조회 표시는 남는다');
 });
 
-test('매장 전체 차단은 나중에 추가한 담당자에도 적용, 자정을 넘는 차단, 겹친 차단은 모두 반환', async () => {
+test('매장 전체 차단은 나중에 추가한 담당자·미지정 예약에도 적용, 자정을 넘는 차단, 겹친 차단은 모두 반환', async () => {
   const all = await block({ startAt: at('03', '21:00'), endAt: at('04', '10:00'), allStaff: true, staffIds: [] });
   const late = randomUUID();
   await admin.query("INSERT INTO crm.staff (id, shop_id, name) VALUES ($1, $2, 'S-late')", [late, shopA]);
-  assert.equal((await book({ startAt: at('03', '21:00'), staffId: late, durationMin: 30 })).body.code, 'BLOCKED');
-  assert.equal((await book({ startAt: at('04', '09:00'), staffId: staffB })).body.code, 'BLOCKED', '자정 다음 날 아침');
+  assert.deepEqual(blockedOf(await book({ startAt: at('03', '21:00'), staffId: late, durationMin: 30 })), [all.body.id]);
+  assert.deepEqual(blockedOf(await book({ startAt: at('04', '09:00'), staffId: staffB })), [all.body.id], '자정 다음 날 아침');
   const second = await block({ startAt: at('04', '09:30'), endAt: at('04', '11:00') });
   const both = await book({ startAt: at('04', '09:00'), durationMin: 60 });
-  assert.equal(both.body.code, 'BLOCKED');
-  assert.deepEqual(both.body.details.conflictingIds, [all.body.id, second.body.id], '시작·id 순');
+  assert.deepEqual(blockedOf(both), [all.body.id, second.body.id], '시작·id 순');
+  const unassigned = await book({ startAt: at('04', '09:00'), staffId: null });
+  assert.deepEqual(blockedOf(unassigned), [all.body.id, second.body.id], '미지정 예약은 담당자 차단(A)도 대상');
+  assert.deepEqual((await call('GET', `${A}/appointments/${unassigned.body.id}`)).body.blockedBy, [all.body.id, second.body.id]);
 });
 
 test('기존 예약은 그대로, blocks·blockedBy만 달라진다 → 제거하면 표시가 사라지고 다시 예약된다', async () => {
@@ -170,7 +174,7 @@ test('기존 예약은 그대로, blocks·blockedBy만 달라진다 → 제거�
   assert.equal((await removeBlock(b.body.id, 1)).status, 204);
   const cleared = (await calendar('2027-02-05')).body;
   assert.deepEqual([cleared.blocks, cleared.appointments.find((a) => a.id === appt.body.id).blockedBy], [[], []]);
-  assert.equal((await book({ startAt: at('05', '11:00') })).status, 201, '제거한 차단 때문에 거부되지 않는다');
+  assert.deepEqual(blockedOf(await book({ startAt: at('05', '11:00') })), [], '제거한 차단은 경고하지 않는다');
 });
 
 test('취소 되살리기는 차단으로 거부하지 않고(Q2) blockedBy로 표시, 취소·무효는 blockedBy 빈 배열', async () => {
@@ -301,7 +305,7 @@ async function waitForLockWait(blockerPid) {
   throw new Error('API 요청이 매장 쓰기 잠금에서 기다리지 않았다');
 }
 
-test('차단이 먼저 커밋되면 기다리던 예약은 그 차단을 보고 409 BLOCKED', async () => {
+test('차단이 먼저 커밋되면 기다리던 예약은 그 차단을 보고 OVERLAP_BLOCK 경고와 함께 저장', async () => {
   const held = randomUUID();
   const { race, pid } = await holdLock(shopA, async (c) => {
     await c.query(`INSERT INTO crm.calendar_block (id, shop_id, start_at, end_at, all_staff) VALUES ($1, $2, $3, $4, true)`,
@@ -312,7 +316,7 @@ test('차단이 먼저 커밋되면 기다리던 예약은 그 차단을 보고 
     await waitForLockWait(pid);
     await race.query('COMMIT');
     const res = await pending;
-    assert.deepEqual([res.status, res.body.code, res.body.details], [409, 'BLOCKED', { conflictingIds: [held] }]);
+    assert.deepEqual([res.status, blockedOf(res)], [201, [held]]);
   } finally {
     await race.query('ROLLBACK').catch(() => {});
     await race.end();
@@ -355,7 +359,7 @@ test('다른 매장의 쓰기 잠금은 기다리지 않는다', async () => {
 // ── ③ PATCH(설계 09 D2) ──
 const patchBlock = (id, body, opts) => call('PATCH', `${A}/calendar-blocks/${id}`, { body, ...opts });
 
-test('고치기: 시간을 옮기면 새 시간이 막히고 옛 시간은 풀린다, 같은 키 재생, 기존 예약은 그대로', async () => {
+test('고치기: 시간을 옮기면 새 시간에 경고가 생기고 옛 시간은 풀린다, 같은 키 재생, 기존 예약은 그대로', async () => {
   const appt = await book({ startAt: at('16', '10:00') });
   const b = await block({ startAt: at('16', '10:30'), endAt: at('16', '11:00') });
   const key = randomUUID();
@@ -364,8 +368,8 @@ test('고치기: 시간을 옮기면 새 시간이 막히고 옛 시간은 풀�
   assert.deepEqual([moved.body.version, moved.body.startAt, moved.body.memo, moved.body.staffIds], [2, '2027-02-16T05:00:00.000Z', '외출', [staffA]]);
   const again = await patchBlock(b.body.id, { version: 1, startAt: at('16', '14:00'), endAt: at('16', '15:00'), memo: ' 외출 ' }, { key });
   assert.deepEqual([again.status, again.replayed, again.body], [200, 'true', moved.body]);
-  assert.equal((await book({ startAt: at('16', '14:30'), durationMin: 30 })).body.code, 'BLOCKED');
-  assert.equal((await book({ startAt: at('16', '11:00') })).status, 201, '옛 시간은 풀림');
+  assert.deepEqual(blockedOf(await book({ startAt: at('16', '14:30'), durationMin: 30 })), [b.body.id]);
+  assert.deepEqual(blockedOf(await book({ startAt: at('16', '11:00') })), [], '옛 시간은 풀림');
   const day = (await calendar('2027-02-16')).body;
   const kept = day.appointments.find((a) => a.id === appt.body.id);
   assert.deepEqual([kept.version, kept.blockedBy], [1, []], '기존 예약 행은 그대로, 겹침만 사라짐');
@@ -380,8 +384,8 @@ test('대상 바꾸기: 지정 → 전체는 연결을 비우고, 전체 → 지
   assert.deepEqual([two.body.allStaff, [...two.body.staffIds].sort(), two.body.version], [false, [staffA, staffB].sort(), 3]);
   const one = await patchBlock(b.body.id, { version: 3, staffIds: [staffB] });
   assert.deepEqual([one.body.staffIds, one.body.version], [[staffB], 4], '담당자 집합만 바꿔도 version +1');
-  assert.equal((await book({ startAt: at('17', '10:00') })).status, 201, 'A는 풀림');
-  assert.equal((await book({ startAt: at('17', '10:00'), staffId: staffB })).body.code, 'BLOCKED');
+  assert.deepEqual(blockedOf(await book({ startAt: at('17', '10:00') })), [], 'A는 풀림');
+  assert.deepEqual(blockedOf(await book({ startAt: at('17', '10:00'), staffId: staffB })), [b.body.id]);
   const same = await patchBlock(b.body.id, { version: 4, staffIds: [staffB] });
   assert.deepEqual([same.status, same.body.version], [200, 4], '바뀐 게 없으면 version 그대로');
 });

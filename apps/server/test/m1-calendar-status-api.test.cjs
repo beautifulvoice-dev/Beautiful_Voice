@@ -89,7 +89,8 @@ const setStatus = (id, body, opts = {}) => call('PUT', `${A}/appointments/${id}/
 /** 영업시간 검사를 거치지 않고 행을 직접 넣는다(자정 근처·휴무일 예약 — 설정을 바꾸기 전 예약과 같은 상태). */
 async function insert({ shop = shopA, customer = customerA, staff = staff1, start, duration = 60, cleanup = 0, status = 'scheduled', menu = null }) {
   const { rows: [{ id }] } = await admin.query(`INSERT INTO crm.appointment_m1
-    (shop_id, customer_id, staff_id, menu_id, start_at, duration_min, cleanup_min, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+    (shop_id, customer_id, staff_id, menu_id, start_at, duration_min, cleanup_min, status, menu_name_snapshot)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, (SELECT name FROM crm.menu WHERE id = $4)) RETURNING id`,
   [shop, customer, staff, menu, start, duration, cleanup, status]);
   return id;
 }
@@ -148,7 +149,7 @@ test('정렬·취소/무효 포함·메뉴 없음·담당자(활성 + 참조된 
   assert.equal(own.body.appointments.length, 1);
 });
 
-test('취소 200 → 같은 시간 새 예약 가능 → 되살리면 409 STAFF_OVERLAP, 새 예약을 치우면 되살림 200', async () => {
+test('취소 200 → 같은 시간 새 예약은 경고 없음 → 되살리면 200 + OVERLAP_APPOINTMENT, 새 예약을 치우면 경고 없이 되살림', async () => {
   const made = await call('POST', `${A}/appointments`, { body: { customerId: customerA, staffId: staff1, startAt: '2027-01-19T11:00:00+09:00', durationMin: 60 } });
   assert.equal(made.status, 201);
   const cancelled = await setStatus(made.body.id, { version: 1, status: 'cancelled' });
@@ -156,15 +157,16 @@ test('취소 200 → 같은 시간 새 예약 가능 → 되살리면 409 STAFF_
   assert.deepEqual([cancelled.body.status, cancelled.body.version], ['cancelled', 2]);
 
   const again = await call('POST', `${A}/appointments`, { body: { customerId: customerA, staffId: staff1, startAt: '2027-01-19T11:30:00+09:00', durationMin: 30 } });
-  assert.equal(again.status, 201, '취소된 예약은 점유하지 않는다');
+  assert.deepEqual([again.status, again.body.warnings], [201, []], '취소된 예약은 점유하지 않는다');
   const revive = await setStatus(made.body.id, { version: 2, status: 'scheduled' });
-  assert.equal(revive.status, 409);
-  assert.deepEqual(revive.body, { code: 'STAFF_OVERLAP', message: '같은 담당자의 다른 예약과 시간이 겹칩니다.', details: { conflictingIds: [again.body.id] } });
+  assert.deepEqual([revive.status, revive.body.status, revive.body.warnings], [200, 'scheduled', [{ code: 'OVERLAP_APPOINTMENT', relatedIds: [again.body.id] }]]);
+  assert.equal((await setStatus(made.body.id, { version: 2, status: 'cancelled' })).status, 409, '오래된 version');
+  assert.equal((await setStatus(made.body.id, { version: 3, status: 'cancelled' })).status, 200);
 
   assert.equal((await setStatus(again.body.id, { version: 1, status: 'cancelled' })).status, 200);
-  const revived = await setStatus(made.body.id, { version: 2, status: 'completed' });
+  const revived = await setStatus(made.body.id, { version: 4, status: 'completed' });
   assert.equal(revived.status, 200, '취소 → 완료도 점유를 되살린다(겹침 없음)');
-  assert.deepEqual([revived.body.status, revived.body.version], ['completed', 3]);
+  assert.deepEqual([revived.body.status, revived.body.version, revived.body.warnings], ['completed', 5, []]);
 });
 
 test('되살리기는 영업시간·휴무로 거부하지 않는다(Q2) — 일요일 취소 예약', async () => {

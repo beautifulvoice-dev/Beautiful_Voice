@@ -1,4 +1,4 @@
-import type { BusinessHoursBody, Closure, ShopInfo } from '@bv/contracts';
+import type { AppointmentRules, BusinessHoursBody, Closure, ShopInfo } from '@bv/contracts';
 import { Body, Controller, Delete, Get, Header, Param, Post, Put, Req, Res, UseGuards } from '@nestjs/common';
 import { idempotentWrite, type WriteRequest, type WriteResponse } from '../common/idempotent-write';
 import { OwnerShopGuard } from '../common/owner-shop.guard';
@@ -42,7 +42,22 @@ export class SettingsController {
       (client) => this.settings.saveShopInfo(client, shopId, body));
   }
 
-  @Get('closures')
+  @Get('settings/appointment-rules')
+  @Header('Cache-Control', 'no-store')
+  appointmentRules(@Param('shopId') shopId: string): Promise<AppointmentRules> {
+    return this.database.withShop(shopId, (client) => this.settings.appointmentRules(client, shopId));
+  }
+
+  @Put('settings/appointment-rules')
+  saveAppointmentRules(
+    @Param('shopId') shopId: string, @Body() body: unknown,
+    @Req() request: WriteRequest, @Res({ passthrough: true }) response: WriteResponse,
+  ): Promise<AppointmentRules> {
+    return idempotentWrite(this.database, shopId, request, response, 200,
+      (client) => this.settings.saveAppointmentRules(client, shopId, body));
+  }
+
+    @Get('closures')
   @Header('Cache-Control', 'no-store')
   closures(@Param('shopId') shopId: string): Promise<{ items: Closure[] }> {
     return this.database.withShop(shopId, (client) => this.settings.closures(client, shopId));

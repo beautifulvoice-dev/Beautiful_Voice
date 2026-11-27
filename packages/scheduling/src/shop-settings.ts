@@ -79,28 +79,48 @@ export function validateClosure(input: unknown): SettingsResult<Closure> {
 
 // ── 메뉴·담당자 ───────────────────────────────────────
 
-export type ResourceField = "name" | "defaultDurationMin" | "defaultPrepMin";
-export type ResourceErrorCode = "NAME_REQUIRED" | "INVALID_MINUTES";
+export type ResourceField = "name" | "defaultDurationMin" | "defaultCleanupMin" | "defaultPrice" | "defaultPrepMin";
+export type ResourceErrorCode = "NAME_REQUIRED" | "INVALID_MINUTES" | "INVALID_PRICE" | "DUPLICATE_FIELD";
 export type ResourceResult<T> = { ok: true; value: T } | { ok: false; errors: { field: ResourceField; code: ResourceErrorCode }[] };
+
+/** 원 단위 가격 상한 = DB integer 최댓값(015 menu.default_price). */
+export const MAX_PRICE = 2_147_483_647;
 
 export interface MenuValues {
   name: string;
-  /** 예약 입력을 미리 채우는 기본 관리 시간(분). 비울 수 있다(결정 S3). */
+  /** 예약 입력을 미리 채우는 기본 시술 시간(분, 5~600). 비울 수 있다(결정 S3). */
   defaultDurationMin: number | null;
-  /** 기본 정리 시간(분, 시술 뒤 — rev.3.1). 비울 수 있다. API 이름은 S3 서버 PR에서 defaultCleanupMin으로 바꾼다. */
+  /** 기본 정리 시간(분, 시술 뒤 0~180 — rev.3.1). 비울 수 있다. */
+  defaultCleanupMin: number | null;
+  /** 원 단위 정수(0 이상). 비우면 0. */
+  defaultPrice: number;
+  /** @deprecated S3 전환 기간의 옛 이름 — defaultCleanupMin과 같은 값. 웹 전환(S3 ③) 뒤 지운다. */
   defaultPrepMin: number | null;
 }
 
-export function validateMenu(input: { name: string; defaultDurationMin?: number | null; defaultPrepMin?: number | null }): ResourceResult<MenuValues> {
+export function validateMenu(input: {
+  name: string;
+  defaultDurationMin?: number | null;
+  defaultCleanupMin?: number | null;
+  /** @deprecated defaultCleanupMin의 옛 이름. 둘 다 보내면 DUPLICATE_FIELD. */
+  defaultPrepMin?: number | null;
+  defaultPrice?: number | null;
+}): ResourceResult<MenuValues> {
   const errors: { field: ResourceField; code: ResourceErrorCode }[] = [];
   const name = cleanName(input.name);
   if (name === null) errors.push({ field: "name", code: "NAME_REQUIRED" });
   const duration = input.defaultDurationMin ?? null;
   if (duration !== null && !minutesWithin(duration, DURATION_RANGE)) errors.push({ field: "defaultDurationMin", code: "INVALID_MINUTES" });
-  const prep = input.defaultPrepMin ?? null;
-  if (prep !== null && !minutesWithin(prep, CLEANUP_RANGE)) errors.push({ field: "defaultPrepMin", code: "INVALID_MINUTES" });
+  if (input.defaultCleanupMin !== undefined && input.defaultPrepMin !== undefined) errors.push({ field: "defaultPrepMin", code: "DUPLICATE_FIELD" });
+  const legacy = input.defaultCleanupMin === undefined && input.defaultPrepMin !== undefined;
+  const cleanup = (legacy ? input.defaultPrepMin : input.defaultCleanupMin) ?? null;
+  if (cleanup !== null && !minutesWithin(cleanup, CLEANUP_RANGE)) {
+    errors.push({ field: legacy ? "defaultPrepMin" : "defaultCleanupMin", code: "INVALID_MINUTES" });
+  }
+  const price = input.defaultPrice ?? 0;
+  if (!(Number.isInteger(price) && price >= 0 && price <= MAX_PRICE)) errors.push({ field: "defaultPrice", code: "INVALID_PRICE" });
   if (errors.length > 0 || name === null) return { ok: false, errors };
-  return { ok: true, value: { name, defaultDurationMin: duration, defaultPrepMin: prep } };
+  return { ok: true, value: { name, defaultDurationMin: duration, defaultCleanupMin: cleanup, defaultPrice: price, defaultPrepMin: cleanup } };
 }
 
 /** 담당자는 로그인하지 않는 예약 자원이다. 원장 자신도 담당자로 등록할 수 있다(파생 R20). */

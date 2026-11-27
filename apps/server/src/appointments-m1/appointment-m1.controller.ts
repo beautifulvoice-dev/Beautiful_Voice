@@ -1,5 +1,5 @@
-import type { Appointment, CalendarResponse } from '@bv/contracts';
-import { Body, Controller, Get, Header, Param, Patch, Post, Put, Query, Req, Res, UseGuards } from '@nestjs/common';
+import type { Appointment, AppointmentSaved, BookingWarning, CalendarResponse } from '@bv/contracts';
+import { Body, Controller, Get, Header, HttpCode, Param, Patch, Post, Put, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { idempotentWrite, type WriteRequest, type WriteResponse } from '../common/idempotent-write';
 import { OwnerShopGuard } from '../common/owner-shop.guard';
 import { DatabaseService } from '../database.service';
@@ -16,9 +16,17 @@ export class AppointmentM1Controller {
   create(
     @Param('shopId') shopId: string, @Body() body: unknown,
     @Req() request: WriteRequest, @Res({ passthrough: true }) response: WriteResponse,
-  ): Promise<Appointment> {
+  ): Promise<AppointmentSaved> {
     return idempotentWrite(this.database, shopId, request, response, 201,
       (client) => this.appointments.create(client, shopId, body));
+  }
+
+  /** 저장 전 경고 미리 보기(설계 12 D4) — 쓰지 않으므로 Idempotency-Key 없음. 200 { warnings }. */
+  @Post('preview-warnings')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  previewWarnings(@Param('shopId') shopId: string, @Body() body: unknown): Promise<{ warnings: BookingWarning[] }> {
+    return this.database.withShop(shopId, (client) => this.appointments.previewWarnings(client, shopId, body));
   }
 
   @Get(':appointmentId')
@@ -31,7 +39,7 @@ export class AppointmentM1Controller {
   update(
     @Param('shopId') shopId: string, @Param('appointmentId') id: string, @Body() body: unknown,
     @Req() request: WriteRequest, @Res({ passthrough: true }) response: WriteResponse,
-  ): Promise<Appointment> {
+  ): Promise<AppointmentSaved> {
     return idempotentWrite(this.database, shopId, request, response, 200,
       (client) => this.appointments.update(client, shopId, id, body));
   }
@@ -40,7 +48,7 @@ export class AppointmentM1Controller {
   setStatus(
     @Param('shopId') shopId: string, @Param('appointmentId') id: string, @Body() body: unknown,
     @Req() request: WriteRequest, @Res({ passthrough: true }) response: WriteResponse,
-  ): Promise<Appointment> {
+  ): Promise<AppointmentSaved> {
     return idempotentWrite(this.database, shopId, request, response, 200,
       (client) => this.appointments.setStatus(client, shopId, id, body));
   }

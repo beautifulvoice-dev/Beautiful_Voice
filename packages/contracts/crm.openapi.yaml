@@ -43,6 +43,23 @@ paths:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/ShopInfo'}}}}
         '422': {$ref: '#/components/responses/Error'} # VALIDATION_FAILED, details.fields [{field, code}]
         default: {$ref: '#/components/responses/Error'}
+  /api/shops/{shopId}/settings/appointment-rules:
+    parameters: [{$ref: '#/components/parameters/ShopId'}]
+    # S3 rev.3.1 §3.2 담당자 필수 설정(shop_settings.require_staff_selection). 매장당 한 행.
+    # ASSUMPTION: shop-info처럼 version 없이 통째로 바꾼다(마지막 저장이 남음). 설정 버전 저장 방식은 리더 확인 뒤 더한다(추가 필드라 호환).
+    get:
+      summary: 예약 규칙 읽기
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/AppointmentRules'}}}}
+        default: {$ref: '#/components/responses/Error'}
+    put:
+      summary: 예약 규칙 바꾸기. 켜면 새 예약·시간·담당자 변경에서 담당자를 요구한다(기존 미지정 예약의 메모 수정은 허용)
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AppointmentRules'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/AppointmentRules'}}}}
+        '422': {$ref: '#/components/responses/Error'} # VALIDATION_FAILED, details.fields [{field, code}]
+        default: {$ref: '#/components/responses/Error'}
   /api/shops/{shopId}/closures:
     parameters: [{$ref: '#/components/parameters/ShopId'}]
     get:
@@ -202,7 +219,7 @@ paths:
     parameters: [{$ref: '#/components/parameters/ShopId'}]
     get:
       summary: 캘린더 한 화면치(담당자·예약·활성 차단). from~to는 매장 날짜, 마지막 날 포함, 최대 42일
-      description: 점유 [시작−준비, 시작+관리)나 차단이 기간에 걸치면 포함한다. 취소·무효 예약도 오지만 화면은 그리지 않는다. 차단 테이블(BEA-179)이 생기기 전까지 blocks는 항상 빈 배열이다.
+      description: 점유 [시작, 시작+시술+정리)나 차단이 기간에 걸치면 포함한다. 취소·무효 예약도 오지만 화면은 그리지 않는다. 예약의 overlappingAppointmentIds·blockedBy는 조회 시점에 계산한다(기간 가장자리 밖 예약과의 겹침 포함).
       parameters:
         - {in: query, name: from, required: true, schema: {type: string, format: date}}
         - {in: query, name: to, required: true, schema: {type: string, format: date}}
@@ -223,13 +240,28 @@ paths:
   /api/shops/{shopId}/appointments:
     parameters: [{$ref: '#/components/parameters/ShopId'}]
     post:
-      summary: 예약 등록(상태 scheduled). 같은 담당자 점유 겹침·차단·영업시간·휴무를 검사한다
+      summary: 예약 등록(상태 scheduled). 겹침·차단·영업시간 밖·휴무는 거부하지 않고 warnings와 함께 저장한다(rev.3.1 §4.2)
       parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AppointmentInput'}}}}
       responses:
-        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Appointment'}}}}
-        '409': {$ref: '#/components/responses/Error'} # STAFF_OVERLAP · BLOCKED (details.conflictingIds)
-        '422': {$ref: '#/components/responses/Error'} # VALIDATION_FAILED · OUTSIDE_BUSINESS_HOURS · CLOSED_DAY
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/AppointmentSaved'}}}}
+        # VALIDATION_FAILED — 본문의 고객·메뉴·담당자 id가 이 매장에 없으면(다른 매장 것이든 없는 id든) 해당 필드 NOT_FOUND,
+        # 담당자 필수 설정이 켜졌는데 미지정이면 staffId REQUIRED
+        '422': {$ref: '#/components/responses/Error'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/shops/{shopId}/appointments/preview-warnings:
+    parameters: [{$ref: '#/components/parameters/ShopId'}]
+    post:
+      summary: 저장 전 경고 미리 보기. 저장과 같은 서버 판정이고 아무것도 쓰지 않는다(Idempotency-Key 없음)
+      description: |
+        새 예약은 등록 본문과 같은 값을 보낸다. 단 customerId는 선택이다(고객을 고르기 전·새 고객 입력 중에도 부를 수 있게 — 판정에 고객은 쓰지 않는다. 보내면 등록처럼 검사).
+        기존 예약 수정은 appointmentId·version과 바꿀 필드만 보낸다 — 서버가 현재 값에 합치고 그 예약 자신은 겹침에서 뺀다.
+        결과는 저장 시점까지 보장되지 않는다. 저장 응답의 warnings가 최종이다.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AppointmentPreviewRequest'}}}}
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {type: object, required: [warnings], properties: {warnings: {type: array, items: {$ref: '#/components/schemas/BookingWarning'}}}}}}}
+        '409': {$ref: '#/components/responses/Error'} # VERSION_CONFLICT (details.currentVersion)
+        '422': {$ref: '#/components/responses/Error'} # VALIDATION_FAILED — appointmentId가 이 매장에 없으면 appointmentId NOT_FOUND
         default: {$ref: '#/components/responses/Error'}
   /api/shops/{shopId}/appointments/{appointmentId}:
     parameters: [{$ref: '#/components/parameters/ShopId'}, {$ref: '#/components/parameters/AppointmentId'}]
@@ -239,12 +271,13 @@ paths:
         '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Appointment'}}}}
         default: {$ref: '#/components/responses/Error'}
     patch:
-      summary: 예약 고치기·시간 이동. 시간·담당자가 바뀌면 등록과 같은 검사를 한다
+      summary: 예약 고치기·시간 이동. 시간·담당자가 바뀌면 등록과 같은 판정으로 warnings를 돌려준다(거부하지 않음)
       parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AppointmentPatch'}}}}
       responses:
-        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Appointment'}}}}
-        '409': {$ref: '#/components/responses/Error'} # VERSION_CONFLICT · STAFF_OVERLAP · BLOCKED
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/AppointmentSaved'}}}}
+        '404': {$ref: '#/components/responses/Error'} # 경로의 예약 id가 이 매장에 없음(다른 매장 것이든 없는 id든)
+        '409': {$ref: '#/components/responses/Error'} # VERSION_CONFLICT
         '422': {$ref: '#/components/responses/Error'}
         default: {$ref: '#/components/responses/Error'}
   /api/shops/{shopId}/appointments/{appointmentId}/status:
@@ -254,8 +287,8 @@ paths:
       parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
       requestBody: {required: true, content: {application/json: {schema: {type: object, required: [version, status], properties: {version: {type: integer}, status: {enum: [scheduled, completed, cancelled, no_show]}}}}}}
       responses:
-        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/Appointment'}}}}
-        '409': {$ref: '#/components/responses/Error'} # VERSION_CONFLICT · NO_CHANGE · INVALID_TRANSITION · STAFF_OVERLAP(취소 되살릴 때)
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/AppointmentSaved'}}}} # 취소를 되살리면 겹침 warnings
+        '409': {$ref: '#/components/responses/Error'} # VERSION_CONFLICT · NO_CHANGE · INVALID_TRANSITION
         default: {$ref: '#/components/responses/Error'}
   # 차단 API는 calendar_block 테이블이 생기는 BEA-179에서 구현한다(#43 시연 범위 밖). 11/25 시연에는 없다.
   /api/shops/{shopId}/calendar-blocks:
@@ -348,13 +381,15 @@ components:
       type: object
       properties:
         name: {type: string}
-        defaultDurationMin: {type: [integer, 'null'], minimum: 1, maximum: 2147483647, description: '예약 입력을 미리 채우는 값(결정 S3). 상한은 DB integer 최댓값(#39 MAX_MINUTES)'}
-        defaultPrepMin: {type: [integer, 'null'], minimum: 0, maximum: 2147483647}
+        defaultDurationMin: {type: [integer, 'null'], minimum: 5, maximum: 600, description: '예약 입력을 미리 채우는 시술 시간(결정 S3)'}
+        defaultCleanupMin: {type: [integer, 'null'], minimum: 0, maximum: 180, description: '시술 뒤 정리 시간(rev.3.1)'}
+        defaultPrice: {type: integer, minimum: 0, maximum: 2147483647, default: 0, description: '원 단위 정수'}
+        defaultPrepMin: {type: [integer, 'null'], deprecated: true, description: 'S3 전환 기간 옛 이름 — defaultCleanupMin과 같은 값. 웹 전환 뒤 지운다'}
     MenuPatch:
       allOf: [{$ref: '#/components/schemas/MenuFields'}, {type: object, required: [version], properties: {version: {type: integer}, active: {type: boolean}}}]
       description: name을 포함해 모든 필드는 선택(보낸 것만 바뀜). version만 필수
     Menu:
-      allOf: [{$ref: '#/components/schemas/MenuFields'}, {$ref: '#/components/schemas/RowMeta'}, {type: object, required: [name, defaultDurationMin, defaultPrepMin, active], properties: {active: {type: boolean}}}]
+      allOf: [{$ref: '#/components/schemas/MenuFields'}, {$ref: '#/components/schemas/RowMeta'}, {type: object, required: [name, defaultDurationMin, defaultCleanupMin, defaultPrice, defaultPrepMin, active], properties: {active: {type: boolean}}}]
     Staff:
       allOf: [{type: object, required: [name, active], properties: {name: {type: string}, active: {type: boolean}}}, {$ref: '#/components/schemas/RowMeta'}]
     RowMeta:
@@ -385,16 +420,17 @@ components:
         - {type: object, required: [name, phone, memo, birthdate, address, active, deactivatedAt], properties: {active: {type: boolean}, deactivatedAt: {type: [string, 'null'], format: date-time}}}
     AppointmentStatus: {enum: [scheduled, completed, cancelled, no_show, voided]}
     AppointmentInput:
-      allOf: [{$ref: '#/components/schemas/AppointmentFields'}, {type: object, required: [customerId, staffId, startAt, durationMin]}]
+      allOf: [{$ref: '#/components/schemas/AppointmentFields'}, {type: object, required: [customerId, startAt, durationMin]}]
     AppointmentFields:
       type: object
       properties:
         customerId: {type: string, format: uuid}
         menuId: {type: [string, 'null'], format: uuid}
-        staffId: {type: string, format: uuid, description: '필수. 담당자가 1명이면 화면이 자동으로 채운다'}
-        startAt: {type: string, format: date-time, description: '관리 시작(ISO-8601+offset)'}
-        durationMin: {type: integer, minimum: 1}
-        prepMin: {type: integer, minimum: 0, default: 0, description: '관리 앞 준비 시간. 점유 [startAt−prep, startAt+duration)'}
+        staffId: {type: [string, 'null'], format: uuid, description: 'null(등록에서 생략도 같음) = 담당자 미지정. 수정에서 생략은 그대로, null은 해제. 담당자 필수 설정이 켜지면 새 예약·시간·담당자 변경에 필요'}
+        startAt: {type: string, format: date-time, description: '시술 시작(ISO-8601+offset)'}
+        durationMin: {type: integer, minimum: 5, maximum: 600}
+        cleanupMin: {type: integer, minimum: 0, maximum: 180, default: 0, description: '시술 뒤 정리 시간. 점유 [startAt, startAt+duration+cleanup)'}
+        prepMin: {type: integer, deprecated: true, description: 'S3 전환 기간 옛 이름 — cleanupMin과 같은 값(요청에는 둘 중 하나만). 웹 전환 뒤 지운다'}
         memo: {type: [string, 'null']}
     AppointmentPatch:
       allOf: [{$ref: '#/components/schemas/AppointmentFields'}, {type: object, required: [version], properties: {version: {type: integer}}}]
@@ -404,12 +440,35 @@ components:
         - {$ref: '#/components/schemas/AppointmentFields'}
         - {$ref: '#/components/schemas/RowMeta'}
         - type: object
-          required: [customerId, menuId, staffId, startAt, durationMin, prepMin, memo, status, customerName, menuName, blockedBy]
+          required: [customerId, menuId, staffId, startAt, durationMin, cleanupMin, prepMin, memo, status, customerName, menuName, blockedBy, overlappingAppointmentIds]
           properties:
             status: {$ref: '#/components/schemas/AppointmentStatus'}
             customerName: {type: string, description: '카드 표시용(고객 이름)'}
-            menuName: {type: [string, 'null']}
-            blockedBy: {type: array, items: {type: string, format: uuid}, description: '이 예약과 겹치는 활성 차단 id(충돌 표시, AC-CRM-3)'}
+            menuName: {type: [string, 'null'], description: '예약에 저장한 메뉴 이름(등록·메뉴 변경 때의 이름). 메뉴가 없으면 null'}
+            blockedBy: {type: array, items: {type: string, format: uuid}, description: '이 예약과 겹치는 활성 차단 id(충돌 표시, AC-CRM-3). 미지정 예약은 모든 차단이 대상'}
+            overlappingAppointmentIds: {type: array, items: {type: string, format: uuid}, description: '조회 시점에 점유가 겹치는 다른 점유 예약 id(같은 담당자이거나 한쪽이 미지정). 취소·무효는 빈 배열'}
+    AppointmentSaved:
+      description: 쓰기 응답 = 예약 + 그 저장 시점에 판정한 경고(없으면 빈 배열). 같은 Idempotency-Key 재전송은 처음 응답을 그대로 재생한다
+      allOf:
+        - {$ref: '#/components/schemas/Appointment'}
+        - {type: object, required: [warnings], properties: {warnings: {type: array, items: {$ref: '#/components/schemas/BookingWarning'}}}}
+    BookingWarning:
+      type: object
+      required: [code, relatedIds]
+      description: '순서는 예약 겹침 → 차단 겹침 → 영업시간 밖/휴무. 영업시간·휴무는 시술 구간 기준(ASSUMPTION: 정리 시간 제외, M1 유지)'
+      properties:
+        code: {enum: [OVERLAP_APPOINTMENT, OVERLAP_BLOCK, OUTSIDE_BUSINESS_HOURS, CLOSED_DAY]}
+        relatedIds: {type: array, items: {type: string, format: uuid}, description: '겹치는 예약 id 또는 차단 id(같은 매장). 영업시간·휴무는 빈 배열'}
+    AppointmentPreviewRequest:
+      description: 'appointmentId가 없으면 새 예약(startAt·durationMin 필수, customerId는 선택), 있으면 기존 예약 수정(version 필수, 나머지는 바꿀 필드만)'
+      allOf:
+        - {$ref: '#/components/schemas/AppointmentFields'}
+        - {type: object, properties: {appointmentId: {type: string, format: uuid}, version: {type: integer}}}
+    AppointmentRules:
+      type: object
+      required: [requireStaffSelection]
+      properties:
+        requireStaffSelection: {type: boolean, description: '켜면 새 예약·시간·담당자 변경에서 담당자 필수. 기존 미지정 예약의 메모 수정은 허용'}
     CalendarBlockPatchable:
       type: object
       properties:
