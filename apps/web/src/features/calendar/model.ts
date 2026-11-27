@@ -144,9 +144,15 @@ export interface Segment {
   /** 그 날 0시부터 몇 분째에서 시작·끝나는지(날을 넘으면 잘라 낸다). */
   fromMin: number;
   toMin: number;
-  /** 담당자 줄. null이면 모든 담당자에 걸친다(매장 전체 차단, 담당자 미지정 예약). */
+  /** 담당자 줄. null이면 모든 담당자에 걸친다(매장 전체 차단). 담당자 미지정 예약은 UNASSIGNED_LANE(따로 "미지정" 열). */
   staffId: string | null;
 }
+
+/**
+ * 담당자 미지정 예약의 줄(옵마 11/27 결정): 담당자가 2명 이상이고 미지정 예약이 있을 때만 활성 담당자 칸 옆에 "미지정" 열을 둔다.
+ * 담당자 0~1명이면 열을 나누지 않으므로 담당자 구분 없이 그려진다.
+ */
+export const UNASSIGNED_LANE = 'unassigned';
 
 /** 캘린더에 보이는 예약: 취소·되돌림은 점유가 아니라 칸을 차지하지 않는다. */
 export function isShown(a: CalendarAppointment): boolean {
@@ -186,7 +192,7 @@ export function segmentsForDay(date: string, data: Pick<CalendarData, 'appointme
     else for (const s of b.staffIds) clip('block', b.id, from, to, s);
   }
   for (const a of data.appointments.filter(isShown)) {
-    for (const p of appointmentParts(a)) clip(p.kind, a.id, p.from, p.to, a.staffId);
+    for (const p of appointmentParts(a)) clip(p.kind, a.id, p.from, p.to, a.staffId ?? UNASSIGNED_LANE);
   }
   return out;
 }

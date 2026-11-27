@@ -46,7 +46,8 @@ export type NewBlock = Omit<CalendarBlock, 'id'>;
 
 /** 미리 보기 요청: 새 예약 입력, 또는 고치는 예약 id·version + 바꿀 칸(계약 preview-warnings). */
 export type WarningPreview =
-  | { appointmentId?: undefined; customerId: string; staffId: string | null; startAt: string; durationMin: number; cleanupMin: number }
+  /** 새 예약. 고객은 선택(옵마 11/27 — 새 고객 입력 중·고객 미선택에도 미리 본다). */
+  | { appointmentId?: undefined; customerId?: string; staffId: string | null; startAt: string; durationMin: number; cleanupMin: number }
   | ({ appointmentId: string; version: number } & Partial<Pick<NewAppointment, 'staffId' | 'startAt' | 'durationMin' | 'cleanupMin'>>);
 
 /** 저장된 예약 + 그 저장 시점의 경고(rev.3.1 — 없으면 []). */

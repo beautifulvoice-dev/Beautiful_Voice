@@ -429,11 +429,11 @@ function AppointmentForm({
   const ready = picked !== null && staffValue !== undefined && startAt !== null && sameName === null && (!editing || base !== null);
 
   // ── 경고 미리 보기(설계 12 D4·§5-1): 저장과 같은 서버 판정, 읽기 전용 ──
-  /** 미리 보기 요청. 새 예약은 등록 고객이 있어야 보낸다(계약상 customerId 필수) — 새 고객은 저장 응답의 경고로 알린다. */
+  /** 미리 보기 요청. 새 예약은 고객과 상관없이 보낸다 — 등록 고객이면 customerId도 싣는다(새 고객·미선택은 생략). */
   const previewRequest = useMemo((): WarningPreview | null => {
     if (!startAt || staffValue === undefined) return null;
     const draft = { staffId: staffValue, startAt, durationMin: duration, cleanupMin: cleanup };
-    if (!editing) return picked?.id ? { customerId: picked.id, ...draft } : null;
+    if (!editing) return picked?.id ? { customerId: picked.id, ...draft } : draft;
     if (!base) return null;
     const changed = TIMING_KEYS.filter((k) => (k === 'startAt' ? Date.parse(startAt) !== Date.parse(base.startAt) : draft[k] !== base[k]));
     // 시간·담당자를 안 바꿨으면 서버도 다시 판정하지 않는다(경고 없음).

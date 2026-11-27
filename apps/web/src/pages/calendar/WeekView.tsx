@@ -1,5 +1,6 @@
 // 주간 보기(화면 설계서 W1, 디자인 HTML .wk·.tl). 웹: 시간 × 7일 격자(1시간 48px). 폰: 고른 하루 시간표(1시간 64px, 위 7일 띠는 WeekStrip).
-// 한 날 칸은 담당자 수만큼 세로 줄로 나눈다(같은 시각에 담당자마다 예약이 있을 수 있음). 담당자 미지정 예약은 모든 줄에 걸친다.
+// 한 날 칸은 담당자 수만큼 세로 줄로 나눈다(같은 시각에 담당자마다 예약이 있을 수 있음).
+// 담당자 미지정 예약은 담당자가 2명 이상일 때 맨 오른쪽 "미지정" 열 — 보이는 날에 미지정 예약이 있을 때만(옵마 11/27).
 // 시술 칸 바로 아래에 정리 칸(rev.3.1 — 정리 시간은 시술 뒤).
 // 자정을 넘는 예약은 날마다 잘라 그린다(segmentsForDay). 영업시간 밖·휴무일은 회색으로 덮는다(결정 S2).
 // 빈 칸을 누르면 그 시각(15분 단위)·담당자로 예약 넣기(W3)를 연다(설계서 W1 "빈 칸 누르기").
@@ -20,6 +21,7 @@ import {
   type CalendarData,
   type Segment,
   type CalendarBlock,
+  UNASSIGNED_LANE,
 } from '@/features/calendar/model';
 import { blockPeriodText } from './BlockPanel';
 import { cn } from '@/lib/utils';
@@ -76,7 +78,10 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, o
   const [h0, h1] = hourRange(byDay.flat(), hoursBase(days, data.businessHours));
   const top = h0 * 60;
   const height = px((h1 - h0) * 60);
-  const lanes: (string | null)[] = data.staff.length > 0 ? data.staff.map((s) => s.id) : [null];
+  const unassigned = byDay.some((segs) => segs.some((s) => s.staffId === UNASSIGNED_LANE));
+  const staffLanes = data.staff.length > 0 ? data.staff.map((s) => s.id) : [];
+  const lanes: (string | null)[] =
+    staffLanes.length >= 2 ? [...staffLanes, ...(unassigned ? [UNASSIGNED_LANE] : [])] : staffLanes.length === 1 ? staffLanes : [null];
   const appt = new Map(data.appointments.map((a) => [a.id, a]));
   const block = new Map(data.blocks.map((b) => [b.id, b]));
   const closed = days.map((d) => isClosedDay(d, data.closures));
@@ -104,7 +109,7 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, o
     const minute = top + Math.floor(((e.clientY - box.top) * 60) / hourPx / 15) * 15;
     const lane =
       lanes.length > 1 ? lanes[Math.min(lanes.length - 1, Math.floor(((e.clientX - box.left) / box.width) * lanes.length))]! : null;
-    onEmpty(d, minute, lane);
+    onEmpty(d, minute, lane === UNASSIGNED_LANE ? null : lane);
   };
 
   const dayColumn = (d: string, i: number) => {
@@ -261,9 +266,9 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, o
             style={{ gridTemplateColumns: `40px repeat(${lanes.length}, minmax(0, 1fr))` }}
           >
             <span />
-            {data.staff.map((st) => (
-              <span key={st.id} role="columnheader">
-                {st.name}
+            {lanes.map((id) => (
+              <span key={id} role="columnheader">
+                {id === UNASSIGNED_LANE ? '미지정' : data.staff.find((st) => st.id === id)?.name}
               </span>
             ))}
           </div>

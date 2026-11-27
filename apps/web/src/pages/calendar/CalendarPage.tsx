@@ -25,6 +25,7 @@ import {
   addDays,
   addMonths,
   forStaff,
+  isShown,
   monthGrid,
   shopDate,
   weekDays,
@@ -308,7 +309,7 @@ function CalendarScreen() {
         </div>
       )}
 
-      {!phone && data && <StaffFilter staff={data.staff} value={staffId} onChange={setStaffId} />}
+      {!phone && data && <StaffFilter staff={data.staff} unassigned={view === 'week' && data.appointments.some((a) => isShown(a) && a.staffId === null)} value={staffId} onChange={setStaffId} />}
 
       {state.status === 'loading' && <p className="py-8 text-center text-sm text-ink-soft">불러오는 중…</p>}
       {state.status === 'error' && <ErrorState onRetry={reload} />}
@@ -421,11 +422,11 @@ function CalendarScreen() {
 }
 
 /** 담당자 칩 "전체 · 박원장 · 이실장"(W1) + 칸 위치 안내. 담당자가 1명이면 숨긴다. */
-function StaffFilter({ staff, value, onChange }: { staff: Staff[]; value: string; onChange: (id: string) => void }) {
+function StaffFilter({ staff, unassigned, value, onChange }: { staff: Staff[]; unassigned: boolean; value: string; onChange: (id: string) => void }) {
   if (staff.length <= 1) return null;
-  // ASSUMPTION: 3명 이상이면 "칸 왼쪽부터 A, B, C"(디자인은 2명 예시만).
-  const hint =
-    staff.length === 2 ? `칸 왼쪽이 ${staff[0]!.name}, 오른쪽이 ${staff[1]!.name}` : `칸 왼쪽부터 ${staff.map((s) => s.name).join(', ')}`;
+  // ASSUMPTION: 3명 이상이면 "칸 왼쪽부터 A, B, C"(디자인은 2명 예시만). 미지정 예약이 있으면 맨 오른쪽 "미지정" 열.
+  const names = [...staff.map((s) => s.name), ...(unassigned ? ['미지정'] : [])];
+  const hint = names.length === 2 ? `칸 왼쪽이 ${names[0]}, 오른쪽이 ${names[1]}` : `칸 왼쪽부터 ${names.join(', ')}`;
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Chip.RadioRoot aria-label="담당자" value={value} onValueChange={onChange} className="flex flex-wrap gap-2">

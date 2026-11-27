@@ -1,6 +1,6 @@
 // BEA-175 수용 기준: 주·월 전환 / 시술·정리·차단이 다르게 보임 / 예약 카드에 고객·메뉴·담당자, 누르면 메모. rev.3.1: 정리는 시술 뒤, 겹쳐도 저장.
 // 데이터는 합성(절대 규칙 8). 날짜는 주소로 고정해 언제 돌려도 같은 결과가 나오게 한다.
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
@@ -79,8 +79,8 @@ describe('캘린더 배치 규칙', () => {
     ]);
     expect(appointmentTimeText(appt({}))).toBe('14:00–15:00 · 정리 15:20까지');
     expect(appointmentTimeText(appt({ cleanupMin: 0 }))).toBe('14:00–15:00');
-    // 담당자 미지정은 모든 담당자 줄에 걸친다
-    expect(segmentsForDay('2026-11-18', { appointments: [appt({ staffId: null, cleanupMin: 0 })], blocks: [] })[0]!.staffId).toBeNull();
+    // 담당자 미지정은 따로 "미지정" 줄(옵마 11/27)
+    expect(segmentsForDay('2026-11-18', { appointments: [appt({ staffId: null, cleanupMin: 0 })], blocks: [] })[0]!.staffId).toBe('unassigned');
   });
 
   it('자정을 넘는 예약은 날마다 잘라 그린다', () => {
@@ -324,6 +324,29 @@ describe('캘린더 화면', () => {
     expect(b).toHaveTextContent('보조');
     expect(a.style.top).toBe(b.style.top);
     expect(a.style.left).not.toBe(b.style.left);
+  });
+
+  it('담당자 2명 + 미지정 예약이면 맨 오른쪽에 "미지정" 열, 없으면 열이 없다. 1명이면 구분 없이 전체 너비(옵마 11/27)', async () => {
+    const staff = [{ id: 's1', name: '원장' }, { id: 's2', name: '보조' }];
+    const withNone = createMemoryCalendarApi({
+      staff,
+      appointments: [appt({ id: 'p1', customerName: '손님가' }), appt({ id: 'u1', customerName: '손님미', staffId: null })],
+      blocks: [],
+    });
+    renderAt('/calendar?date=2026-11-18', withNone);
+    let wed = await screen.findByRole('region', { name: '11월 18일' });
+    const third = 'calc(33.3333% - 4px)';
+    expect(within(wed).getByRole('button', { name: /손님가/ }).style.width).toBe(third);
+    const none = within(wed).getByRole('button', { name: /손님미/ });
+    expect(none).toHaveTextContent('미지정');
+    expect(none.style.left).toBe('calc(66.6667% + 1px)');
+    expect(screen.getByText('칸 왼쪽부터 원장, 보조, 미지정')).toBeInTheDocument();
+    cleanup();
+
+    const oneStaff = createMemoryCalendarApi({ staff: [staff[0]!], appointments: [appt({ id: 'u1', customerName: '손님미', staffId: null })], blocks: [] });
+    renderAt('/calendar?date=2026-11-18', oneStaff);
+    wed = await screen.findByRole('region', { name: '11월 18일' });
+    expect(within(wed).getByRole('button', { name: /손님미/ }).style.width).toBe('calc(100% - 6px)');
   });
 
   it('담당자가 1명이면 예약 카드가 칸 전체 너비다', async () => {

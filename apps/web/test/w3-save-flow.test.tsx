@@ -75,6 +75,16 @@ describe('W3 저장 흐름(설계 06)', () => {
     expect(detail).toHaveTextContent('11/16(월) 16:00–17:00 · 60분');
   });
 
+  it('새 고객 입력 중에도 미리 보기를 부른다 — 고객 id 없이(옵마 11/27)', async () => {
+    const cal = calendarApi();
+    const previewWarnings = vi.fn<CalendarApi['previewWarnings']>((input) => cal.previewWarnings(input));
+    renderAt({ ...cal, previewWarnings });
+    const sheet = await openSheet();
+    await fill(sheet, { name: '합성새손', newCustomer: true, date: '2026-11-16', time: '14:30' });
+    expect(await within(sheet).findByText('14:00–15:00 이서윤 님 예약과 겹쳐요.')).toBeInTheDocument();
+    expect(previewWarnings.mock.lastCall![0]).not.toHaveProperty('customerId');
+  });
+
   it('미리 보기와 저장 경고가 순서만 다르면 새 경고가 아니고, 대상이 한 건 늘면 그 한 건만 새 것이다', () => {
     const a: BookingWarning = { code: 'OVERLAP_APPOINTMENT', relatedIds: ['x', 'y'] };
     const b: BookingWarning = { code: 'OVERLAP_BLOCK', relatedIds: ['b1'] };
