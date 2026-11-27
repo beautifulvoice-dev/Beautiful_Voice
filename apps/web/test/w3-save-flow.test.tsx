@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { SessionLoaderProvider } from '@/features/auth/session';
 import { CalendarApiProvider, createMemoryCalendarApi, type CalendarApi } from '@/features/calendar/api';
 import { seedCalendar } from '@/features/calendar/mockData';
@@ -46,6 +46,50 @@ async function fill(sheet: HTMLElement, { name, newCustomer = false, date = '202
 const save = (sheet: HTMLElement) => userEvent.click(within(sheet).getByRole('button', { name: '저장' }));
 
 describe('W3 저장 흐름(설계 06)', () => {
+  it('실제 예약 등록은 기존 예약의 시술 앞 빈 시간을 예전 준비 시간으로 막지 않는다', async () => {
+    // 11/16 14시의 기존 예약은 시술 60분과 정리 20분이다. 새 예약은 14시에 끝난다.
+    const createAppointment = vi.fn<CalendarApi['createAppointment']>(async (input) => ({
+      ok: true, value: { ...input, id: 'saved', status: 'scheduled' },
+    }));
+    renderAt({ ...calendarApi(), persistsAppointments: true, createAppointment });
+    const sheet = await openSheet();
+    await fill(sheet, { name: '박지민', date: '2026-11-16', time: '13:00' });
+    await save(sheet);
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '예약 넣기' })).not.toBeInTheDocument());
+    expect(createAppointment).toHaveBeenCalledOnce();
+    expect(createAppointment).toHaveBeenCalledWith(
+      expect.objectContaining({ startAt: '2026-11-16T04:00:00.000Z', durationMin: 60 }),
+      expect.objectContaining({ idempotencyKey: expect.any(String) }),
+    );
+  });
+
+  it('실제 예약 수정도 예전 준비 시간으로 막지 않고 최신 버전과 함께 서버로 보낸다', async () => {
+    const seed = seedCalendar('2026-11-18');
+    const original = { ...seed.appointments[2]!, customerId: 'c3', durationMin: 60, prepMin: 0, version: 2 };
+    seed.appointments[2] = original;
+    const updateAppointment = vi.fn<CalendarApi['updateAppointment']>(async (_, change) => ({
+      ok: true, value: { ...original, ...change, version: 3 },
+    }));
+    renderAt({ ...createMemoryCalendarApi(seed), persistsAppointments: true, updateAppointment });
+    const monday = await screen.findByRole('region', { name: '11월 16일' });
+    await userEvent.click(within(monday).getByRole('button', { name: /박지민/ }));
+    const detail = await screen.findByRole('dialog', { name: '박지민' });
+    await userEvent.click(within(detail).getByRole('button', { name: '더보기' }));
+    await userEvent.click(within(detail).getByRole('button', { name: '바꾸기' }));
+    const sheet = await screen.findByRole('dialog', { name: '예약 바꾸기' });
+    await waitFor(() => expect(sheet.querySelector('#entry-time')).toHaveTextContent('16:00'));
+    await userEvent.click(sheet.querySelector<HTMLElement>('#entry-time')!);
+    await userEvent.click(await screen.findByRole('option', { name: '13:00' }));
+    await save(sheet);
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '예약 바꾸기' })).not.toBeInTheDocument());
+    expect(updateAppointment).toHaveBeenCalledOnce();
+    expect(updateAppointment).toHaveBeenCalledWith(
+      original.id,
+      { version: 2, startAt: '2026-11-16T04:00:00.000Z' },
+      expect.objectContaining({ idempotencyKey: expect.any(String) }),
+    );
+  });
+
   it('고객 검색은 두 글자부터, 결과가 있으면 새 고객 제안은 없다', async () => {
     renderAt(calendarApi());
     const sheet = await openSheet();

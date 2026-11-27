@@ -17,7 +17,7 @@ test('M1 reference data is private to its shop and staff are not login members',
     await db.onModuleInit();
     await db.withShop(shopA, async (client) => {
       await client.query("INSERT INTO crm.staff (shop_id, name) VALUES ($1, 'Synthetic staff')", [shopA]);
-      await client.query("INSERT INTO crm.menu (shop_id, name, default_duration_min, default_prep_min) VALUES ($1, 'Synthetic menu', 60, 20)", [shopA]);
+      await client.query("INSERT INTO crm.menu (shop_id, name, default_duration_min, default_cleanup_min) VALUES ($1, 'Synthetic menu', 60, 20)", [shopA]);
       await client.query("INSERT INTO crm.customer (shop_id, name, created_source) VALUES ($1, 'Synthetic customer', 'manual'), ($1, 'Synthetic customer', 'manual')", [shopA]);
       await client.query("INSERT INTO crm.shop_closure (shop_id, kind, weekday) VALUES ($1, 'weekly', 7)", [shopA]);
       assert.equal((await client.query('SELECT id FROM crm.user_membership')).rowCount, 0);

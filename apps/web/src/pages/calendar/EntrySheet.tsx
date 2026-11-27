@@ -1,7 +1,7 @@
 // 예약 넣기 W3 · 관리 불가 시간 W4 (화면 설계서 §4 F1·§5 W3·W4, 디자인 w2.png 가운데·오른쪽). 한 시트를 세그먼트 `예약 · 관리 불가 시간`으로 바꾼다.
 // W4는 창구가 관리 불가 시간을 지원할 때 켠다(api.supportsBlocks) — 실제 API(BEA-179 서버)와 가짜 저장소 모두.
-// 폰은 큰 아래 시트, 웹은 오른쪽 패널(W2와 같은 틀). 저장 검사는 서버와 같은 @bv/scheduling checkBooking(절대 규칙 4) —
-// 거부되면 저장 버튼 위 빨간 알림(W3 거부 표). 관리 불가 시간은 겹치는 예약을 막지 않고 미리 알린다(결정 R50).
+// 실제 예약 저장은 서버가 판정한다. 가짜 모드는 자체 검사로 거부 알림을 보여 준다.
+// 관리 불가 시간은 겹치는 예약을 막지 않고 미리 알린다(결정 R50).
 import { blockedAppointmentIds, checkBooking, occupiedOf } from '@bv/scheduling/booking';
 import type { Candidate } from '@bv/customers/duplicates';
 import {
@@ -422,6 +422,18 @@ function AppointmentForm({
     }
   };
 
+  const bookingContext = async (at: string) => {
+    const day = shopDate(Date.parse(at));
+    const data = await api.range(addDays(day, -1), addDays(day, 1));
+    return { data, staffId, startAt: at };
+  };
+
+  const rejectedBookingContext = (at: string) => bookingContext(at).catch(() => ({
+    data: { appointments: [], blocks: [], businessHours, staff },
+    staffId,
+    startAt: at,
+  }));
+
   /** W2 바꾸기 저장(설계 06 ①·D4, 04 Q1·D2): 읽은 version과 바뀐 칸만 PATCH. */
   const saveEdit = async (confirmedNew: boolean) => {
     if (!base || !picked || !startAt) return;
@@ -461,19 +473,16 @@ function AppointmentForm({
     );
     if (fields.length === 0) return onSaved(shopDate(Date.parse(base.startAt)));
     const has = (k: (typeof EDIT_KEYS)[number]) => fields.includes(k);
-    // 화면에서 먼저 같은 규칙으로 검사(자기 자신 제외). 시작·끝이 바뀌면 영업시간까지, 준비·담당자만이면 겹침만(04 D2).
-    const end = (a: { startAt: string; durationMin: number }) => Date.parse(a.startAt) + a.durationMin * 60_000;
-    const moved = has('startAt') || end(draft) !== end(base);
-    const day = shopDate(Date.parse(startAt));
-    const data = await api.range(addDays(day, -1), addDays(day, 1));
-    const ctx = { data, staffId, startAt };
-    if (moved || has('prepMin') || has('staffId')) {
-      const { hours, existing, blocks } = toBookingInputs(data);
+    let localContext: Awaited<ReturnType<typeof bookingContext>> | undefined;
+    const moved = has('startAt') || has('durationMin');
+    if (!api.persistsAppointments && (moved || has('prepMin') || has('staffId'))) {
+      localContext = await bookingContext(startAt);
+      const { hours, existing, blocks } = toBookingInputs(localContext.data);
       const check = checkBooking({ staffId, start: new Date(startAt), durationMin: duration, prepMin: prep }, hours, existing, blocks, {
         excludeId: base.id,
         skipHoursCheck: !moved,
       });
-      if (!check.ok) return setError(rejectText(check.reason, check.conflictingIds, ctx));
+      if (!check.ok) return setError(rejectText(check.reason, check.conflictingIds, localContext));
     }
     const change: AppointmentChange = { version: base.version ?? 1 };
     for (const k of fields) Object.assign(change, { [k]: draft[k] });
@@ -495,7 +504,7 @@ function AppointmentForm({
       setConflict(true);
       return setError(EDIT_CONFLICT_TEXT);
     }
-    setError(rejectText(r.reason, r.conflictingIds, ctx));
+    setError(rejectText(r.reason, r.conflictingIds, localContext ?? await rejectedBookingContext(startAt)));
   };
 
   const save = async (confirmedNew = false) => {
@@ -537,13 +546,13 @@ function AppointmentForm({
         if (r.needsReview) return setSameName(r.candidates);
       }
       setSameName(null);
-      // 1) 같은 규칙으로 먼저 검사해 거부 이유를 문구로(새 고객을 헛되이 만들지 않게). 최종 판정은 서버가 다시 한다.
-      const day = shopDate(Date.parse(startAt));
-      const data = await api.range(addDays(day, -1), addDays(day, 1));
-      const ctx = { data, staffId, startAt };
-      const { hours, existing, blocks } = toBookingInputs(data);
-      const check = checkBooking({ staffId, start: new Date(startAt), durationMin: duration, prepMin: prep }, hours, existing, blocks);
-      if (!check.ok) return setError(rejectText(check.reason, check.conflictingIds, ctx));
+      // 실제 API는 시술 뒤 정리 시간으로 판정하므로 예전 점유 규칙으로 요청을 막지 않는다.
+      const localContext = api.persistsAppointments ? undefined : await bookingContext(startAt);
+      if (localContext) {
+        const { hours, existing, blocks } = toBookingInputs(localContext.data);
+        const check = checkBooking({ staffId, start: new Date(startAt), durationMin: duration, prepMin: prep }, hours, existing, blocks);
+        if (!check.ok) return setError(rejectText(check.reason, check.conflictingIds, localContext));
+      }
       // 2) 고객 → 예약 순서로 따로 저장(06 D2).
       const wasNew = !picked.id;
       const customer = await ensureCustomer(picked);
@@ -572,7 +581,7 @@ function AppointmentForm({
         return setError(`${customerNote()}${APPOINTMENT_UNKNOWN_TEXT}`);
       }
       appointmentKey.settle();
-      const why = rejectText(r.reason, r.conflictingIds, ctx);
+      const why = rejectText(r.reason, r.conflictingIds, localContext ?? await rejectedBookingContext(startAt));
       setError(wasNew || createdCustomer.current ? `${CUSTOMER_SAVED_TEXT} ${why}` : why);
     } catch (err) {
       setError(err instanceof NetworkError ? NETWORK_TEXT : '저장하지 못했어요. 다시 시도해 주세요.');
@@ -831,7 +840,7 @@ function AppointmentForm({
           {startAt && staffName && (
             <p aria-live="polite" className="flex items-start gap-2 rounded-xl bg-brand-weak px-3 py-2.5 text-[15px] text-cal-appt-text">
               <CalendarDays aria-hidden size={20} className="mt-px flex-none" />
-              {occupancyText(startAt, duration, prep, staffName)}
+              {occupancyText(startAt, duration, prep, staffName, api.persistsAppointments)}
             </p>
           )}
           {error && (

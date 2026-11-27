@@ -3,7 +3,8 @@
 // 영업시간 형식은 예약 저장 검사(booking.ts, BEA-177)가 그대로 읽는다.
 // 설정은 사람만 바꾼다 — AI 실행기에는 설정 쓰기 권한이 없다(결정 R0, DB 권한은 BEA-156).
 
-import { MAX_MINUTES, minutesIn, type BusinessHours, type Closure, type OpenWindow } from "./booking.ts";
+import type { BusinessHours, Closure, OpenWindow } from "./booking.ts";
+import { CLEANUP_RANGE, DURATION_RANGE, minutesWithin } from "./warnings.ts";
 
 type Weekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
@@ -86,21 +87,18 @@ export interface MenuValues {
   name: string;
   /** 예약 입력을 미리 채우는 기본 관리 시간(분). 비울 수 있다(결정 S3). */
   defaultDurationMin: number | null;
-  /** 기본 준비 시간(분). 비울 수 있다. */
+  /** 기본 정리 시간(분, 시술 뒤 — rev.3.1). 비울 수 있다. API 이름은 S3 서버 PR에서 defaultCleanupMin으로 바꾼다. */
   defaultPrepMin: number | null;
 }
-
-/** 분 값 상한은 예약 검사와 같은 것을 쓴다(DB `integer` 최댓값, booking.ts). */
-export { MAX_MINUTES };
 
 export function validateMenu(input: { name: string; defaultDurationMin?: number | null; defaultPrepMin?: number | null }): ResourceResult<MenuValues> {
   const errors: { field: ResourceField; code: ResourceErrorCode }[] = [];
   const name = cleanName(input.name);
   if (name === null) errors.push({ field: "name", code: "NAME_REQUIRED" });
   const duration = input.defaultDurationMin ?? null;
-  if (duration !== null && !minutesIn(duration, 1)) errors.push({ field: "defaultDurationMin", code: "INVALID_MINUTES" });
+  if (duration !== null && !minutesWithin(duration, DURATION_RANGE)) errors.push({ field: "defaultDurationMin", code: "INVALID_MINUTES" });
   const prep = input.defaultPrepMin ?? null;
-  if (prep !== null && !minutesIn(prep, 0)) errors.push({ field: "defaultPrepMin", code: "INVALID_MINUTES" });
+  if (prep !== null && !minutesWithin(prep, CLEANUP_RANGE)) errors.push({ field: "defaultPrepMin", code: "INVALID_MINUTES" });
   if (errors.length > 0 || name === null) return { ok: false, errors };
   return { ok: true, value: { name, defaultDurationMin: duration, defaultPrepMin: prep } };
 }

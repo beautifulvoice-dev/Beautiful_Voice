@@ -1,4 +1,5 @@
 // 예약 넣기(W3)의 문구: 점유 미리보기와 저장 거부 이유(화면 설계서 W3 거부 표, 디자인 캡처 w2.png).
+import { occupancyOf } from '@bv/scheduling/warnings';
 import type { SaveReject } from './api';
 import { dayStart, shopDate, shopTime, type CalendarData } from './model';
 
@@ -10,8 +11,12 @@ export function shortDate(date: string): string {
   return `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}(${DAY_NAME[new Date(`${date}T00:00:00Z`).getUTCDay()]})`;
 }
 
-/** 점유 미리보기 "13:50부터 15:30까지 이실장 일정이 잡혀요"(결정 R33). */
-export function occupancyText(startAt: string, durationMin: number, prepMin: number, staffName: string): string {
+/** 실제 서버는 기존 prepMin 필드의 값을 시술 뒤 정리 시간으로 해석한다. */
+export function occupancyText(startAt: string, durationMin: number, prepMin: number, staffName: string, persistsAppointments = false): string {
+  if (persistsAppointments) {
+    const occupied = occupancyOf({ start: new Date(startAt), durationMin, cleanupMin: prepMin });
+    return `${shopTime(occupied.start.getTime())}부터 ${shopTime(occupied.end.getTime())}까지 ${staffName} 일정이 잡혀요`;
+  }
   const start = Date.parse(startAt);
   return `${shopTime(start - prepMin * MIN)}부터 ${shopTime(start + durationMin * MIN)}까지 ${staffName} 일정이 잡혀요`;
 }

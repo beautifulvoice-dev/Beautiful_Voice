@@ -11,6 +11,7 @@
     ".": "./src/conflict.ts",
     "./status": "./src/status.ts",
     "./booking": "./src/booking.ts",
+    "./warnings": "./src/warnings.ts",
     "./appointment-status": "./src/appointment-status.ts",
     "./shop-settings": "./src/shop-settings.ts"
   },

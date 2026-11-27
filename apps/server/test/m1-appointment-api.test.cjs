@@ -138,26 +138,26 @@ test('M1 API 등록·수정·상태 변경은 원자적으로 이력이 남고 �
   }
 });
 
-test('같은 담당자 점유 겹침은 409(준비 시간 포함), 다른 담당자는 같은 시각 허용, 맞붙은 시각은 허용', async () => {
+test('같은 담당자 점유 겹침은 409(정리 시간 포함), 다른 담당자는 같은 시각 허용, 맞붙은 시각은 허용', async () => {
   const first = await book({ startAt: at('03', '11:00') });
   assert.equal(first.status, 201);
-  const clash = await book({ startAt: at('03', '12:30'), prepMin: 40 }); // 점유 11:50~ → 11:00~12:00과 겹침
+  const clash = await book({ startAt: at('03', '10:00'), durationMin: 40, prepMin: 30 }); // 점유 ~11:10 → 11:00~12:00과 겹침
   assert.equal(clash.status, 409);
   assert.deepEqual(clash.body.details, { conflictingIds: [first.body.id] });
   assert.equal(clash.body.code, 'STAFF_OVERLAP');
   assert.equal((await book({ startAt: at('03', '11:00'), staffId: staff2 })).status, 201);
-  assert.equal((await book({ startAt: at('03', '12:30'), prepMin: 30 })).status, 201, '점유 12:00~ — 끝과 시작이 맞닿으면 겹침 아님');
+  assert.equal((await book({ startAt: at('03', '10:00'), durationMin: 40, prepMin: 20 })).status, 201, '점유 ~11:00 — 끝과 시작이 맞닿으면 겹침 아님');
 });
 
-test('영업시간·휴무는 관리 구간만 본다 — 준비만 영업 전에 걸치면 허용', async () => {
+test('영업시간·휴무는 시술 구간만 본다 — 정리만 마감 뒤로 넘어가면 허용', async () => {
   const late = await book({ startAt: at('04', '19:30') });
   assert.equal(late.status, 422);
   assert.equal(late.body.code, 'OUTSIDE_BUSINESS_HOURS');
   assert.equal((await book({ startAt: at('04', '09:30') })).body.code, 'OUTSIDE_BUSINESS_HOURS');
   assert.equal((await book({ startAt: at('06', '12:00') })).body.code, 'CLOSED_DAY', '일요일(영업시간 없음)');
   assert.equal((await book({ startAt: at('25', '12:00') })).body.code, 'CLOSED_DAY', '공휴일 휴무');
-  const prepBeforeOpen = await book({ startAt: at('04', '10:00'), prepMin: 30 });
-  assert.equal(prepBeforeOpen.status, 201);
+  const cleanupAfterClose = await book({ startAt: at('04', '19:00'), prepMin: 30 });
+  assert.equal(cleanupAfterClose.status, 201);
   assert.equal((await book({ startAt: at('04', '19:00'), staffId: staff2 })).status, 201, '마감 시각에 딱 끝나면 허용');
 });
 
@@ -201,54 +201,14 @@ test('같은 키·같은 요청은 같은 응답 재생, 같은 키·다른 요�
   assert.equal((await call('POST', A, { body, key: null })).body.code, 'INVALID_IDEMPOTENCY_KEY');
 });
 
-test('동시 저장: 앱 검사를 통과해도 DB 제약이 409 STAFF_OVERLAP — 키도 롤백돼 같은 키로 다시 판정', async () => {
-  const held = randomUUID();
-  const race = new Client({ connectionString: process.env.DATABASE_MIGRATION_URL });
-  await race.connect();
-  try {
-    // 커밋 전 행은 API 트랜잭션에 보이지 않는다 → 앱 검사는 통과하고 INSERT가 제약 대기 → 커밋 뒤 23P01.
-    await race.query('BEGIN');
-    const { rows: [{ pid: blockerPid }] } = await race.query('SELECT pg_backend_pid() AS pid');
-    await race.query(`INSERT INTO crm.appointment_m1 (id, shop_id, customer_id, staff_id, start_at, duration_min)
-      VALUES ($1, $2, $3, $4, '2026-12-08T01:00:00Z', 60)`, [held, shopA, customerA, staff1]);
-    const key = randomUUID();
-    const body = { customerId: customerA, staffId: staff1, startAt: at('08', '10:30'), durationMin: 60 };
-    const pending = call('POST', A, { body, key });
-    await waitForLockWait(blockerPid);
-    await race.query('COMMIT');
-    const res = await pending;
-    assert.equal(res.status, 409);
-    assert.deepEqual(res.body, { code: 'STAFF_OVERLAP', message: '같은 담당자의 다른 예약과 시간이 겹칩니다.', details: { conflictingIds: [held] } });
-    const { rows } = await admin.query('SELECT 1 FROM crm.idempotency_key WHERE shop_id = $1 AND key = $2', [shopA, key]);
-    assert.equal(rows.length, 0, '409는 저장하지 않는다');
-    const retry = await call('POST', A, { body, key });
-    assert.equal(retry.status, 409);
-    assert.equal(retry.replayed, null);
-  } finally {
-    await race.query('ROLLBACK').catch(() => {});
-    await race.end();
-  }
-
+// 015에서 배타 제약을 없앴다 — 동시 저장은 매장 쓰기 잠금(lockShopWrites)이 줄 세우고, 뒤 요청은 먼저 커밋된 예약을 보고 판정한다.
+test('동시 저장 8건: 매장 쓰기 잠금으로 하나만 저장되고 나머지는 409 STAFF_OVERLAP', async () => {
   const results = await Promise.all(Array.from({ length: 8 }, (_, i) =>
     book({ startAt: at('09', '10:00'), durationMin: 60 + i })));
   assert.deepEqual(results.map((r) => r.status).sort(), [201, 409, 409, 409, 409, 409, 409, 409]);
   assert.ok(results.every((r) => r.status === 201 || r.body.code === 'STAFF_OVERLAP'));
 });
 
-async function waitForLockWait(blockerPid) {
-  for (let i = 0; i < 100; i++) {
-    const { rows: [{ waiting }] } = await admin.query(
-      `SELECT EXISTS (
-         SELECT 1 FROM pg_stat_activity
-          WHERE datname = current_database() AND wait_event_type = 'Lock'
-            AND $1::int = ANY(pg_blocking_pids(pid))
-       ) AS waiting`,
-      [blockerPid]);
-    if (waiting) return;
-    await new Promise((r) => setTimeout(r, 20));
-  }
-  throw new Error('API 요청이 DB 제약 대기에 들어가지 않았다');
-}
 
 test('변경: 자기 자신과는 겹치지 않고 조금 옮길 수 있다, 오래된 version은 409, 보낸 필드만 바뀐다', async () => {
   const made = await book({ startAt: at('10', '10:00'), menuId: menuA, memo: '그대로' });
@@ -269,21 +229,21 @@ test('변경: 자기 자신과는 겹치지 않고 조금 옮길 수 있다, 오
   assert.equal((await patch(made.body.id, { version: 3, memo: 'x' }, { cookie: ownerB })).status, 404);
 });
 
-test('변경 재검사 범위(D2): 메모만은 검사 없음, 준비만은 겹침만, 길이가 마감을 넘으면 영업시간 거부', async () => {
+test('변경 재검사 범위(D2): 메모만은 검사 없음, 정리만은 겹침만, 길이가 마감을 넘으면 영업시간 거부', async () => {
   // 영업시간을 줄이기 전에 만들어진 예약 — 일요일 행을 직접 넣는다(파생 S2: 기존 예약은 그대로 남는다).
   const { rows: [{ id: sunday }] } = await admin.query(`INSERT INTO crm.appointment_m1 (shop_id, customer_id, staff_id, start_at, duration_min)
     VALUES ($1, $2, $3, '2026-12-13T01:00:00Z', 60) RETURNING id`, [shopA, customerOff, staffOff]);
   assert.equal((await patch(sunday, { version: 1, memo: '메모만' })).status, 200, '비활성 고객·담당자의 기존 예약도 메모는 고친다');
-  assert.equal((await patch(sunday, { version: 2, prepMin: 15 })).status, 200, '준비만 바꾸면 영업시간을 보지 않는다');
+  assert.equal((await patch(sunday, { version: 2, prepMin: 15 })).status, 200, '정리만 바꾸면 영업시간을 보지 않는다');
   assert.equal((await patch(sunday, { version: 3, durationMin: 90 })).body.code, 'CLOSED_DAY', '종료가 바뀌면 재검사');
   assert.deepEqual((await patch(sunday, { version: 3, staffId: staffOff, customerId: customerOff, memo: '같은 값' })).status, 200,
     '같은 참조를 다시 보내는 것은 바꾸는 것이 아니다');
 
   const a = await book({ startAt: at('11', '10:00') });
   const b = await book({ startAt: at('11', '11:00') });
-  const prepClash = await patch(b.body.id, { version: 1, prepMin: 30 });
-  assert.equal(prepClash.status, 409);
-  assert.deepEqual(prepClash.body.details, { conflictingIds: [a.body.id] });
+  const cleanupClash = await patch(a.body.id, { version: 1, prepMin: 30 }); // a 점유 ~11:30 → b(11:00~)와 겹침
+  assert.equal(cleanupClash.status, 409);
+  assert.deepEqual(cleanupClash.body.details, { conflictingIds: [b.body.id] });
   assert.equal((await patch(b.body.id, { version: 1, durationMin: 600 })).body.code, 'OUTSIDE_BUSINESS_HOURS');
   assert.equal((await patch(b.body.id, { version: 1, staffId: staffOff })).body.details.fields[0].code, 'INACTIVE');
   assert.equal((await patch(b.body.id, { version: 1, customerId: customerB })).body.details.fields[0].code, 'NOT_FOUND');
