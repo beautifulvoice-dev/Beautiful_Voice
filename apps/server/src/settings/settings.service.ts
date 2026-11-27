@@ -1,4 +1,4 @@
-import type { BusinessHours, BusinessHoursBody, Closure, ShopInfo } from '@bv/contracts';
+import type { AppointmentRules, BusinessHours, BusinessHoursBody, Closure, ShopInfo } from '@bv/contracts';
 import { validateBusinessHours, validateClosure, validateShopInfo } from '@bv/scheduling/shop-settings';
 import { Injectable } from '@nestjs/common';
 import type { PoolClient } from 'pg';
@@ -47,6 +47,30 @@ export class SettingsService {
         WHERE shop_id = $1
         RETURNING ${SHOP_INFO_COLUMNS}`,
       [shopId, v.refundPolicy, v.naverPlaceUrl, v.instagramUrl, v.landingUrl, v.locationText]);
+    if (!row) throw shopNotFound();
+    return row;
+  }
+
+  // ── 예약 규칙(S3 rev.3.1 §3.2) ──
+  // ASSUMPTION: shop-info처럼 version 없이 통째로 바꾼다(마지막 저장이 남음). 설정 버전 저장 방식은 리더 확인 뒤 더한다.
+  async appointmentRules(client: PoolClient, shopId: string): Promise<AppointmentRules> {
+    const { rows: [row] } = await client.query<AppointmentRules>(
+      'SELECT require_staff_selection AS "requireStaffSelection" FROM crm.shop_settings WHERE shop_id = $1', [shopId]);
+    if (!row) throw shopNotFound();
+    return row;
+  }
+
+  async saveAppointmentRules(client: PoolClient, shopId: string, input: unknown): Promise<AppointmentRules> {
+    const body = typeof input === 'object' && input !== null && !Array.isArray(input) ? (input as Record<string, unknown>) : null;
+    const fields = body === null ? [{ field: '', code: 'INVALID_SHAPE' }]
+      : [...Object.keys(body).filter((k) => k !== 'requireStaffSelection').map((field) => ({ field, code: 'UNKNOWN_FIELD' })),
+        ...(typeof body.requireStaffSelection === 'boolean' ? []
+          : [{ field: 'requireStaffSelection', code: body.requireStaffSelection === undefined ? 'REQUIRED' : 'INVALID_BOOLEAN' }])];
+    if (fields.length > 0) throw new ApiError(422, 'VALIDATION_FAILED', '입력값을 확인해 주세요.', { fields });
+    // 이미 있는 미지정 예약은 그대로 둔다 — 다음 새 예약·시간·담당자 변경부터 적용된다(설계 12 D3).
+    const { rows: [row] } = await client.query<AppointmentRules>(
+      `UPDATE crm.shop_settings SET require_staff_selection = $2, updated_at = now() WHERE shop_id = $1
+        RETURNING require_staff_selection AS "requireStaffSelection"`, [shopId, body!.requireStaffSelection]);
     if (!row) throw shopNotFound();
     return row;
   }
