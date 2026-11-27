@@ -82,6 +82,26 @@ describe('W2 바꾸기', () => {
     await waitFor(() => expect(within(tuesday).getByRole('button', { name: /최유나/ })).toHaveTextContent('15:00'));
   });
 
+  it('담당자 필수 매장에서 기존 미지정 예약에 유일한 담당자를 골라 시간을 바꿀 수 있다', async () => {
+    const seed = seedCalendar('2026-11-18');
+    const appointment = seed.appointments.find((a) => a.customerName === '최유나')!;
+    appointment.staffId = null;
+    const api = createMemoryCalendarApi(seed, [], { requireStaffSelection: true });
+    renderAt(api);
+
+    const sheet = await openEdit();
+    const picker = within(sheet).getByRole('radiogroup', { name: '담당자' });
+    expect(within(picker).getByRole('radio', { name: '미지정' })).toBeChecked();
+    await pickTime(sheet, '15:00');
+    await userEvent.click(within(picker).getByRole('radio', { name: '원장' }));
+    await save(sheet);
+    await closed();
+    expect(await api.appointment(appointment.id)).toMatchObject({
+      staffId: 's1',
+      startAt: '2026-11-17T06:00:00.000Z',
+    });
+  });
+
   it('바꾼 것 없이 닫으면 예약 보기(W2)로 돌아오고, 바꾼 뒤 닫으면 먼저 묻는다', async () => {
     renderAt(spied().api);
     let sheet = await openEdit();

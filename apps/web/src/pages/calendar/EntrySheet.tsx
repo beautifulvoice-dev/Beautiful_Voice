@@ -342,7 +342,9 @@ function AppointmentForm({
     if (staffId === '' && staff.length === 1) setStaffId(staff[0]!.id);
   }, [staff, staffId]);
   /** 미지정을 고를 수 있나: 설정이 꺼졌거나, 이미 미지정인 예약을 고치는 중(설계 12 D3 — 메모 수정은 된다). */
-  const unassignedOk = !requireStaff || (base !== null && base.staffId === null);
+  const editingUnassigned = base?.staffId === null;
+  const unassignedOk = !requireStaff || editingUnassigned;
+  const showStaffPicker = staff.length > 1 || (staff.length === 1 && editingUnassigned);
   // 안 골랐으면('') 미지정을 고를 수 있을 때 미지정, 아니면 아직 안 고름(저장 못 함). 설정이 나중에 켜지면 미지정을 풀어 준다.
   const chosen = staffId === UNASSIGNED && !unassignedOk ? '' : staffId;
   const staffChoice = chosen === '' && unassignedOk && staff.length !== 1 ? UNASSIGNED : chosen;
@@ -853,7 +855,7 @@ function AppointmentForm({
             </Callout.Content>
           </Callout.Root>
         )}
-        {staff.length > 1 && (
+        {showStaffPicker && (
           <div className="grid gap-2">
             <span className="pl-0.5 text-sm font-medium" id="staff-label">
               담당자
