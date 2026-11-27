@@ -38,9 +38,9 @@ import { useIsPhone } from '@/lib/useLayout';
 import { FAKE_API } from '@/lib/apiMode';
 import { useLoad } from '@/lib/useLoad';
 import { cn } from '@/lib/utils';
-import { AppointmentPanel, PANEL_WIDTH } from './AppointmentPanel';
+import { AppointmentPanel, PANEL_WIDTH, type PanelTab } from './AppointmentPanel';
 import { BlockPanel } from './BlockPanel';
-import { EntrySheet, type EntryStart } from './EntrySheet';
+import { EntrySheet, type EntryStart, type SaveNotice } from './EntrySheet';
 import { MonthView } from './MonthView';
 import { WeekStrip } from './WeekStrip';
 import { WeekView } from './WeekView';
@@ -102,6 +102,8 @@ function CalendarScreen() {
   const load = useCallback(() => api.range(from, to), [api, from, to]);
   const { state, reload } = useLoad<CalendarData>(load);
   const [openId, setOpenId] = useState<string | null>(null);
+  // 저장 뒤 "새로 겹치는 예약" 안내로 열면 비교 탭(기존 예약)부터(설계 12 §5-1).
+  const [openTab, setOpenTab] = useState<PanelTab>('request');
   // 관리 불가 시간 보기·지우기(W4). 창구가 지원할 때만 칸을 누를 수 있다.
   const [blockId, setBlockId] = useState<string | null>(null);
   const [entry, setEntry] = useState<EntryStart | null>(null);
@@ -114,6 +116,7 @@ function CalendarScreen() {
       setBlockId(null);
     }
     setOpenId(a?.id ?? null);
+    setOpenTab('request');
     if (!a && !entry) requestAnimationFrame(() => opener.current?.focus());
   };
   // 담당자 거르기(W1). 주소에 두지 않는다 — 화면 안 보기 상태.
@@ -134,7 +137,7 @@ function CalendarScreen() {
     setParams({ view: next.view ?? view, date: next.date ?? date }, { replace: true });
   const step = (n: number) => go({ date: view === 'week' ? addDays(date, 7 * n) : addMonths(date, n) });
 
-  const staffName = (id: string) => data?.staff.find((s) => s.id === id)?.name ?? '담당자 미상';
+  const staffName = (id: string | null) => (id === null ? '미지정' : data?.staff.find((s) => s.id === id)?.name ?? '담당자 미상');
   const newEntry = (start?: Partial<EntryStart>) => {
     // 예약 넣기를 열면 관리 불가 시간 패널은 닫는다(#86 리뷰).
     setBlockId(null);
@@ -166,8 +169,7 @@ function CalendarScreen() {
   }, [entryFor, canEnter]);
 
   const changeStatus = async (a: CalendarAppointment, to: AppointmentStatus) => {
-    const reason = (r: { reason: Parameters<typeof rejectText>[0]; conflictingIds: string[] }) =>
-      data ? rejectText(r.reason, r.conflictingIds, { data, staffId: a.staffId, startAt: a.startAt }) : '바꾸지 못했어요.';
+    const reason = (r: { reason: Parameters<typeof rejectText>[0] }) => rejectText(r.reason);
     const r = await api.setStatus(a.id, to);
     if (!r.ok) {
       // 그사이 바뀌었거나 없어졌으면 최신으로 다시 읽는다(설계 05 D4).
@@ -178,19 +180,10 @@ function CalendarScreen() {
     const from = a.status;
     setOpen(null);
     reload();
-    const show = (message: string, undo?: () => void) =>
-      snackbar.create({
-        render: () => (
-          <Snackbar.Root variant={undo ? 'default' : 'critical'} className="!pointer-events-none">
-            <Snackbar.Content>
-              <Snackbar.Message>{message}</Snackbar.Message>
-            </Snackbar.Content>
-            {undo && <Snackbar.ActionButton className="pointer-events-auto" onClick={undo}>되돌리기</Snackbar.ActionButton>}
-          </Snackbar.Root>
-        ),
-      });
     let undoStarted = false;
-    show(STATUS_DONE[to], async () => {
+    // 취소를 되살려 겹치면(rev.3.1 — 막지 않음) 겹침을 함께 알린다. 캘린더에는 빨간 겹침으로 보인다.
+    const overlapNote = r.value.warnings.some((w) => w.code === 'OVERLAP_APPOINTMENT' || w.code === 'OVERLAP_BLOCK') ? ' · 겹치는 일정이 있어요' : '';
+    show(`${STATUS_DONE[to]}${overlapNote}`, async () => {
       if (undoStarted) return;
       undoStarted = true;
       try {
@@ -202,6 +195,43 @@ function CalendarScreen() {
       reload();
     });
     return null;
+  };
+
+  /** 스낵바 하나. undo가 있으면 버튼(기본 "되돌리기"). 빨강은 critical(기본: 버튼 없는 실패 알림). */
+  function show(message: string, undo?: () => void, { label = '되돌리기', critical = !undo }: { label?: string; critical?: boolean } = {}) {
+    snackbar.create({
+      render: () => (
+        <Snackbar.Root variant={critical ? 'critical' : 'default'} className="!pointer-events-none">
+          <Snackbar.Content>
+            <Snackbar.Message>{message}</Snackbar.Message>
+          </Snackbar.Content>
+          {undo && (
+            <Snackbar.ActionButton className="pointer-events-auto" onClick={undo}>
+              {label}
+            </Snackbar.ActionButton>
+          )}
+        </Snackbar.Root>
+      ),
+    });
+  }
+
+  /** 저장 뒤 안내(설계 12 §5-1): 미리 보기에 없던 경고만. 겹침이면 누르면 예약 상세의 기존 예약 탭. */
+  const savedNotice = ({ appointmentId, fresh }: SaveNotice) => {
+    if (fresh.length === 0) return show('저장했어요', undefined, { critical: false });
+    const appts = fresh.find((w) => w.code === 'OVERLAP_APPOINTMENT')?.relatedIds.length ?? 0;
+    const parts = [
+      appts > 0 && `새로 겹치는 예약 ${appts}건`,
+      fresh.some((w) => w.code === 'OVERLAP_BLOCK') && '관리 불가 시간과 겹침',
+      fresh.some((w) => w.code === 'OUTSIDE_BUSINESS_HOURS') && '영업시간 밖',
+      fresh.some((w) => w.code === 'CLOSED_DAY') && '휴무일',
+    ].filter(Boolean);
+    const openDetail = () => {
+      setEntry(null);
+      setBlockId(null);
+      setOpenId(appointmentId);
+      setOpenTab(appts > 0 ? 'existing' : 'request');
+    };
+    show(`저장했어요 · ${parts.join(' · ')}`, openDetail, { label: '보기', critical: true });
   };
 
   const segment = (
@@ -334,8 +364,10 @@ function CalendarScreen() {
       />
       <AppointmentPanel
         appointment={open}
-        staffName={open ? staffName(open.staffId) : ''}
+        staffName={staffName}
+        appointments={data?.appointments ?? []}
         blocks={data?.blocks ?? []}
+        initialTab={openTab}
         onClose={() => setOpen(null)}
         onStatus={changeStatus}
         editDisabled={entry !== null}
@@ -359,10 +391,11 @@ function CalendarScreen() {
           if (entry?.editId) setOpenId(entry.editId);
           setEntry(null);
         }}
-        onSaved={(d) => {
+        onSaved={(d, saved) => {
           setEntry(null);
           go({ date: d });
           reload();
+          if (saved) savedNotice(saved);
         }}
       />
       {/* 패널이 열려 있으면 알림을 웹 패널 왼쪽이나 폰 시트 위쪽에 둔다. */}

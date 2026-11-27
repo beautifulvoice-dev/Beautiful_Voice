@@ -1,4 +1,4 @@
-// BEA-175 수용 기준: 주·월 전환 / 관리·준비·차단이 다르게 보임 / 예약 카드에 고객·메뉴·담당자, 누르면 메모.
+// BEA-175 수용 기준: 주·월 전환 / 시술·정리·차단이 다르게 보임 / 예약 카드에 고객·메뉴·담당자, 누르면 메모. rev.3.1: 정리는 시술 뒤, 겹쳐도 저장.
 // 데이터는 합성(절대 규칙 8). 날짜는 주소로 고정해 언제 돌려도 같은 결과가 나오게 한다.
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -18,6 +18,7 @@ import {
   monthGrid,
   outsideHours,
   overlapsBlock,
+  overlappingAppointmentIds,
   segmentsForDay,
   weekDays,
   weekTitle,
@@ -53,7 +54,7 @@ const appt = (over: Partial<CalendarAppointment>): CalendarAppointment => ({
   staffId: 's1',
   startAt: '2026-11-18T05:00:00Z', // 서울 14:00
   durationMin: 60,
-  prepMin: 20,
+  cleanupMin: 20,
   memo: null,
   status: 'scheduled',
   ...over,
@@ -70,18 +71,20 @@ describe('캘린더 배치 규칙', () => {
     expect(m.length % 7).toBe(0);
   });
 
-  it('점유 = [시작 − 준비, 시작 + 관리): 14:00·관리 60분·준비 20분 → 준비 13:40~14:00, 관리 14:00~15:00', () => {
+  it('점유 = [시작, 시작 + 시술 + 정리): 14:00·시술 60분·정리 20분 → 시술 14:00~15:00, 정리 15:00~15:20(rev.3.1)', () => {
     const segs = segmentsForDay('2026-11-18', { appointments: [appt({})], blocks: [] });
     expect(segs).toEqual([
-      { kind: 'prep', sourceId: 'x', fromMin: 13 * 60 + 40, toMin: 14 * 60, staffId: 's1' },
       { kind: 'care', sourceId: 'x', fromMin: 14 * 60, toMin: 15 * 60, staffId: 's1' },
+      { kind: 'cleanup', sourceId: 'x', fromMin: 15 * 60, toMin: 15 * 60 + 20, staffId: 's1' },
     ]);
-    expect(appointmentTimeText(appt({}))).toBe('13:40 준비 · 14:00–15:00');
-    expect(appointmentTimeText(appt({ prepMin: 0 }))).toBe('14:00–15:00');
+    expect(appointmentTimeText(appt({}))).toBe('14:00–15:00 · 정리 15:20까지');
+    expect(appointmentTimeText(appt({ cleanupMin: 0 }))).toBe('14:00–15:00');
+    // 담당자 미지정은 모든 담당자 줄에 걸친다
+    expect(segmentsForDay('2026-11-18', { appointments: [appt({ staffId: null, cleanupMin: 0 })], blocks: [] })[0]!.staffId).toBeNull();
   });
 
   it('자정을 넘는 예약은 날마다 잘라 그린다', () => {
-    const late = appt({ startAt: '2026-11-18T14:30:00Z', durationMin: 60, prepMin: 0 }); // 서울 23:30~00:30
+    const late = appt({ startAt: '2026-11-18T14:30:00Z', durationMin: 60, cleanupMin: 0 }); // 서울 23:30~00:30
     expect(segmentsForDay('2026-11-18', { appointments: [late], blocks: [] })).toMatchObject([{ fromMin: 1410, toMin: 1440 }]);
     expect(segmentsForDay('2026-11-19', { appointments: [late], blocks: [] })).toMatchObject([{ fromMin: 0, toMin: 30 }]);
   });
@@ -91,8 +94,8 @@ describe('캘린더 배치 규칙', () => {
       appointments: [
         appt({ id: 'c', status: 'cancelled' }),
         appt({ id: 'v', status: 'voided' }),
-        appt({ id: 'd', status: 'completed', prepMin: 0 }),
-        appt({ id: 'n', status: 'no_show', prepMin: 0 }),
+        appt({ id: 'd', status: 'completed', cleanupMin: 0 }),
+        appt({ id: 'n', status: 'no_show', cleanupMin: 0 }),
       ],
       blocks: [],
     });
@@ -145,14 +148,28 @@ describe('W1 디자인 규칙(SEED 옮기기)', () => {
     expect(hoursBase(['2026-11-18'], late)).toEqual([17, 24]);
   });
 
-  it('겹침: 그 담당자(또는 매장 전체) 관리 불가와 점유 구간이 겹칠 때만 — 준비 시간도 점유', () => {
+  it('겹침: 그 담당자(또는 매장 전체) 관리 불가와 점유 구간이 겹칠 때만 — 정리 시간도 점유, 미지정 예약은 모든 차단', () => {
     const block = (over: Partial<CalendarBlock>): CalendarBlock => ({
-      id: 'b', startAt: '2026-11-18T04:30:00Z', endAt: '2026-11-18T04:50:00Z', allStaff: false, staffIds: ['s1'], memo: null, ...over,
-    }); // 서울 13:30~13:50 — 14:00 예약의 준비(13:40~)와 겹침
+      id: 'b', startAt: '2026-11-18T06:10:00Z', endAt: '2026-11-18T06:30:00Z', allStaff: false, staffIds: ['s1'], memo: null, ...over,
+    }); // 서울 15:10~15:30 — 14:00 예약의 정리(15:00~15:20)와 겹침
     expect(overlapsBlock(appt({}), [block({})])).toBe(true);
-    expect(overlapsBlock(appt({ prepMin: 0 }), [block({})])).toBe(false);
+    expect(overlapsBlock(appt({ cleanupMin: 0 }), [block({})])).toBe(false);
     expect(overlapsBlock(appt({}), [block({ staffIds: ['s2'] })])).toBe(false);
+    expect(overlapsBlock(appt({ staffId: null }), [block({ staffIds: ['s2'] })])).toBe(true);
     expect(overlapsBlock(appt({}), [block({ staffIds: [], allStaff: true })])).toBe(true);
+  });
+
+  it('예약끼리 겹침: 같은 담당자이거나 한쪽이 미지정일 때만, 끝과 시작이 같으면 아님. 서버 값이 있으면 그것', () => {
+    const a = appt({ id: 'a', cleanupMin: 10 }); // 14:00~15:10
+    const others = [
+      appt({ id: 'same', startAt: '2026-11-18T06:05:00Z' }), // 15:05 같은 담당자 — 정리와 겹침
+      appt({ id: 'touch', startAt: '2026-11-18T06:10:00Z' }), // 15:10 — 끝과 시작이 같다
+      appt({ id: 'other', staffId: 's2' }), // 다른 담당자
+      appt({ id: 'none', staffId: null, startAt: '2026-11-18T04:30:00Z' }), // 미지정 13:30~14:50
+      appt({ id: 'gone', status: 'cancelled' }),
+    ];
+    expect(overlappingAppointmentIds(a, [a, ...others])).toEqual(['same', 'none']);
+    expect(overlappingAppointmentIds({ ...a, overlappingAppointmentIds: ['far'] }, [a])).toEqual(['far']);
   });
 
   it('담당자 거르기: 그 담당자 예약과, 그 담당자에게 걸린 차단·매장 전체 차단만', () => {
@@ -255,7 +272,7 @@ describe('캘린더 화면', () => {
     expect(screen.getByRole('region', { name: '11월 17일' }).querySelector('[data-kind="now"]')).toBeNull();
   });
 
-  it('주간 보기: 요일 7칸과 관리·준비·차단이 서로 다른 모양으로 보인다', async () => {
+  it('주간 보기: 요일 7칸과 시술·정리·차단이 서로 다른 모양으로 보인다', async () => {
     // 오늘이 이 주에 들면 날 머리가 "· 오늘"로 바뀌므로 시계를 수요일로 고정한다
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-11-18T05:30:00Z')); // 서울 수 14:30
@@ -269,7 +286,7 @@ describe('캘린더 화면', () => {
     expect(heads[6]).toBe('일 · 정기 휴무22');
     expect(screen.getByRole('radio', { name: '주' })).toBeChecked();
     const kinds = new Set(Array.from(document.querySelectorAll('[data-kind]')).map((e) => e.getAttribute('data-kind')));
-    for (const k of ['care', 'prep', 'block', 'closed']) expect(kinds).toContain(k);
+    for (const k of ['care', 'cleanup', 'block', 'closed']) expect(kinds).toContain(k);
   });
 
   it('예약 카드에 고객·메뉴·담당자가 보이고, 누르면 메모가 보인다', async () => {
@@ -284,7 +301,7 @@ describe('캘린더 화면', () => {
     const dialog = await screen.findByRole('dialog', { name: '이서윤' });
     expect(dialog).toHaveTextContent('임산부 — 복부 관리 제외');
     expect(dialog).toHaveTextContent('11/16(월) 14:00–15:00 · 60분');
-    expect(dialog).toHaveTextContent('준비 20분 · 13:40부터 일정이 잡혀요');
+    expect(dialog).toHaveTextContent('정리 20분 · 15:20까지 일정이 잡혀요');
     expect(dialog).toHaveTextContent('예정'); // scheduled 화면 표기
   });
 
@@ -347,16 +364,16 @@ describe('캘린더 화면', () => {
     expect(await screen.findByRole('heading', { level: 2, name: '11월 넷째 주' })).toBeInTheDocument();
   });
 
-  it('월간 보기에서도 준비 시간이 있는 예약을 구분한다(관리 시작 + 준비 표시)', async () => {
+  it('월간 보기에서도 정리 시간이 있는 예약을 구분한다(시술 시작 + 정리 표시)', async () => {
     renderAt('/calendar?view=month&date=2026-11-18');
     const monday = await screen.findByRole('region', { name: '11월 16일' });
-    const withPrep = within(monday).getByRole('button', { name: /14:00 이서윤/ });
-    const prep = withPrep.querySelector('[data-kind="prep"]');
-    expect(prep).toHaveTextContent('준비 20분');
-    expect(prep).toHaveAttribute('title', '준비 13:40부터 20분');
+    const withCleanup = within(monday).getByRole('button', { name: /14:00 이서윤/ });
+    const cleanup = withCleanup.querySelector('[data-kind="cleanup"]');
+    expect(cleanup).toHaveTextContent('정리 20분');
+    expect(cleanup).toHaveAttribute('title', '정리 20분 · 15:20까지');
     const tuesday = screen.getByRole('region', { name: '11월 17일' });
-    const noPrep = within(tuesday).getByRole('button', { name: /11:30 최유나/ });
-    expect(noPrep.querySelector('[data-kind="prep"]')).toBeNull();
+    const noCleanup = within(tuesday).getByRole('button', { name: /11:30 최유나/ });
+    expect(noCleanup.querySelector('[data-kind="cleanup"]')).toBeNull();
   });
 
   it('주소의 날짜가 없는 날이면 오늘 기준으로 보여 준다', async () => {
@@ -367,7 +384,7 @@ describe('캘린더 화면', () => {
   });
 
   it('자정을 넘는 예약은 두 날 모두에 누를 수 있는 카드가 붙는다', async () => {
-    const late = appt({ id: 'late', customerName: '심야손님', startAt: '2026-11-18T14:30:00Z', prepMin: 0 }); // 서울 수 23:30~목 00:30
+    const late = appt({ id: 'late', customerName: '심야손님', startAt: '2026-11-18T14:30:00Z', cleanupMin: 0 }); // 서울 수 23:30~목 00:30
     renderAt('/calendar?date=2026-11-18', createMemoryCalendarApi({ staff: [{ id: 's1', name: '원장' }], appointments: [late], blocks: [] }));
     for (const day of ['11월 18일', '11월 19일']) {
       const region = await screen.findByRole('region', { name: day });
@@ -475,7 +492,7 @@ describe('폰·웹 배치(캘린더 PR 2a) — 너비 기준 SEED md 768', () =>
 
   it('웹 월 보기: 날마다 3건까지 이름, 넘치면 "+N"', async () => {
     const many = Array.from({ length: 5 }, (_, i) =>
-      appt({ id: `m${i}`, customerName: `손님${i}`, startAt: `2026-11-18T0${i}:00:00Z`, prepMin: 0, durationMin: 30 }),
+      appt({ id: `m${i}`, customerName: `손님${i}`, startAt: `2026-11-18T0${i}:00:00Z`, cleanupMin: 0, durationMin: 30 }),
     );
     renderAt('/calendar?view=month&date=2026-11-18', createMemoryCalendarApi({ staff: [{ id: 's1', name: '원장' }], appointments: many, blocks: [] }));
     const wed = await screen.findByRole('region', { name: '11월 18일' });
@@ -694,14 +711,14 @@ describe('예약 보기 W2 — 웹 오른쪽 패널 / 폰 아래 시트 (캘린�
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '김하늘' })).not.toBeInTheDocument());
   });
 
-  it('취소를 예정으로 되살릴 때 같은 담당자 예약과 겹치면 거부하고 이유를 알린다(가짜 저장소, @bv/scheduling 규칙)', async () => {
+  it('취소를 예정으로 되살릴 때 같은 담당자 예약과 겹쳐도 저장하고 경고로 돌려준다(가짜 저장소, @bv/scheduling 규칙, rev.3.1)', async () => {
     const api = createMemoryCalendarApi({
       staff: [{ id: 's1', name: '원장' }],
       appointments: [appt({ id: 'live', customerName: '손님가' }), appt({ id: 'gone', customerName: '손님나', status: 'cancelled' })],
       blocks: [],
     });
     const r = await api.setStatus('gone', 'scheduled');
-    expect(r).toEqual({ ok: false, reason: 'STAFF_OVERLAP', conflictingIds: ['live'] });
+    expect(r).toMatchObject({ ok: true, value: { status: 'scheduled', warnings: [{ code: 'OVERLAP_APPOINTMENT', relatedIds: ['live'] }] } });
     expect(await api.setStatus('live', 'completed')).toMatchObject({ ok: true, value: { status: 'completed' } });
   });
 
@@ -712,7 +729,7 @@ describe('예약 보기 W2 — 웹 오른쪽 패널 / 폰 아래 시트 (캘린�
     expect(screen.getByRole('button', { name: '예약' })).toBeEnabled(); // 떠 있는 + 예약 — 시트가 열리면 뒤 화면은 가려지므로 먼저 확인
     await userEvent.click(within(monday).getByRole('button', { name: /이서윤/ }));
     const sheet = await screen.findByRole('dialog', { name: '이서윤' });
-    expect(sheet).toHaveTextContent('준비 20분 · 13:40부터 일정이 잡혀요');
+    expect(sheet).toHaveTextContent('정리 20분 · 15:20까지 일정이 잡혀요');
   });
 });
 
@@ -748,28 +765,31 @@ describe('예약 넣기 W3', () => {
     await waitFor(() => expect(sheet.querySelector('#entry-time')).toHaveTextContent(hhmm));
   }
 
-  // 거부 네 가지를 한 테스트에 이어 붙이면 달력·목록 고르기(전체 화면 이름 계산)가 쌓여 5초 제한에 걸렸다 — 경우마다 나눈다.
+  // 경고 네 가지를 한 테스트에 이어 붙이면 달력·목록 고르기(전체 화면 이름 계산)가 쌓여 5초 제한에 걸렸다 — 경우마다 나눈다.
+  // rev.3.1(설계 12 §5-1): 막지 않는다 — 폼 안 빨간 안내를 보고 저장 버튼 하나로 그대로 저장.
   it.each([
-    ['겹침', '2026-11-16', '14:30', '원장은 14:00–15:00에 이서윤 님 예약이 있어요.'],
-    ['관리 불가', '2026-11-19', '12:00', '12:00–13:00은 관리 불가 시간(점심)이에요.'],
+    ['겹침', '2026-11-16', '14:30', '14:00–15:00 이서윤 님 예약과 겹쳐요.'],
+    ['관리 불가', '2026-11-19', '12:00', '관리 불가 시간(12:00–13:00 점심)과 겹쳐요.'],
     ['영업시간 밖', '2026-11-19', '21:30', '영업시간(10:00–22:00) 밖이에요.'],
     ['휴무일', '2026-11-22', '12:00', '11/22(일)은 휴무일이에요.'],
-  ])('%s이면 저장 버튼 위 빨간 알림과 거부 문구, 저장되지 않는다', async (_case, day, hhmm, text) => {
+  ])('%s이면 저장 버튼 위 빨간 안내를 보이고, 그대로 저장된다', async (_case, day, hhmm, text) => {
     renderAt('/calendar?date=2026-11-18');
     const sheet = await openEntry('이서윤', day, hhmm);
     expect(within(sheet).queryByRole('radiogroup', { name: '담당자' })).not.toBeInTheDocument();
+    expect(await within(sheet).findByText(text)).toBeInTheDocument();
     await userEvent.click(within(sheet).getByRole('button', { name: '저장' }));
-    expect(await within(sheet).findByRole('alert')).toHaveTextContent(text);
-    expect(screen.getByRole('dialog', { name: '예약 넣기' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '예약 넣기' })).not.toBeInTheDocument());
+    // 미리 보기에서 본 경고뿐이라 "새로 겹치는" 안내 없이 저장 완료만
+    expect(await screen.findByText('저장했어요')).toBeInTheDocument();
   });
 
-  it('메뉴 칩을 고르면 관리·준비 시간이 채워지고, 점유 미리보기가 보인다. 저장하면 캘린더에 생긴다', async () => {
+  it('메뉴 칩을 고르면 시술·정리 시간이 채워지고, 점유 미리보기가 보인다. 저장하면 캘린더에 생긴다', async () => {
     renderAt('/calendar?date=2026-11-18');
     const sheet = await openEntry('이서윤', '2026-11-17', '14:00');
     await userEvent.click(within(sheet).getByText('리프팅 관리'));
-    expect(within(sheet).getByRole('group', { name: '관리 시간' })).toHaveTextContent('90분');
-    expect(within(sheet).getByRole('group', { name: '준비 시간' })).toHaveTextContent('10분');
-    expect(sheet).toHaveTextContent('13:50부터 15:30까지 원장 일정이 잡혀요');
+    expect(within(sheet).getByRole('group', { name: '시술 시간' })).toHaveTextContent('90분');
+    expect(within(sheet).getByRole('group', { name: '정리 시간' })).toHaveTextContent('10분');
+    expect(sheet).toHaveTextContent('14:00부터 15:40까지 원장 일정이 잡혀요');
     await userEvent.click(within(sheet).getByRole('button', { name: '저장' }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: '예약 넣기' })).not.toBeInTheDocument());
     const tuesday = await screen.findByRole('region', { name: '11월 17일' });

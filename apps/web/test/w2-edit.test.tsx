@@ -36,10 +36,10 @@ function spied(replies: ('VERSION_CONFLICT' | 'NETWORK_AFTER_SAVE')[] = []) {
       sent.push({ change, key });
       if (key && done.has(key)) return done.get(key)!; // 서버처럼 같은 키는 처음 결과 재생
       const next = replies.shift();
-      if (next === 'VERSION_CONFLICT') return { ok: false, reason: 'VERSION_CONFLICT', conflictingIds: [] };
+      if (next === 'VERSION_CONFLICT') return { ok: false, reason: 'VERSION_CONFLICT' };
       const r = await base.updateAppointment(id, change, options);
       if (key) done.set(key, r);
-      return next === 'NETWORK_AFTER_SAVE' ? { ok: false, reason: 'NETWORK', conflictingIds: [] } : r;
+      return next === 'NETWORK_AFTER_SAVE' ? { ok: false, reason: 'NETWORK' } : r;
     },
   };
   return { api, base, sent };
@@ -71,7 +71,7 @@ describe('W2 바꾸기', () => {
     const sheet = await openEdit();
     expect(within(sheet).getByPlaceholderText('이름 두 글자')).toHaveValue('최유나');
     expect(within(sheet).queryByRole('radio', { name: '관리 불가 시간' })).not.toBeInTheDocument();
-    expect(within(sheet).getByRole('group', { name: '관리 시간' })).toHaveTextContent('90분');
+    expect(within(sheet).getByRole('group', { name: '시술 시간' })).toHaveTextContent('90분');
     await pickTime(sheet, '15:00');
     await save(sheet);
     await closed();
@@ -110,14 +110,17 @@ describe('W2 바꾸기', () => {
     expect(sheet.querySelector('#entry-time')).toHaveTextContent('15:00');
   });
 
-  it('영업시간 밖으로 옮기면 W3와 같은 거부 문구, 저장하지 않는다', async () => {
+  it('영업시간 밖으로 옮기면 미리 보기(자기 자신은 빼고)로 빨간 안내를 보이고, 그대로 저장한다(rev.3.1)', async () => {
     const { api, sent } = spied();
     renderAt(api);
     const sheet = await openEdit();
     await pickTime(sheet, '21:30');
+    expect(await within(sheet).findByText('영업시간(10:00–22:00) 밖이에요.')).toBeInTheDocument();
+    expect(within(sheet).queryByText(/예약과 겹쳐요/)).not.toBeInTheDocument();
     await save(sheet);
-    expect(await within(sheet).findByRole('alert')).toHaveTextContent('영업시간(10:00–22:00) 밖이에요.');
-    expect(sent).toHaveLength(0);
+    await closed();
+    expect(sent).toHaveLength(1);
+    expect(await screen.findByText('저장했어요')).toBeInTheDocument();
   });
 
   it('409면 입력을 두고 최신 값을 불러온 뒤, 새 version·새 키로 다시 저장한다', async () => {

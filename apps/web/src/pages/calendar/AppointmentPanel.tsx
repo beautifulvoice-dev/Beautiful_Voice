@@ -2,13 +2,25 @@
 // 예정이면 주 버튼 "시술 완료"(11/22 옵마 결정 — 디자인 문구는 "완료"), 보조 노쇼·문자 보내기, 더보기. 완료·노쇼·취소면 상태 고치기 하나(결정 S5).
 // 완료·노쇼·상태 고치기는 가짜 저장소에서 실제로 바뀐다(@bv/scheduling changeStatus, 11/21 옵마 결정). 저장되면 패널을 닫고 스낵바 + 되돌리기(CalendarPage).
 // 더보기 → 바꾸기(W3 편집, 설계 06 ①)·예약 취소(확인 뒤). 문자 보내기(M3)는 아직 꺼 둔다.
-import { ActionButton, AlertDialog, Icon, PrefixIcon, Badge, Callout, ResponsiveSidePanel } from '@seed-design/react';
+// rev.3.1(설계 12 §5-1): 다른 예약과 겹치면 빨간 안내 + "요청 예약 | 기존 예약" 탭으로 두 예약을 비교한다.
+import {
+  ActionButton,
+  AlertDialog,
+  Icon,
+  PrefixIcon,
+  Badge,
+  Callout,
+  ResponsiveSidePanel,
+  SegmentedControl,
+  SegmentedControlItemHiddenInput,
+} from '@seed-design/react';
 import { ChevronRight, Ellipsis, MessageSquare, X } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { shortDate } from '@/features/calendar/bookingText';
 import { Link } from 'react-router';
 import {
   appointmentPanelTime,
+  overlappingAppointmentIds,
   overlappingBlocks,
   shopDate,
   shopTime,
@@ -24,10 +36,17 @@ import { STATUS_TONE } from './styles';
 
 export { PANEL_WIDTH } from './Sheet';
 
+/** 상세 탭: 이 예약(요청 예약) / 겹치는 예약(기존 예약). */
+export type PanelTab = 'request' | 'existing';
+
 interface Props {
   appointment: CalendarAppointment | null;
-  staffName: string;
+  staffName: (id: string | null) => string;
+  /** 겹치는 예약을 찾아 비교 탭에 보인다(조회 범위 안의 예약). */
+  appointments: readonly CalendarAppointment[];
   blocks: readonly CalendarBlock[];
+  /** 저장 뒤 "새로 겹치는 예약" 안내로 열면 기존 예약 탭부터. */
+  initialTab?: PanelTab;
   onClose: () => void;
   /** 상태 바꾸기. 실패하면 이유 문구를 돌려준다. */
   onStatus: (a: CalendarAppointment, to: AppointmentStatus) => Promise<string | null>;
@@ -36,11 +55,22 @@ interface Props {
   editDisabled?: boolean;
 }
 
-export function AppointmentPanel({ appointment: a, staffName, blocks, onClose, onStatus, onEdit, editDisabled = false }: Props) {
+export function AppointmentPanel({ appointment: a, staffName, appointments, blocks, initialTab = 'request', onClose, onStatus, onEdit, editDisabled = false }: Props) {
   return (
     <CalendarSheet open={a !== null} onClose={onClose}>
       {a && (
-        <Body key={`${a.id}-${a.status}`} a={a} staffName={staffName} blocks={blocks} onStatus={onStatus} onClose={onClose} onEdit={onEdit} editDisabled={editDisabled} />
+        <Body
+          key={`${a.id}-${a.status}-${initialTab}`}
+          a={a}
+          staffName={staffName}
+          appointments={appointments}
+          blocks={blocks}
+          initialTab={initialTab}
+          onStatus={onStatus}
+          onClose={onClose}
+          onEdit={onEdit}
+          editDisabled={editDisabled}
+        />
       )}
     </CalendarSheet>
   );
@@ -52,23 +82,31 @@ const phoneText = (p: string) => p.replace(PHONE_DIGITS, '$1-$2-$3');
 function Body({
   a,
   staffName,
+  appointments,
   blocks,
+  initialTab,
   onStatus,
   onClose,
   onEdit,
   editDisabled,
 }: {
   a: CalendarAppointment;
-  staffName: string;
+  staffName: Props['staffName'];
+  appointments: readonly CalendarAppointment[];
   blocks: readonly CalendarBlock[];
+  initialTab: PanelTab;
   onStatus: Props['onStatus'];
   onClose: () => void;
   onEdit: Props['onEdit'];
   editDisabled: boolean;
 }) {
   const phone = useIsPhone();
-  const [time, prep] = appointmentPanelTime(a);
+  const [time, cleanup] = appointmentPanelTime(a);
   const overlaps = overlappingBlocks(a, blocks);
+  const overlapIds = overlappingAppointmentIds(a, appointments);
+  // 조회 범위 밖이라 받지 못한 예약은 건수만 보인다.
+  const others = overlapIds.map((id) => appointments.find((x) => x.id === id)).filter((x) => x !== undefined);
+  const [tab, setTab] = useState<PanelTab>(overlapIds.length > 0 ? initialTab : 'request');
   const scheduled = a.status === 'scheduled';
   const [fixing, setFixing] = useState(false);
   // 더보기(예정 예약): 바꾸기·예약 취소를 보인다.
@@ -152,18 +190,57 @@ function Body({
         {a.customerPhone && <p className="text-[15px] text-ink-soft tabular-nums">{phoneText(a.customerPhone)}</p>}
       </ResponsiveSidePanel.Header>
       <ResponsiveSidePanel.Body className={sheetBodyClass(phone)}>
-        <div className="grid gap-1">
-          <b className="text-lg tabular-nums">{time}</b>
-          {prep && <span className="text-[15px] text-ink-soft">{prep}</span>}
-        </div>
-        <dl className="m-0 grid grid-cols-[76px_minmax(0,1fr)] gap-x-2.5 gap-y-2 text-[15px]">
-          <dt className="text-ink-soft">메뉴</dt>
-          <dd className="m-0">{a.menuName ?? '메뉴 없음'}</dd>
-          <dt className="text-ink-soft">담당자</dt>
-          <dd className="m-0">{staffName}</dd>
-          <dt className="text-ink-soft">메모</dt>
-          <dd className="m-0 whitespace-pre-wrap">{a.memo ?? '메모 없음'}</dd>
-        </dl>
+        {overlapIds.length > 0 && (
+          <>
+            <Callout.Root tone="critical">
+              <Callout.Content>
+                <Callout.Description>다른 예약 {overlapIds.length}건과 시간이 겹쳐요. 예약은 그대로 있어요.</Callout.Description>
+              </Callout.Content>
+            </Callout.Root>
+            <SegmentedControl.Root aria-label="겹침 비교" value={tab} onValueChange={(v) => setTab(v as PanelTab)} className="w-full">
+              <SegmentedControl.Indicator />
+              <SegmentedControl.Item value="request">
+                <SegmentedControlItemHiddenInput />
+                요청 예약
+              </SegmentedControl.Item>
+              <SegmentedControl.Item value="existing">
+                <SegmentedControlItemHiddenInput />
+                기존 예약 {overlapIds.length}
+              </SegmentedControl.Item>
+            </SegmentedControl.Root>
+          </>
+        )}
+        {tab === 'existing' && overlapIds.length > 0 ? (
+          <ul aria-label="겹치는 기존 예약" className="m-0 grid gap-3 p-0">
+            {others.map((o) => (
+              <li key={o.id} className="grid list-none gap-1 rounded-xl p-3 shadow-[inset_0_0_0_2px_var(--cal-overlap)]">
+                <b className="text-base tabular-nums">{appointmentPanelTime(o)[0]}</b>
+                {appointmentPanelTime(o)[1] && <span className="text-sm text-ink-soft">{appointmentPanelTime(o)[1]}</span>}
+                <span className="text-[15px]">
+                  <b>{o.customerName}</b> · {o.menuName ?? '메뉴 없음'} · {staffName(o.staffId)} · {STATUS_TEXT[o.status]}
+                </span>
+              </li>
+            ))}
+            {others.length < overlapIds.length && (
+              <li className="list-none text-sm text-ink-soft">보고 있는 기간 밖 예약 {overlapIds.length - others.length}건 — 그 날짜로 가서 확인해 주세요.</li>
+            )}
+          </ul>
+        ) : (
+          <>
+            <div className="grid gap-1">
+              <b className="text-lg tabular-nums">{time}</b>
+              {cleanup && <span className="text-[15px] text-ink-soft">{cleanup}</span>}
+            </div>
+            <dl className="m-0 grid grid-cols-[76px_minmax(0,1fr)] gap-x-2.5 gap-y-2 text-[15px]">
+              <dt className="text-ink-soft">메뉴</dt>
+              <dd className="m-0">{a.menuName ?? '메뉴 없음'}</dd>
+              <dt className="text-ink-soft">담당자</dt>
+              <dd className="m-0">{staffName(a.staffId)}</dd>
+              <dt className="text-ink-soft">메모</dt>
+              <dd className="m-0 whitespace-pre-wrap">{a.memo ?? '메모 없음'}</dd>
+            </dl>
+          </>
+        )}
         {overlaps.map((b) => (
           // 결정 R50: 관리 불가와 겹쳐도 예약은 그대로 두고 알린다.
           <Callout.Root key={b.id} tone="critical">

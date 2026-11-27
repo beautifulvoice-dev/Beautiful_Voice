@@ -1,5 +1,6 @@
 // 주간 보기(화면 설계서 W1, 디자인 HTML .wk·.tl). 웹: 시간 × 7일 격자(1시간 48px). 폰: 고른 하루 시간표(1시간 64px, 위 7일 띠는 WeekStrip).
-// 한 날 칸은 담당자 수만큼 세로 줄로 나눈다(담당자별 겹침 금지라 같은 시각에 담당자마다 예약이 있을 수 있음).
+// 한 날 칸은 담당자 수만큼 세로 줄로 나눈다(같은 시각에 담당자마다 예약이 있을 수 있음). 담당자 미지정 예약은 모든 줄에 걸친다.
+// 시술 칸 바로 아래에 정리 칸(rev.3.1 — 정리 시간은 시술 뒤).
 // 자정을 넘는 예약은 날마다 잘라 그린다(segmentsForDay). 영업시간 밖·휴무일은 회색으로 덮는다(결정 S2).
 // 빈 칸을 누르면 그 시각(15분 단위)·담당자로 예약 넣기(W3)를 연다(설계서 W1 "빈 칸 누르기").
 import type { Closure } from '@bv/contracts';
@@ -11,7 +12,7 @@ import {
   hoursBase,
   isClosedDay,
   outsideHours,
-  overlapsBlock,
+  hasOverlap,
   segmentsForDay,
   shopTime,
   STATUS_TEXT,
@@ -53,7 +54,7 @@ interface Props {
   now: number;
   onOpen: (a: CalendarAppointment) => void;
   /** 담당자가 2명 이상이면 칸에 담당자 이름(화면 읽기용 — 눈으로는 칸 위치·담당자 칩 안내로 구분, 디자인). */
-  staffName?: (id: string) => string;
+  staffName?: (id: string | null) => string;
   /** 빈 칸 누르기: 그 날, 그 날 0시부터 분(15분 단위), 담당자(칸이 나뉘었을 때). */
   onEmpty?: (date: string, minute: number, staffId: string | null) => void;
   /** 관리 불가 칸 누르기 → 보기·지우기(W4). 없으면 칸은 누를 수 없다. */
@@ -172,10 +173,10 @@ export function WeekView({ days, data, today, now, onOpen, staffName, onEmpty, o
       );
     }
     const a = appt.get(s.sourceId)!;
-    if (s.kind === 'prep') {
-      return <div key={key} data-kind="prep" aria-hidden className={cn('absolute rounded-t-md', KIND_CLASS.prep)} style={pos} />;
+    if (s.kind === 'cleanup') {
+      return <div key={key} data-kind="cleanup" aria-hidden className={cn('absolute rounded-b-md', KIND_CLASS.cleanup)} style={pos} />;
     }
-    const overlap = overlapsBlock(a, data.blocks);
+    const overlap = hasOverlap(a, data);
     const start = Date.parse(a.startAt);
     const tone = STATUS_TONE[a.status];
     const badges = (tone || overlap) && (
