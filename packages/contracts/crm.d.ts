@@ -39,6 +39,15 @@ export interface ShopInfo {
   locationText: string | null;
 }
 
+/**
+ * 예약 규칙(GET/PUT settings/appointment-rules, S3 rev.3.1 §3.2). 매장당 한 행.
+ * ASSUMPTION: shop-info처럼 version 없이 통째로 바꾼다 — 설정 버전 저장 방식은 리더 확인 뒤 더한다.
+ */
+export interface AppointmentRules {
+  /** 켜면 새 예약·시간·담당자 변경에서 담당자 필수. 기존 미지정 예약의 메모 수정은 허용. */
+  requireStaffSelection: boolean;
+}
+
 export type ClosureInput =
   | { kind: 'weekly'; weekday: 1 | 2 | 3 | 4 | 5 | 6 | 7; note?: string | null }
   | { kind: 'holiday' | 'vacation'; startDate: string; endDate: string; note?: string | null };
@@ -46,14 +55,21 @@ export type Closure = ClosureInput & { id: string };
 
 export interface MenuFields {
   name: string;
-  /** 1 ~ 2147483647(DB integer 최댓값, #39 MAX_MINUTES). 넘으면 422 VALIDATION_FAILED */
+  /** 시술 5~600분. 밖이면 422 VALIDATION_FAILED */
   defaultDurationMin: number | null;
-  /** 0 ~ 2147483647 */
+  /** 시술 뒤 정리 0~180분(rev.3.1) */
+  defaultCleanupMin: number | null;
+  /** 원 단위 정수, 0 이상. 등록에서 생략하면 0 */
+  defaultPrice: number;
+}
+/** S3 전환 기간에만 쓰는 옛 이름 — defaultCleanupMin과 같은 값. 웹 전환(S3 ③) 뒤 지운다. */
+interface LegacyMenuFields {
+  /** @deprecated defaultCleanupMin을 쓴다 */
   defaultPrepMin: number | null;
 }
-export type MenuInput = Pick<MenuFields, 'name'> & Partial<Omit<MenuFields, 'name'>>;
-export type MenuPatch = PatchOf<MenuFields & { active: boolean }>;
-export interface Menu extends MenuFields, RowMeta {
+export type MenuInput = Pick<MenuFields, 'name'> & Partial<Omit<MenuFields, 'name'> & LegacyMenuFields>;
+export type MenuPatch = PatchOf<MenuFields & LegacyMenuFields & { active: boolean }>;
+export interface Menu extends MenuFields, LegacyMenuFields, RowMeta {
   active: boolean;
 }
 
@@ -103,23 +119,51 @@ export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_sh
 export interface AppointmentFields {
   customerId: string;
   menuId: string | null;
-  staffId: string;
-  /** 관리 시작(ISO-8601+offset) */
+  /** null = 담당자 미지정(등록에서 생략도 같음). 수정에서 생략은 그대로, null은 해제. */
+  staffId: string | null;
+  /** 시술 시작(ISO-8601+offset) */
   startAt: string;
+  /** 시술 5~600분 */
   durationMin: number;
-  /** 관리 앞 준비 시간. 점유 = [startAt − prepMin, startAt + durationMin) */
-  prepMin: number;
+  /** 시술 뒤 정리 0~180분. 점유 = [startAt, startAt + durationMin + cleanupMin) */
+  cleanupMin: number;
   memo: string | null;
 }
-export type AppointmentInput = Pick<AppointmentFields, 'customerId' | 'staffId' | 'startAt' | 'durationMin'> &
-  Partial<Omit<AppointmentFields, 'customerId' | 'staffId' | 'startAt' | 'durationMin'>>;
-export type AppointmentPatch = PatchOf<AppointmentFields>;
-export interface Appointment extends AppointmentFields, RowMeta {
+/** S3 전환 기간에만 쓰는 옛 이름 — cleanupMin과 같은 값(요청에는 둘 중 하나만). 웹 전환(S3 ③) 뒤 지운다. */
+interface LegacyAppointmentFields {
+  /** @deprecated cleanupMin을 쓴다(뜻도 015부터 시술 뒤 정리 시간) */
+  prepMin: number;
+}
+export type AppointmentInput = Pick<AppointmentFields, 'customerId' | 'startAt' | 'durationMin'> &
+  Partial<Omit<AppointmentFields, 'customerId' | 'startAt' | 'durationMin'> & LegacyAppointmentFields>;
+export type AppointmentPatch = PatchOf<AppointmentFields & LegacyAppointmentFields>;
+export interface Appointment extends AppointmentFields, LegacyAppointmentFields, RowMeta {
   status: AppointmentStatus;
   customerName: string;
+  /** 예약에 저장한 메뉴 이름(등록·메뉴 변경 때의 이름). 메뉴가 없으면 null */
   menuName: string | null;
-  /** 이 예약과 겹치는 활성 차단 id(충돌 표시, AC-CRM-3) */
+  /** 이 예약과 겹치는 활성 차단 id(충돌 표시, AC-CRM-3). 미지정 예약은 모든 차단이 대상 */
   blockedBy: string[];
+  /** 조회 시점에 점유가 겹치는 다른 점유 예약 id(같은 담당자이거나 한쪽이 미지정) */
+  overlappingAppointmentIds: string[];
+}
+
+/** 저장 판정 경고(rev.3.1 §4.2). 순서: 예약 겹침 → 차단 겹침 → 영업시간 밖/휴무. */
+export interface BookingWarning {
+  code: 'OVERLAP_APPOINTMENT' | 'OVERLAP_BLOCK' | 'OUTSIDE_BUSINESS_HOURS' | 'CLOSED_DAY';
+  /** 겹치는 예약·차단 id(같은 매장). 영업시간·휴무는 빈 배열 */
+  relatedIds: string[];
+}
+/** 예약 쓰기(등록·수정·상태) 응답 = 예약 + 그 저장 시점의 경고(없으면 []). */
+export interface AppointmentSaved extends Appointment {
+  warnings: BookingWarning[];
+}
+/** POST appointments/preview-warnings — 새 예약(appointmentId 없음) 또는 기존 예약 수정(appointmentId·version + 바꿀 필드). */
+export type AppointmentPreviewRequest =
+  | (AppointmentInput & { appointmentId?: undefined })
+  | (Partial<AppointmentFields & LegacyAppointmentFields> & { appointmentId: string; version: number });
+export interface AppointmentPreviewResponse {
+  warnings: BookingWarning[];
 }
 export interface AppointmentStatusBody {
   version: number;
@@ -155,8 +199,9 @@ export type CrmErrorCode =
   | 'VERSION_CONFLICT' // 409, details: {currentVersion}
   | 'NO_CHANGE' // 409
   | 'INVALID_TRANSITION' // 409
-  | 'STAFF_OVERLAP' // 409, details.conflictingIds — DB 23P01도 이 코드로
-  | 'BLOCKED' // 409, details.conflictingIds
-  | 'OUTSIDE_BUSINESS_HOURS' // 422
-  | 'CLOSED_DAY' // 422
+  // S3 rev.3.1부터 예약 쓰기는 아래 네 코드로 거부하지 않는다(warnings로 알림). 웹 전환(S3 ③) 뒤 지운다.
+  | 'STAFF_OVERLAP'
+  | 'BLOCKED'
+  | 'OUTSIDE_BUSINESS_HOURS'
+  | 'CLOSED_DAY'
   | 'INVALID_RANGE'; // 400

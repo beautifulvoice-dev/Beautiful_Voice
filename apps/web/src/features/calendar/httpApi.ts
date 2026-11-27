@@ -21,7 +21,8 @@ const toAppointment = (a: Appointment): CalendarAppointment => ({
   customerName: a.customerName,
   menuId: a.menuId ?? null,
   menuName: a.menuName,
-  staffId: a.staffId,
+  // S3 전환: 미지정(null) 예약 표시는 웹 PR(③)에서. 그전까지는 어느 담당자 줄에도 걸리지 않는 빈 값.
+  staffId: a.staffId ?? '',
   startAt: a.startAt,
   durationMin: a.durationMin,
   prepMin: a.prepMin ?? 0,
