@@ -30,6 +30,17 @@ export async function walletSummary(client: PoolClient, shopId: string, customer
 }
 
 const LIST_QUERY_FIELDS = new Set(['customerId', 'unitType', 'passId', 'cursor', 'limit']);
+const CURSOR_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/;
+
+function isWalletCursorTimestamp(value: string | number): boolean {
+  if (typeof value !== 'string' || value.length !== 27 || !CURSOR_TIMESTAMP.test(value) || value.startsWith('0000-')) {
+    return false;
+  }
+  // 달력·시각 검증만 밀리초로 한다. 쿼리에는 원래 마이크로초 문자열을 넘긴다.
+  const milliseconds = `${value.slice(0, -4)}Z`;
+  const date = new Date(milliseconds);
+  return !Number.isNaN(date.getTime()) && date.toISOString() === milliseconds;
+}
 
 /** GET /api/wallet-entries — 한 항목(선불금 또는 횟수권 하나)의 거래, 최신순. 커서 = (발생 시각 µs, id). */
 export async function walletEntries(
@@ -47,7 +58,7 @@ export async function walletEntries(
   if (errors.length > 0) throw invalid(errors);
   const limit = parseLimit(query.limit);
   const cursor = decodeCursor(query.cursor);
-  if (cursor && (typeof cursor.v !== 'string' || Number.isNaN(Date.parse(cursor.v)) || !UUID.test(cursor.id))) {
+  if (cursor && (!isWalletCursorTimestamp(cursor.v) || !UUID.test(cursor.id))) {
     throw new ApiError(400, 'INVALID_CURSOR', 'cursor is invalid');
   }
 

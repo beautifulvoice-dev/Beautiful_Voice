@@ -9,6 +9,7 @@ const { NestFactory } = require('@nestjs/core');
 const { Client } = require('pg');
 const { DatabaseService } = require('../dist/database.service.js');
 const { ApiExceptionFilter } = require('../dist/common/api-exception.filter.js');
+const { encodeCursor } = require('../dist/common/pagination.js');
 const { WalletController } = require('../dist/wallet/wallet.controller.js');
 const { WalletService } = require('../dist/wallet/wallet.service.js');
 const { signCookie } = require('../dist/owner-session.js');
@@ -143,6 +144,18 @@ test('거래 목록: 항목별·최신순·커서로 이어 읽고, 삭제 표�
   assert.deepEqual(fieldCodes(await entries({ customerId: customerA, unitType: 'amount', passId: pass.body.id })), ['passId:MUST_BE_EMPTY']);
   assert.deepEqual(fieldCodes(await entries({ unitType: 'coins', shopId: shopB })), ['customerId:REQUIRED', 'shopId:UNKNOWN_FIELD', 'unitType:INVALID_VALUE']);
   assert.equal((await entries({ customerId: customerA2, unitType: 'sessions', passId: pass.body.id })).status, 404, '다른 고객의 횟수권');
+});
+
+test('거래 커서의 시각은 실제 UTC 날짜와 마이크로초 형식이어야 한다', async () => {
+  const query = { customerId: customerA, unitType: 'amount' };
+  const id = randomUUID();
+  for (const v of ['0', '2026-02-29T12:00:00.123456Z', '0000-01-01T12:00:00.123456Z',
+    '2026-11-27T24:00:00.000000Z', '2026-11-27T12:00:00.123Z', '2026-11-27T12:00:00.123456Z\n']) {
+    const res = await entries({ ...query, cursor: encodeCursor({ v, id }) });
+    assert.deepEqual([res.status, res.body.code], [400, 'INVALID_CURSOR'], JSON.stringify(v));
+  }
+  const leapDay = await entries({ ...query, cursor: encodeCursor({ v: '2024-02-29T12:00:00.123456Z', id }) });
+  assert.equal(leapDay.status, 200);
 });
 
 test('입력 오류는 422 — 0·소수·signedDelta·예약·opening_balance·없는 횟수권·메뉴·고객', async () => {
