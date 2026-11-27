@@ -158,9 +158,12 @@ export interface BookingWarning {
 export interface AppointmentSaved extends Appointment {
   warnings: BookingWarning[];
 }
-/** POST appointments/preview-warnings — 새 예약(appointmentId 없음) 또는 기존 예약 수정(appointmentId·version + 바꿀 필드). */
+/**
+ * POST appointments/preview-warnings — 새 예약(appointmentId 없음) 또는 기존 예약 수정(appointmentId·version + 바꿀 필드).
+ * 새 예약 미리 보기는 customerId가 선택이다(고객을 고르기 전에도 부른다 — 판정에 고객은 쓰지 않음).
+ */
 export type AppointmentPreviewRequest =
-  | (AppointmentInput & { appointmentId?: undefined })
+  | (Omit<AppointmentInput, 'customerId'> & { customerId?: string; appointmentId?: undefined })
   | (Partial<AppointmentFields & LegacyAppointmentFields> & { appointmentId: string; version: number });
 export interface AppointmentPreviewResponse {
   warnings: BookingWarning[];

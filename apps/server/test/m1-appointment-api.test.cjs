@@ -267,6 +267,11 @@ test('미리 보기: 저장과 같은 경고, 아무것도 쓰지 않는다, 수
   const before = (await admin.query('SELECT (SELECT count(*) FROM crm.appointment_m1 WHERE shop_id = $1)::int AS a, (SELECT count(*) FROM crm.idempotency_key WHERE shop_id = $1)::int AS k', [shopA])).rows[0];
   const shown = await preview(draft);
   assert.deepEqual([shown.status, shown.body], [200, { warnings: [{ code: 'OVERLAP_APPOINTMENT', relatedIds: [base.body.id] }] }]);
+  const noCustomer = { ...draft };
+  delete noCustomer.customerId;
+  const withoutCustomer = await preview(noCustomer);
+  assert.deepEqual([withoutCustomer.status, withoutCustomer.body], [200, shown.body], '고객을 고르기 전에도 같은 경고(저장은 customerId 필수)');
+  assert.deepEqual((await call('POST', A, { body: noCustomer })).body.details.fields, [{ field: 'customerId', code: 'REQUIRED' }]);
   const after = (await admin.query('SELECT (SELECT count(*) FROM crm.appointment_m1 WHERE shop_id = $1)::int AS a, (SELECT count(*) FROM crm.idempotency_key WHERE shop_id = $1)::int AS k', [shopA])).rows[0];
   assert.deepEqual(after, before, '예약·멱등 데이터를 쓰지 않는다');
   const savedNow = await call('POST', A, { body: draft });
