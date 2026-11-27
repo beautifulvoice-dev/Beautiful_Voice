@@ -10,9 +10,12 @@ const { NestFactory } = require('@nestjs/core');
 const { Client } = require('pg');
 const { DatabaseService } = require('../dist/database.service.js');
 const { ApiExceptionFilter } = require('../dist/common/api-exception.filter.js');
+const { lockShopWrites } = require('../dist/common/shop-lock.js');
 const { AppointmentM1Controller } = require('../dist/appointments-m1/appointment-m1.controller.js');
 const { AppointmentM1Service } = require('../dist/appointments-m1/appointment-m1.service.js');
 const { signCookie } = require('../dist/owner-session.js');
+const { SettingsController } = require('../dist/settings/settings.controller.js');
+const { SettingsService } = require('../dist/settings/settings.service.js');
 
 const SECRET = 'ef'.repeat(32);
 const env = {
@@ -46,7 +49,7 @@ before(async () => {
   await admin.query("INSERT INTO crm.shop_closure (shop_id, kind, start_date, end_date) VALUES ($1, 'holiday', '2026-12-25', '2026-12-25')", [shopA]);
 
   class TestModule {}
-  Module({ controllers: [AppointmentM1Controller], providers: [DatabaseService, AppointmentM1Service] })(TestModule);
+  Module({ controllers: [AppointmentM1Controller, SettingsController], providers: [DatabaseService, AppointmentM1Service, SettingsService] })(TestModule);
   app = await NestFactory.create(TestModule, { logger: false });
   app.useGlobalFilters(new ApiExceptionFilter());
   await app.listen(0, '127.0.0.1');
@@ -193,6 +196,45 @@ test('담당자 필수 설정: 새 예약·시간·담당자 변경에서 미지
     assert.deepEqual((await patch(assigned.body.id, { version: 1, staffId: null })).body.details.fields, [{ field: 'staffId', code: 'REQUIRED' }]);
     assert.equal((await patch(old.body.id, { version: 2, staffId: staff1, startAt: at('15', '11:00') })).status, 200, '담당자를 고르면 된다');
   } finally {
+    await admin.query('UPDATE crm.shop_settings SET require_staff_selection = false WHERE shop_id = $1', [shopA]);
+  }
+});
+
+test('담당자 필수 설정이 예약보다 먼저 잠금을 기다리면 뒤의 미지정 예약은 거부된다', async () => {
+  const blocker = new Client({ connectionString: process.env.DATABASE_MIGRATION_URL });
+  const requests = [];
+  await blocker.connect();
+  try {
+    await blocker.query('BEGIN');
+    const { rows: [{ pid }] } = await blocker.query('SELECT pg_backend_pid() AS pid');
+    await lockShopWrites(blocker, shopA);
+    const waitForRequests = async (expected) => {
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        const { rows: [{ waiting }] } = await admin.query(
+          `SELECT count(*)::int AS waiting
+             FROM pg_locks held JOIN pg_locks waiter
+               USING (locktype, database, classid, objid, objsubid)
+            WHERE held.pid = $1 AND held.locktype = 'advisory' AND held.granted AND NOT waiter.granted`, [pid]);
+        if (waiting === expected) return;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      assert.fail(`같은 매장 쓰기 잠금에서 요청 ${expected}건이 대기해야 한다`);
+    };
+
+    requests.push(call('PUT', `/api/shops/${shopA}/settings/appointment-rules`, { body: { requireStaffSelection: true } }));
+    await waitForRequests(1);
+    requests.push(book({ staffId: null, startAt: at('17', '14:00') }));
+    await waitForRequests(2);
+    await blocker.query('COMMIT');
+
+    const [rule, reservation] = await Promise.all(requests);
+    assert.deepEqual([rule.status, rule.body], [200, { requireStaffSelection: true }]);
+    assert.deepEqual([reservation.status, reservation.body.details.fields], [422, [{ field: 'staffId', code: 'REQUIRED' }]]);
+  } finally {
+    await blocker.query('ROLLBACK').catch(() => {});
+    await Promise.allSettled(requests);
+    await blocker.end();
     await admin.query('UPDATE crm.shop_settings SET require_staff_selection = false WHERE shop_id = $1', [shopA]);
   }
 });
