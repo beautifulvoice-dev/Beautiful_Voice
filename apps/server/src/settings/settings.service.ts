@@ -4,6 +4,7 @@ import { Injectable } from '@nestjs/common';
 import type { PoolClient } from 'pg';
 import { ApiError } from '../common/api-error';
 import { shopNotFound } from '../common/owner-shop.guard';
+import { lockShopWrites } from '../common/shop-lock';
 
 // 매장 설정 쓰기·읽기(BEA-166). 모든 함수는 DatabaseService.withShop 트랜잭션의 client를 받는다 →
 // RLS가 그 매장 행만 보여 주지만, 쿼리에도 shop_id 조건을 같이 쓴다(절대 규칙 5, 2중 안전장치).
@@ -67,6 +68,7 @@ export class SettingsService {
         ...(typeof body.requireStaffSelection === 'boolean' ? []
           : [{ field: 'requireStaffSelection', code: body.requireStaffSelection === undefined ? 'REQUIRED' : 'INVALID_BOOLEAN' }])];
     if (fields.length > 0) throw new ApiError(422, 'VALIDATION_FAILED', '입력값을 확인해 주세요.', { fields });
+    await lockShopWrites(client, shopId);
     // 이미 있는 미지정 예약은 그대로 둔다 — 다음 새 예약·시간·담당자 변경부터 적용된다(설계 12 D3).
     const { rows: [row] } = await client.query<AppointmentRules>(
       `UPDATE crm.shop_settings SET require_staff_selection = $2, updated_at = now() WHERE shop_id = $1
