@@ -254,7 +254,8 @@ paths:
     post:
       summary: 저장 전 경고 미리 보기. 저장과 같은 서버 판정이고 아무것도 쓰지 않는다(Idempotency-Key 없음)
       description: |
-        새 예약은 등록 본문과 같은 값을 보낸다. 기존 예약 수정은 appointmentId·version과 바꿀 필드만 보낸다 — 서버가 현재 값에 합치고 그 예약 자신은 겹침에서 뺀다.
+        새 예약은 등록 본문과 같은 값을 보낸다. 단 customerId는 선택이다(고객을 고르기 전·새 고객 입력 중에도 부를 수 있게 — 판정에 고객은 쓰지 않는다. 보내면 등록처럼 검사).
+        기존 예약 수정은 appointmentId·version과 바꿀 필드만 보낸다 — 서버가 현재 값에 합치고 그 예약 자신은 겹침에서 뺀다.
         결과는 저장 시점까지 보장되지 않는다. 저장 응답의 warnings가 최종이다.
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AppointmentPreviewRequest'}}}}
       responses:
@@ -459,7 +460,7 @@ components:
         code: {enum: [OVERLAP_APPOINTMENT, OVERLAP_BLOCK, OUTSIDE_BUSINESS_HOURS, CLOSED_DAY]}
         relatedIds: {type: array, items: {type: string, format: uuid}, description: '겹치는 예약 id 또는 차단 id(같은 매장). 영업시간·휴무는 빈 배열'}
     AppointmentPreviewRequest:
-      description: 'appointmentId가 없으면 새 예약(AppointmentInput과 같은 필수 필드), 있으면 기존 예약 수정(version 필수, 나머지는 바꿀 필드만)'
+      description: 'appointmentId가 없으면 새 예약(startAt·durationMin 필수, customerId는 선택), 있으면 기존 예약 수정(version 필수, 나머지는 바꿀 필드만)'
       allOf:
         - {$ref: '#/components/schemas/AppointmentFields'}
         - {type: object, properties: {appointmentId: {type: string, format: uuid}, version: {type: integer}}}

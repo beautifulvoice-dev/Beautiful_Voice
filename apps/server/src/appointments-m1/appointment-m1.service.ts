@@ -117,7 +117,7 @@ export class AppointmentM1Service {
    */
   async previewWarnings(client: PoolClient, shopId: string, input: unknown): Promise<{ warnings: BookingWarning[] }> {
     const edit = input !== null && typeof input === 'object' && !Array.isArray(input) && 'appointmentId' in input;
-    if (!edit) return { warnings: (await planCreate(client, shopId, readInput(input, 'create').values)).warnings };
+    if (!edit) return { warnings: (await planCreate(client, shopId, readInput(input, 'preview-new').values)).warnings };
     const { values, version, appointmentId } = readInput(input, 'preview-edit');
     const current = await loadCurrent(client, shopId, appointmentId!, false);
     if (!current) throw invalid([{ field: 'appointmentId', code: 'NOT_FOUND' }]);
@@ -247,21 +247,23 @@ export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
 // 시각은 offset을 꼭 붙인다(계약: ISO-8601+offset). offset 없는 시각은 서버 시간대에 따라 뜻이 달라진다.
 const ISO = /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/;
 
-type InputMode = 'create' | 'patch' | 'preview-edit';
+// preview-new: 새 예약 미리 보기 — 등록과 같지만 customerId는 선택(고객을 고르기 전에도 폼이 부른다, 옵마 11/27 결정).
+// 겹침·차단·영업시간·휴무 판정에 고객은 쓰지 않는다. 보내면 등록과 같이 형식·소속을 검사한다.
+type InputMode = 'create' | 'preview-new' | 'patch' | 'preview-edit';
 
 function readInput(input: unknown, mode: InputMode): { values: Partial<Fields>; version: number | null; appointmentId: string | null } {
   if (input === null || typeof input !== 'object' || Array.isArray(input)) throw invalid([{ field: '', code: 'INVALID_SHAPE' }]);
   const body = input as Record<string, unknown>;
   const errors: FieldError[] = [];
   const values: Partial<Fields> = {};
-  const create = mode === 'create';
+  const create = mode === 'create' || mode === 'preview-new';
   const given = (k: string) => body[k] !== undefined;
   const need = (k: string) => { if (create) errors.push({ field: k, code: 'REQUIRED' }); };
   const extra = mode === 'patch' ? ['version'] : mode === 'preview-edit' ? ['version', 'appointmentId'] : [];
   // 상태(status) 등 모르는 칸은 조용히 무시하지 않고 거부한다 — 바뀐 줄 알고 넘어가지 않게.
   for (const k of Object.keys(body)) if (!BODY_FIELDS.includes(k) && !extra.includes(k)) errors.push({ field: k, code: 'UNKNOWN_FIELD' });
 
-  if (!given('customerId')) need('customerId');
+  if (!given('customerId')) { if (mode === 'create') need('customerId'); }
   else if (typeof body.customerId === 'string' && UUID.test(body.customerId)) values.customerId = body.customerId.toLowerCase();
   else errors.push({ field: 'customerId', code: 'INVALID_ID' });
   // 메뉴·담당자: null은 비우기(담당자 미지정). 등록에서 생략하면 null, 수정에서 생략하면 그대로.
