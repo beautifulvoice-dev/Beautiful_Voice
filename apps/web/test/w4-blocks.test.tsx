@@ -1,4 +1,4 @@
-// BEA-179 ② W4 실제 연결: 차단 넣기·지우기 창구, blockedBy 겹침 표시, 지우기 확인 시트, 서버 409 BLOCKED 문구. 합성 데이터만.
+// BEA-179 ② W4 실제 연결: 차단 넣기·지우기 창구, blockedBy 겹침 표시, 지우기 확인 시트, W3 관리 불가 경고. 합성 데이터만.
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
@@ -65,7 +65,7 @@ describe('W4 넣기 거절 문구(#86 리뷰)', () => {
 });
 
 describe('겹침 표시는 서버 blockedBy를 쓴다(설계 09 D5)', () => {
-  const a = { id: 'a1', customerName: '합성', menuName: null, staffId: 's1', startAt: '2026-12-01T01:00:00Z', durationMin: 60, prepMin: 0, memo: null, status: 'scheduled' } as CalendarAppointment;
+  const a = { id: 'a1', customerName: '합성', menuName: null, staffId: 's1', startAt: '2026-12-01T01:00:00Z', durationMin: 60, cleanupMin: 0, memo: null, status: 'scheduled' } as CalendarAppointment;
   const far = { id: 'b-far', startAt: '2026-12-02T01:00:00Z', endAt: '2026-12-02T02:00:00Z', allStaff: true, staffIds: [], memo: null };
   it('blockedBy에 id가 있으면 겹침 — 조회 창 밖이라 blocks에 없어도', () => {
     expect(overlapsBlock({ ...a, blockedBy: ['b-outside'] }, [])).toBe(true);
@@ -111,7 +111,7 @@ describe('W4 관리 불가 시간 보기·지우기', () => {
       ...base,
       removeBlock: async (_id, _v, options) => {
         keys.push(options?.idempotencyKey);
-        return { ok: false, reason: replies[i++]!, conflictingIds: [] };
+        return { ok: false, reason: replies[i++]! };
       },
     };
     renderAt(api);
@@ -161,10 +161,10 @@ describe('패널은 하나씩, 월 보기에서도 연다(#86 리뷰)', () => {
   });
 });
 
-describe('W3: 서버가 409 BLOCKED로 거부하면 관리 불가 문구', () => {
+describe('W3: 관리 불가와 겹치면 저장 전 빨간 안내, 그대로 저장(rev.3.1)', () => {
   it('화면이 모르는 차단(다른 곳에서 방금 생김)이면 일반 관리 불가 문구', async () => {
     const base = createMemoryCalendarApi(seedCalendar('2026-11-18'));
-    const api: CalendarApi = { ...base, createAppointment: async () => ({ ok: false, reason: 'BLOCKED', conflictingIds: ['b-new'] }) };
+    const api: CalendarApi = { ...base, previewWarnings: async () => [{ code: 'OVERLAP_BLOCK', relatedIds: ['b-new'] }] };
     renderAt(api);
     await screen.findByRole('region', { name: '11월 16일' });
     await userEvent.click(screen.getByRole('button', { name: '예약' }));
@@ -173,7 +173,7 @@ describe('W3: 서버가 409 BLOCKED로 거부하면 관리 불가 문구', () =>
     await userEvent.click(await within(sheet).findByRole('button', { name: /^이서윤/ }));
     await userEvent.click(sheet.querySelector<HTMLElement>('#entry-time')!);
     await userEvent.click(await screen.findByRole('option', { name: '19:00' }));
-    await userEvent.click(within(sheet).getByRole('button', { name: '저장' }));
-    expect(await within(sheet).findByRole('alert')).toHaveTextContent('관리 불가 시간이에요. 시간을 바꿔 주세요.');
+    expect(await within(sheet).findByText('관리 불가 시간과 겹쳐요.')).toBeInTheDocument();
+    expect(within(sheet).getByRole('button', { name: '저장' })).toBeEnabled();
   });
 });

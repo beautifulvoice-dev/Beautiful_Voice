@@ -1,0 +1,298 @@
+openapi: 3.0.3
+info:
+  title: Beautiful Voice 완료 카드 API
+  version: 0.1.0
+security:
+  - SessionCookie: []
+  - AppBearer: []
+paths:
+  /api/actions:
+    get:
+      operationId: listCompletionActions
+      summary: 현재 세션 매장의 대기 완료 카드 목록
+      description: 우선순위 내림차순, 예약 시작 시각 오름차순, 카드 ID 오름차순으로 정렬하며 커서도 이 순서를 사용합니다.
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending], default: pending }
+        - name: cursor
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: 카드 페이지
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/CompletionAction' } }
+                  nextCursor: { type: string, nullable: true }
+        '400': { $ref: '#/components/responses/Error' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/actions/{id}/preview:
+    parameters: [{ $ref: '#/components/parameters/ActionId' }]
+    post:
+      operationId: previewCompletionAction
+      summary: 상태 변경 없이 차감·문자 미리 보기 계산
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PreviewRequest' }
+      responses:
+        '200':
+          description: 미리 보기
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CompletionPreview' }
+        default: { $ref: '#/components/responses/Error' }
+  /api/actions/{id}/resolve:
+    parameters: [{ $ref: '#/components/parameters/ActionId' }]
+    post:
+      operationId: resolveCompletionAction
+      summary: 사후 문자 대기열 등록까지 단건 승인
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResolveRequest' }
+      responses:
+        '200':
+          description: 본문의 outcome으로 업무 결과를 판별합니다. 같은 멱등키와 같은 요청의 재전송은 저장된 결과를 재생합니다.
+          headers: { Idempotent-Replayed: { schema: { type: boolean }, description: 저장된 결과를 재생할 때 true } }
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: '#/components/schemas/Resolved' }
+                  - { $ref: '#/components/schemas/TargetChanged' }
+                  - { $ref: '#/components/schemas/NeedsInput' }
+                discriminator:
+                  propertyName: outcome
+                  mapping:
+                    resolved: '#/components/schemas/Resolved'
+                    failed: '#/components/schemas/TargetChanged'
+                    needs_input: '#/components/schemas/NeedsInput'
+        '409':
+          description: 카드 상태는 유지됩니다. COMPLETION_PREVIEW_REQUIRED이면 /preview를 다시 호출해 새 차감안을 확인합니다.
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - { $ref: '#/components/schemas/PreviewRequired' }
+                  - { $ref: '#/components/schemas/ActionConflict' }
+        default: { $ref: '#/components/responses/Error' }
+components:
+  securitySchemes:
+    SessionCookie: { type: apiKey, in: cookie, name: bv_session }
+    AppBearer: { type: http, scheme: bearer }
+  parameters:
+    ActionId: { in: path, name: id, required: true, schema: { $ref: '#/components/schemas/Id' } }
+    IdempotencyKey: { in: header, name: Idempotency-Key, required: true, schema: { type: string } }
+  responses:
+    Error:
+      description: 공통 오류
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Id: { type: string, format: uuid }
+    Version: { type: integer, minimum: 1 }
+    Error:
+      type: object
+      required: [code, message, details]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        details: { type: object, additionalProperties: true }
+    WalletOverride:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [instrument, passId, sessions]
+          properties:
+            instrument: { type: string, enum: [pass] }
+            passId: { $ref: '#/components/schemas/Id' }
+            sessions: { type: integer, minimum: 0 }
+        - type: object
+          additionalProperties: false
+          required: [instrument, amount]
+          properties:
+            instrument: { type: string, enum: [prepaid] }
+            amount: { type: integer, minimum: 0 }
+        - type: object
+          additionalProperties: false
+          required: [instrument]
+          properties:
+            instrument: { type: string, enum: [skipped] }
+    PreviewRequest:
+      type: object
+      required: [cardVersion, customerVersion]
+      properties:
+        cardVersion: { $ref: '#/components/schemas/Version' }
+        customerVersion: { $ref: '#/components/schemas/Version' }
+        customerName: { type: string }
+        customerPhone: { type: string, nullable: true }
+        walletOverride: { $ref: '#/components/schemas/WalletOverride' }
+      additionalProperties: false
+    ResolveRequest:
+      type: object
+      description: |
+        자동 차감은 최신 계산 결과를 expectedDeduction과 비교합니다. 필드가 없는 요청은 카드의 원래 차감안과 비교합니다.
+        차감 수단·횟수권·수량이 달라졌으면 상태 변경 없이 409를 반환합니다. 잔액만 바뀐 경우 최신 잔액을 사용합니다.
+        재확인 뒤 새 요청에는 새 멱등키를 사용합니다. 원장이 직접 정한 차감은 walletOverride로 전달하고 최신 상태에서 유효성을 검사합니다.
+      required: [cardVersion, customerVersion, action, completionStep]
+      properties:
+        cardVersion: { $ref: '#/components/schemas/Version' }
+        customerVersion: { $ref: '#/components/schemas/Version' }
+        customerName: { type: string }
+        customerPhone: { type: string, nullable: true }
+        walletOverride: { $ref: '#/components/schemas/WalletOverride' }
+        expectedDeduction: { $ref: '#/components/schemas/ExpectedDeduction' }
+        action: { type: string, enum: [approve] }
+        completionStep: { type: string, enum: [all] }
+      additionalProperties: false
+    ExpectedDeduction:
+      description: 마지막 미리 보기에서 확인한 자동 차감의 수단·수량·횟수권 ID입니다.
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [instrument, quantity, passId]
+          properties:
+            instrument: { type: string, enum: [pass] }
+            quantity: { type: integer, minimum: 1 }
+            passId: { $ref: '#/components/schemas/Id' }
+        - type: object
+          additionalProperties: false
+          required: [instrument, quantity]
+          properties:
+            instrument: { type: string, enum: [prepaid] }
+            quantity: { type: integer, minimum: 1 }
+        - type: object
+          additionalProperties: false
+          required: [instrument, quantity]
+          properties:
+            instrument: { type: string, enum: [skipped] }
+            quantity: { type: integer, minimum: 0, maximum: 0 }
+    Deduction:
+      type: object
+      required: [instrument, quantity]
+      properties:
+        instrument: { type: string, enum: [pass, prepaid, skipped] }
+        quantity: { type: integer, minimum: 0, description: "횟수권이면 회, 선불금이면 원, 생략이면 0" }
+        passId: { $ref: '#/components/schemas/Id' }
+    CompletionPlan:
+      allOf:
+        - { $ref: '#/components/schemas/Deduction' }
+        - type: object
+          required: [rank]
+          properties:
+            rank: { type: integer, enum: [1, 2, 3] }
+            needsChoice: { type: boolean, enum: [true] }
+    CompletionAction:
+      type: object
+      required: [id, kind, status, appointmentId, customerId, cardVersion, customerVersion, priorityRank, appointmentStartAt, customerName, menuName, deduction, warnings]
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        kind: { type: string, enum: [completion_cycle] }
+        status: { type: string, enum: [pending] }
+        appointmentId: { $ref: '#/components/schemas/Id' }
+        customerId: { $ref: '#/components/schemas/Id' }
+        cardVersion: { $ref: '#/components/schemas/Version' }
+        customerVersion: { $ref: '#/components/schemas/Version' }
+        priorityRank: { type: integer }
+        appointmentStartAt: { type: string, format: date-time }
+        customerName: { type: string }
+        menuName: { type: string, nullable: true }
+        deduction: { $ref: '#/components/schemas/CompletionPlan' }
+        warnings: { type: array, items: { $ref: '#/components/schemas/ActionWarning' } }
+    ActionWarning:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string }
+        projectedBalance: { type: integer }
+    CompletionPreview:
+      type: object
+      required: [renderedPreview, templateId, templateSlot, byteLength, messageType, valid, missingVariables, warnings, cardVersion, customerVersion]
+      properties:
+        renderedPreview: { type: string }
+        templateId: { type: string, format: uuid, nullable: true }
+        templateSlot: { type: string, enum: [post_session, post_amount, post_general, custom] }
+        byteLength: { type: integer, minimum: 0 }
+        messageType: { type: string, enum: [SMS, LMS, null], nullable: true }
+        valid: { type: boolean }
+        missingVariables: { type: array, items: { type: string } }
+        # 기존 미리 보기 응답에 추가하는 호환 필드. S6 화면은 새 차감안을 표시한다.
+        deduction: { $ref: '#/components/schemas/CompletionPlan' }
+        warnings: { type: array, items: { $ref: '#/components/schemas/ActionWarning' } }
+        cardVersion: { $ref: '#/components/schemas/Version' }
+        customerVersion: { $ref: '#/components/schemas/Version' }
+    Resolved:
+      type: object
+      required: [outcome, cardStatus, cardVersion, appointmentStatus, deduction, message]
+      properties:
+        outcome: { type: string, enum: [resolved] }
+        cardStatus: { type: string, enum: [resolved] }
+        cardVersion: { $ref: '#/components/schemas/Version' }
+        appointmentStatus: { type: string, enum: [completed] }
+        deduction:
+          allOf:
+            - { $ref: '#/components/schemas/Deduction' }
+            - type: object
+              required: [prepaidBalance, remainingSessions]
+              properties:
+                prepaidBalance: { type: integer, nullable: true }
+                remainingSessions: { type: integer, nullable: true }
+        message:
+          type: object
+          required: [status]
+          properties:
+            status: { type: string, enum: [queued, already_queued, needs_input, skipped] }
+            reason: { type: string }
+            followUpCardId: { $ref: '#/components/schemas/Id' }
+    TargetChanged:
+      type: object
+      required: [outcome, reason, cardStatus, cardVersion]
+      properties:
+        outcome: { type: string, enum: [failed] }
+        reason: { type: string, enum: [TARGET_CHANGED] }
+        cardStatus: { type: string, enum: [failed] }
+        cardVersion: { $ref: '#/components/schemas/Version' }
+    NeedsInput:
+      type: object
+      required: [outcome, cardStatus, cardVersion, choiceCard]
+      properties:
+        outcome: { type: string, enum: [needs_input] }
+        cardStatus: { type: string, enum: [pending] }
+        cardVersion: { $ref: '#/components/schemas/Version' }
+        choiceCard:
+          type: object
+          required: [id, kind, category]
+          properties:
+            id: { $ref: '#/components/schemas/Id' }
+            kind: { type: string, enum: [choice] }
+            category: { type: string, enum: [merge_customers] }
+    PreviewRequired:
+      allOf:
+        - { $ref: '#/components/schemas/Error' }
+        - type: object
+          properties:
+            code: { type: string, enum: [COMPLETION_PREVIEW_REQUIRED] }
+            details:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, enum: [INSTRUMENT_CHANGED, AMOUNT_CHANGED] }
+    ActionConflict:
+      allOf:
+        - { $ref: '#/components/schemas/Error' }
+        - type: object
+          properties:
+            code: { type: string, enum: [VERSION_CONFLICT, INVALID_TRANSITION] }

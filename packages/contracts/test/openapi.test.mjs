@@ -14,11 +14,15 @@ const ops = (doc) =>
   );
 
 test('모든 $ref가 풀린다', () => {
-  for (const f of ['crm.openapi.yaml', 'auth.openapi.yaml', 'wallet.openapi.yaml']) {
+  for (const f of ['crm.openapi.yaml', 'auth.openapi.yaml', 'actions.openapi.yaml', 'wallet.openapi.yaml']) {
     const doc = load(f);
     const refs = [];
     (function walk(o) {
-      if (o && typeof o === 'object') for (const [k, v] of Object.entries(o)) k === '$ref' ? refs.push(v) : walk(v);
+      if (!o || typeof o !== 'object') return;
+      for (const [k, v] of Object.entries(o)) {
+        if (k === '$ref') refs.push(v);
+        else walk(v);
+      }
     })(doc);
     assert.deepEqual(refs.filter((r) => resolve(doc, r) === undefined), [], f);
   }
@@ -28,10 +32,10 @@ test('CRM 경로는 모두 /api/shops/{shopId} 아래다(매장 격리)', () => 
   for (const path of Object.keys(crm.paths)) assert.match(path, /^\/api\/shops\/\{shopId\}\//);
 });
 
-test('쓰기(POST·PUT·PATCH·DELETE)는 Idempotency-Key를 받는다 — 저장하지 않는 조회 same-name-check만 예외', () => {
+test('쓰기(POST·PUT·PATCH·DELETE)는 Idempotency-Key를 받는다 — 저장하지 않는 조회 same-name-check·preview-warnings만 예외', () => {
   const missing = ops(crm)
     .filter(({ method }) => ['post', 'put', 'patch', 'delete'].includes(method))
-    .filter(({ path }) => !path.endsWith('/same-name-check'))
+    .filter(({ path }) => !path.endsWith('/same-name-check') && !path.endsWith('/preview-warnings'))
     .filter(({ op }) => !(op.parameters ?? []).some((p) => p.$ref === '#/components/parameters/IdempotencyKey'))
     .map(({ method, path }) => `${method} ${path}`);
   assert.deepEqual(missing, []);
@@ -86,8 +90,60 @@ test('동명이인 후보는 비활성 고객도 active로 구분해 보낸다',
   assert.equal(candidate.properties.active.type, 'boolean');
 });
 
-test('메뉴 분 값의 범위는 서버 검사(#39 MAX_MINUTES)와 같다 — 하한과 DB integer 상한', () => {
-  const { defaultDurationMin: d, defaultPrepMin: p } = crm.components.schemas.MenuFields.properties;
-  assert.deepEqual([d.minimum, d.maximum], [1, 2147483647]);
-  assert.deepEqual([p.minimum, p.maximum], [0, 2147483647]);
+test('메뉴 기본 시간·가격 범위는 서버 검사와 DB CHECK(015)와 같다 — 시술 5~600, 정리 0~180, 가격 0 이상', () => {
+  const { defaultDurationMin: d, defaultCleanupMin: c, defaultPrice: p } = crm.components.schemas.MenuFields.properties;
+  assert.deepEqual([d.minimum, d.maximum, c.minimum, c.maximum, p.minimum], [5, 600, 0, 180, 0]);
+});
+
+test('S3 rev.3.1: 예약 쓰기 응답은 warnings를 싣고, 시간 범위는 시술 5~600·정리 0~180', () => {
+  const s = crm.components.schemas;
+  const fields = s.AppointmentFields.properties;
+  assert.deepEqual([fields.durationMin.minimum, fields.durationMin.maximum, fields.cleanupMin.minimum, fields.cleanupMin.maximum], [5, 600, 0, 180]);
+  assert.deepEqual(s.BookingWarning.properties.code.enum, ['OVERLAP_APPOINTMENT', 'OVERLAP_BLOCK', 'OUTSIDE_BUSINESS_HOURS', 'CLOSED_DAY']);
+  const schemaOf = (path, method, status) => crm.paths[path][method].responses[status].content['application/json'].schema.$ref;
+  const base = '/api/shops/{shopId}/appointments';
+  assert.equal(schemaOf(base, 'post', '201'), '#/components/schemas/AppointmentSaved');
+  assert.equal(schemaOf(`${base}/{appointmentId}`, 'patch', '200'), '#/components/schemas/AppointmentSaved');
+  assert.equal(schemaOf(`${base}/{appointmentId}/status`, 'put', '200'), '#/components/schemas/AppointmentSaved');
+  assert.ok(!s.AppointmentInput.allOf[1].required.includes('staffId'), '담당자 미지정 허용');
+});
+
+test('완료 카드 계약은 세션 기준이며 승인만 멱등키를 요구한다', () => {
+  const actions = load('actions.openapi.yaml');
+  assert.deepEqual(actions.security, [{ SessionCookie: [] }, { AppBearer: [] }]);
+  const list = actions.paths['/api/actions'].get;
+  assert.deepEqual(list.parameters.map(({ name }) => name), ['status', 'cursor', 'limit']);
+  assert.deepEqual(list.responses['200'].content['application/json'].schema.required, ['items', 'nextCursor']);
+  const preview = actions.paths['/api/actions/{id}/preview'].post;
+  const resolveAction = actions.paths['/api/actions/{id}/resolve'].post;
+  assert.equal(preview.parameters, undefined);
+  assert.deepEqual(resolveAction.parameters, [{ $ref: '#/components/parameters/IdempotencyKey' }]);
+  assert.equal(actions.components.parameters.IdempotencyKey.required, true);
+});
+
+test('완료 카드 승인은 업무 결과와 재확인 충돌을 구분한다', () => {
+  const actions = load('actions.openapi.yaml');
+  const { schemas } = actions.components;
+  const resolveAction = actions.paths['/api/actions/{id}/resolve'].post;
+  assert.deepEqual(schemas.ResolveRequest.required, ['cardVersion', 'customerVersion', 'action', 'completionStep']);
+  assert.deepEqual(schemas.WalletOverride.oneOf.map((variant) => variant.required),
+    [['instrument', 'passId', 'sessions'], ['instrument', 'amount'], ['instrument']]);
+  assert.equal(schemas.PreviewRequest.properties.expectedDeduction, undefined);
+  assert.ok(schemas.ResolveRequest.properties.expectedDeduction.$ref.endsWith('/ExpectedDeduction'));
+  assert.deepEqual(schemas.ExpectedDeduction.oneOf.map(({ properties, required, additionalProperties }) =>
+    [properties.instrument.enum[0], properties.quantity.minimum, properties.quantity.maximum, required, additionalProperties]), [
+    ['pass', 1, undefined, ['instrument', 'quantity', 'passId'], false],
+    ['prepaid', 1, undefined, ['instrument', 'quantity'], false],
+    ['skipped', 0, 0, ['instrument', 'quantity'], false],
+  ]);
+  const result = resolveAction.responses['200'].content['application/json'].schema;
+  assert.deepEqual(result.oneOf.map(({ $ref }) => resolve(actions, $ref).properties.outcome.enum[0]),
+    ['resolved', 'failed', 'needs_input']);
+  assert.equal(schemas.TargetChanged.properties.reason.enum[0], 'TARGET_CHANGED');
+  assert.equal(schemas.NeedsInput.properties.cardStatus.enum[0], 'pending');
+  assert.equal(schemas.PreviewRequired.allOf[1].properties.code.enum[0], 'COMPLETION_PREVIEW_REQUIRED');
+  assert.deepEqual(schemas.PreviewRequired.allOf[1].properties.details.properties.reason.enum,
+    ['INSTRUMENT_CHANGED', 'AMOUNT_CHANGED']);
+  assert.ok(schemas.CompletionPreview.properties.deduction);
+  assert.ok(!schemas.CompletionPreview.required.includes('deduction'));
 });

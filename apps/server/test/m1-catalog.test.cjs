@@ -13,7 +13,6 @@ const { ApiExceptionFilter } = require('../dist/common/api-exception.filter.js')
 const { CatalogController } = require('../dist/settings/catalog.controller.js');
 const { CatalogService } = require('../dist/settings/catalog.service.js');
 const { signCookie } = require('../dist/owner-session.js');
-const { MAX_MINUTES } = require('@bv/scheduling/booking');
 
 const SECRET = 'ce'.repeat(32);
 const env = {
@@ -149,15 +148,29 @@ test('같은 키로 재전송하면 메뉴는 한 번만 생긴다', async () =>
   assert.equal(same.length, 1);
 });
 
-test('DB integer 범위를 넘는 분 값은 등록·수정 모두 500이 아니라 422(@bv/scheduling MAX_MINUTES)', async () => {
-  assert.equal(MAX_MINUTES, 2147483647, 'DB integer 최댓값');
-  const tooBig = MAX_MINUTES + 1;
-  const created = await call('POST', `${A}/menus`, { body: { name: '합성 범위 메뉴', defaultDurationMin: tooBig } });
+test('분 범위(시술 5~600, 정리 0~180 — DB CHECK 015)를 벗어나면 등록·수정 모두 500이 아니라 422', async () => {
+  const created = await call('POST', `${A}/menus`, { body: { name: '합성 범위 메뉴', defaultDurationMin: 601 } });
   assert.equal(created.status, 422);
   assert.deepEqual(created.body.details.fields, [{ field: 'defaultDurationMin', code: 'INVALID_MINUTES' }]);
-  const menu = (await call('POST', `${A}/menus`, { body: { name: '합성 범위 메뉴', defaultDurationMin: MAX_MINUTES, defaultPrepMin: 0 } })).body;
-  assert.equal(menu.defaultDurationMin, MAX_MINUTES, '최댓값은 저장된다');
-  const edited = await call('PATCH', `${A}/menus/${menu.id}`, { body: { version: 1, defaultPrepMin: tooBig } });
+  const menu = (await call('POST', `${A}/menus`, { body: { name: '합성 범위 메뉴', defaultDurationMin: 600, defaultPrepMin: 180 } })).body;
+  assert.deepEqual([menu.defaultDurationMin, menu.defaultPrepMin], [600, 180], '양 끝 값은 저장된다');
+  const edited = await call('PATCH', `${A}/menus/${menu.id}`, { body: { version: 1, defaultDurationMin: 4, defaultPrepMin: 181 } });
   assert.equal(edited.status, 422);
-  assert.deepEqual(edited.body.details.fields, [{ field: 'defaultPrepMin', code: 'INVALID_MINUTES' }]);
+  assert.deepEqual(edited.body.details.fields,
+    [{ field: 'defaultDurationMin', code: 'INVALID_MINUTES' }, { field: 'defaultPrepMin', code: 'INVALID_MINUTES' }]);
+});
+
+test('S3 rev.3.1: 새 이름 defaultCleanupMin·가격 defaultPrice(생략 0), 옛 이름 defaultPrepMin은 같은 값으로 함께 응답', async () => {
+  const made = await call('POST', `${A}/menus`, { body: { name: '합성 가격 메뉴', defaultDurationMin: 60, defaultCleanupMin: 15, defaultPrice: 55000 } });
+  assert.equal(made.status, 201);
+  assert.deepEqual([made.body.defaultCleanupMin, made.body.defaultPrepMin, made.body.defaultPrice], [15, 15, 55000]);
+  assert.equal((await call('POST', `${A}/menus`, { body: { name: '합성 무료 상담' } })).body.defaultPrice, 0, '가격 생략은 0');
+  const repriced = await call('PATCH', `${A}/menus/${made.body.id}`, { body: { version: 1, defaultPrice: 60000 } });
+  assert.deepEqual([repriced.body.defaultPrice, repriced.body.defaultCleanupMin, repriced.body.version], [60000, 15, 2], '보낸 칸만 바뀐다');
+  for (const defaultPrice of [-1, 1.5, '1000', null]) {
+    const bad = await call('PATCH', `${A}/menus/${made.body.id}`, { body: { version: 2, defaultPrice } });
+    assert.deepEqual([bad.status, bad.body.details.fields], [422, [{ field: 'defaultPrice', code: 'INVALID_PRICE' }]], String(defaultPrice));
+  }
+  const both = await call('PATCH', `${A}/menus/${made.body.id}`, { body: { version: 2, defaultCleanupMin: 5, defaultPrepMin: 5 } });
+  assert.deepEqual(both.body.details.fields, [{ field: 'defaultPrepMin', code: 'DUPLICATE_FIELD' }]);
 });

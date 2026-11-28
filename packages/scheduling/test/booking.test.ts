@@ -186,6 +186,8 @@ describe("캘린더 차단 (AC-CRM-3)", () => {
     ];
     assert.deepEqual(blockedAppointmentIds(blockA, appointments), ["a1"]);
     assert.deepEqual(blockedAppointmentIds({ ...blockA, allStaff: true, staffIds: [] }, appointments), ["a1", "b1"]);
+    // rev.3.1: 담당자 미지정 예약은 모든 차단의 대상.
+    assert.deepEqual(blockedAppointmentIds(blockA, [{ ...booked("u1", "A", "12:30"), staffId: null }]), ["u1"]);
   });
 });
 

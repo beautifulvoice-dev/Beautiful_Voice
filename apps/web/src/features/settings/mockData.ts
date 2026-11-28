@@ -29,9 +29,9 @@ export function seedSettings(): SettingsSeed {
       { id: 'closure-2', kind: 'vacation', startDate: '2026-12-24', endDate: '2026-12-26', note: '연말 휴가' },
     ],
     menus: [
-      { id: 'menu-1', name: '수분 관리', defaultDurationMin: 60, defaultPrepMin: 10, active: true, ...row },
-      { id: 'menu-2', name: '등 관리', defaultDurationMin: 90, defaultPrepMin: 10, active: true, ...row },
-      { id: 'menu-3', name: '여름 진정 관리', defaultDurationMin: 50, defaultPrepMin: null, active: false, ...row },
+      { id: 'menu-1', name: '수분 관리', defaultDurationMin: 60, defaultPrepMin: 10, defaultCleanupMin: 10, defaultPrice: 0, active: true, ...row },
+      { id: 'menu-2', name: '등 관리', defaultDurationMin: 90, defaultPrepMin: 10, defaultCleanupMin: 10, defaultPrice: 0, active: true, ...row },
+      { id: 'menu-3', name: '여름 진정 관리', defaultDurationMin: 50, defaultPrepMin: null, defaultCleanupMin: null, defaultPrice: 0, active: false, ...row },
     ],
     staff: [{ id: 'staff-1', name: '원장', active: true, ...row }],
   };

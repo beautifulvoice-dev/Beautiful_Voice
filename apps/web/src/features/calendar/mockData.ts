@@ -17,9 +17,9 @@ export function seedCalendar(today: string = shopDate(Date.now())): Required<Cal
     mm: number,
     customerName: string,
     menuName: string | null,
-    staffId: string,
+    staffId: string | null,
     durationMin: number,
-    prepMin: number,
+    cleanupMin: number,
     memo: string | null = null,
     status: CalendarAppointment['status'] = 'scheduled',
   ): CalendarAppointment => ({
@@ -29,7 +29,7 @@ export function seedCalendar(today: string = shopDate(Date.now())): Required<Cal
     staffId,
     startAt: at(d(day), hh, mm),
     durationMin,
-    prepMin,
+    cleanupMin,
     memo,
     status,
   });
@@ -61,12 +61,12 @@ export function seedCalendar(today: string = shopDate(Date.now())): Required<Cal
 // ── 디자인 장면(카본 W1~W4 캡처와 같은 장면, 11/21 옵마 결정) ───────────────────────
 // 개발 서버에서 보이는 기본 데이터. 이름·전화는 모두 합성(절대 규칙 8). 테스트는 위 seedCalendar를 쓴다.
 
-/** 디자인 장면의 메뉴(관리·준비 기본 시간). */
+/** 디자인 장면의 메뉴(시술·정리 기본 시간). */
 export const SCENE_MENUS = [
-  { id: 'm1', name: '수분 관리', durationMin: 60, prepMin: 10 },
-  { id: 'm2', name: '리프팅 관리', durationMin: 90, prepMin: 10 },
-  { id: 'm3', name: '등 관리', durationMin: 50, prepMin: 10 },
-  { id: 'm4', name: '왁싱', durationMin: 60, prepMin: 10 },
+  { id: 'm1', name: '수분 관리', durationMin: 60, cleanupMin: 10 },
+  { id: 'm2', name: '리프팅 관리', durationMin: 90, cleanupMin: 10 },
+  { id: 'm3', name: '등 관리', durationMin: 50, cleanupMin: 10 },
+  { id: 'm4', name: '왁싱', durationMin: 60, cleanupMin: 10 },
 ] as const;
 
 /** 디자인 장면의 고객. 고객 화면의 가짜 저장소에도 같은 id로 들어간다(features/customers/mockData). */
@@ -84,7 +84,7 @@ type SceneRow = [
   mm: number,
   customer: number,
   menu: number,
-  staff: 's1' | 's2',
+  staff: 's1' | 's2' | null,
   status?: CalendarAppointment['status'],
   memo?: string,
 ];
@@ -99,6 +99,8 @@ const SCENE_WEEK: SceneRow[] = [
   [1, 14, 30, 3, 3, 's2'],
   [1, 16, 0, 0, 0, 's1', 'scheduled', '지난번 각질 관리 뒤 약간 붉어짐. 진정 위주로.'],
   [1, 18, 0, 4, 0, 's1'],
+  // 담당자 미지정 — 이실장 16:00 최유나와 겹친다(rev.3.1: 웹은 겹쳐도 저장, 캘린더에 빨간 겹침)
+  [5, 16, 30, 0, 2, null],
   [3, 10, 30, 3, 3, 's1'],
   [3, 13, 0, 0, 0, 's2'],
   [4, 11, 0, 2, 2, 's2'],
@@ -129,7 +131,7 @@ export function seedDesignScene(today: string = shopDate(Date.now())): Required<
         staffId,
         startAt: at(addDays(mon, w * 7 + day), hh, mm),
         durationMin: menu.durationMin,
-        prepMin: menu.prepMin,
+        cleanupMin: menu.cleanupMin,
         memo: memo ?? null,
         status: w < 0 ? 'completed' : w > 0 ? 'scheduled' : status,
       });

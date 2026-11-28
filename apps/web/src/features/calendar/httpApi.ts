@@ -2,18 +2,25 @@
 // - 조회: 캘린더(예약·담당자·차단)와 설정(영업시간·휴무)을 함께 읽는다. 설정만 실패하면 예약은 보이고 음영만 보류(설계 05 D3).
 // - 취소·무효는 그대로 받고 화면이 뺀다(04 D6). 화면에 남는 예약이 없는 비활성 담당자는 열을 만들지 않는다(04 D7).
 // - 상태 바꾸기는 마지막으로 읽은(또는 방금 저장한) version을 보낸다 → 스낵바 되돌리기도 방금 저장한 version으로(04 §W2).
-// - 관리 불가 시간(BEA-179 서버 #84): 넣기·지우기. 예약의 겹침은 서버가 준 blockedBy를 쓴다(설계 09 D5).
-import type { Appointment, BusinessHoursBody, CalendarBlock as ContractBlock, CalendarResponse, Closure, Menu as ContractMenu } from '@bv/contracts';
-import type { BookingReject } from '@bv/scheduling/booking';
+// - 관리 불가 시간(BEA-179 서버 #84): 넣기·지우기. 예약의 겹침은 서버가 준 blockedBy·overlappingAppointmentIds를 쓴다(설계 09 D5·12 §3).
+// - rev.3.1: 예약 쓰기는 겹쳐도 저장되고 응답에 warnings가 온다. 정리 시간은 새 이름 cleanupMin으로만 보낸다.
+import type {
+  Appointment,
+  AppointmentPreviewResponse,
+  AppointmentRules,
+  AppointmentSaved,
+  BusinessHoursBody,
+  CalendarBlock as ContractBlock,
+  CalendarResponse,
+  Closure,
+  Menu as ContractMenu,
+} from '@bv/contracts';
 import { randomKey } from '@/features/settings/useSaveAction';
 import { HttpError, NetworkError, shopPath, type Http } from '@/lib/http';
-import type { CalendarApi, SaveReject, SaveResult } from './api';
+import type { CalendarApi, SavedAppointment, SaveReject, SaveResult } from './api';
 import { isShown, type CalendarAppointment, type CalendarBlock, type Menu } from './model';
 
-
-const REJECTS: readonly string[] = [
-  'STAFF_OVERLAP', 'BLOCKED', 'OUTSIDE_BUSINESS_HOURS', 'CLOSED_DAY', 'INVALID_TRANSITION', 'NO_CHANGE', 'VERSION_CONFLICT', 'NOT_FOUND',
-] satisfies (BookingReject | SaveReject)[];
+const REJECTS: readonly string[] = ['INVALID_TRANSITION', 'NO_CHANGE', 'VERSION_CONFLICT', 'NOT_FOUND'] satisfies SaveReject[];
 
 const toAppointment = (a: Appointment): CalendarAppointment => ({
   id: a.id,
@@ -21,15 +28,18 @@ const toAppointment = (a: Appointment): CalendarAppointment => ({
   customerName: a.customerName,
   menuId: a.menuId ?? null,
   menuName: a.menuName,
-  staffId: a.staffId,
+  staffId: a.staffId ?? null,
   startAt: a.startAt,
   durationMin: a.durationMin,
-  prepMin: a.prepMin ?? 0,
+  // 서버 ②는 전환 기간에 옛 이름도 함께 준다 — 새 이름이 없으면(② 전 서버) 옛 값을 쓴다.
+  cleanupMin: a.cleanupMin ?? a.prepMin ?? 0,
   memo: a.memo ?? null,
   status: a.status,
   version: a.version,
   blockedBy: a.blockedBy ?? [],
+  overlappingAppointmentIds: a.overlappingAppointmentIds ?? [],
 });
+const toSaved = (a: AppointmentSaved): SavedAppointment => ({ ...toAppointment(a), warnings: a.warnings ?? [] });
 
 const toBlock = (b: ContractBlock): CalendarBlock => ({
   id: b.id, startAt: b.startAt, endAt: b.endAt, allStaff: b.allStaff, staffIds: b.staffIds, memo: b.memo ?? null, version: b.version,
@@ -40,13 +50,15 @@ const toBlock = (b: ContractBlock): CalendarBlock => ({
  * 응답을 못 받으면 NETWORK, 로그인 만료는 UNAUTHENTICATED, 그 밖(500 등)은 FAILED(다시 시도할 수 있음).
  */
 function toReject(err: unknown): SaveResult<never> {
-  if (err instanceof NetworkError) return { ok: false, reason: 'NETWORK', conflictingIds: [] };
-  if (err instanceof HttpError && REJECTS.includes(err.code)) {
-    const ids = err.details.conflictingIds;
-    return { ok: false, reason: err.code as SaveReject, conflictingIds: Array.isArray(ids) ? (ids as string[]) : [] };
+  const fail = (reason: SaveReject): SaveResult<never> => ({ ok: false, reason });
+  if (err instanceof NetworkError) return fail('NETWORK');
+  if (err instanceof HttpError && REJECTS.includes(err.code)) return fail(err.code as SaveReject);
+  if (err instanceof HttpError && err.code === 'VALIDATION_FAILED') {
+    const fields = Array.isArray(err.details.fields) ? (err.details.fields as { field?: string; code?: string }[]) : [];
+    return fail(fields.some((f) => f.field === 'staffId' && f.code === 'REQUIRED') ? 'STAFF_REQUIRED' : 'INVALID_INPUT');
   }
-  if (err instanceof HttpError && err.status === 401) return { ok: false, reason: 'UNAUTHENTICATED', conflictingIds: [] };
-  return { ok: false, reason: 'FAILED', conflictingIds: [] };
+  if (err instanceof HttpError && err.status === 401) return fail('UNAUTHENTICATED');
+  return fail('FAILED');
 }
 
 /** 화면 표시용 칸 — 바꾸기 요청에 싣지 않는다. */
@@ -56,7 +68,7 @@ export function createHttpCalendarApi(http: Http, shopId: string): CalendarApi {
   const path = (...s: string[]) => shopPath(shopId, ...s);
   /** 예약 id → 마지막으로 본 version. */
   const versions = new Map<string, number>();
-  const remember = (a: CalendarAppointment) => {
+  const remember = <T extends CalendarAppointment>(a: T): T => {
     if (a.version !== undefined) versions.set(a.id, a.version);
     return a;
   };
@@ -91,26 +103,35 @@ export function createHttpCalendarApi(http: Http, shopId: string): CalendarApi {
         name: m.name,
         // 안 정한 시간은 null 그대로 — W3가 지금 입력을 둔다(설계 06 D3).
         durationMin: m.defaultDurationMin,
-        prepMin: m.defaultPrepMin,
+        cleanupMin: m.defaultCleanupMin ?? m.defaultPrepMin ?? null,
       }));
+    },
+    async appointmentRules() {
+      const r = await http.get<AppointmentRules>(path('settings', 'appointment-rules'));
+      return { requireStaffSelection: r.requireStaffSelection };
+    },
+    async previewWarnings(input) {
+      // 읽기 전용이라 Idempotency-Key 없이 보낸다(계약 preview-warnings).
+      const r = await http.send<AppointmentPreviewResponse>('POST', path('appointments', 'preview-warnings'), { body: input });
+      return r.warnings;
     },
     async createAppointment(input, options) {
       // 고객은 먼저 등록한다(설계 06 D2) — 이 창구는 고객을 만들지 않는다.
       if (!input.customerId) throw new Error('CUSTOMER_REQUIRED');
       try {
-        const created = await http.send<Appointment>('POST', path('appointments'), {
+        const created = await http.send<AppointmentSaved>('POST', path('appointments'), {
           body: {
             customerId: input.customerId,
             staffId: input.staffId,
             menuId: input.menuId ?? null,
             startAt: input.startAt,
             durationMin: input.durationMin,
-            prepMin: input.prepMin,
+            cleanupMin: input.cleanupMin,
             memo: input.memo,
           },
           idempotencyKey: options?.idempotencyKey ?? randomKey(),
         });
-        return { ok: true, value: remember(toAppointment(created)) };
+        return { ok: true, value: remember(toSaved(created)) };
       } catch (err) {
         return toReject(err);
       }
@@ -127,8 +148,8 @@ export function createHttpCalendarApi(http: Http, shopId: string): CalendarApi {
       // 화면 표시용 이름 칸은 보내지 않는다 — 계약에 없는 칸은 서버가 거부한다(UNKNOWN_FIELD).
       const body = Object.fromEntries(Object.entries(change).filter(([k]) => !DISPLAY_ONLY.has(k)));
       try {
-        const saved = await http.send<Appointment>('PATCH', path('appointments', id), { body, idempotencyKey: options?.idempotencyKey ?? randomKey() });
-        return { ok: true, value: remember(toAppointment(saved)) };
+        const saved = await http.send<AppointmentSaved>('PATCH', path('appointments', id), { body, idempotencyKey: options?.idempotencyKey ?? randomKey() });
+        return { ok: true, value: remember(toSaved(saved)) };
       } catch (err) {
         return toReject(err);
       }
@@ -146,9 +167,9 @@ export function createHttpCalendarApi(http: Http, shopId: string): CalendarApi {
       const idempotencyKey = statusKeys.get(request) ?? randomKey();
       statusKeys.set(request, idempotencyKey);
       try {
-        const saved = await http.send<Appointment>('PUT', path('appointments', id, 'status'), { body: { version, status: to }, idempotencyKey });
+        const saved = await http.send<AppointmentSaved>('PUT', path('appointments', id, 'status'), { body: { version, status: to }, idempotencyKey });
         statusKeys.delete(request);
-        return { ok: true, value: remember(toAppointment(saved)) };
+        return { ok: true, value: remember(toSaved(saved)) };
       } catch (err) {
         if (!(err instanceof NetworkError)) statusKeys.delete(request);
         return toReject(err);
@@ -162,7 +183,7 @@ export function createHttpCalendarApi(http: Http, shopId: string): CalendarApi {
       return toBlock(b);
     },
     async removeBlock(id, version, options) {
-      if (version === undefined) return { ok: false, reason: 'VERSION_CONFLICT', conflictingIds: [] };
+      if (version === undefined) return { ok: false, reason: 'VERSION_CONFLICT' };
       try {
         await http.send<void>('DELETE', path('calendar-blocks', id), { query: { version }, idempotencyKey: options?.idempotencyKey ?? randomKey() });
         return { ok: true, value: null };

@@ -1,9 +1,9 @@
-import type { Appointment, CalendarResponse } from '@bv/contracts';
-import { Body, Controller, Get, Header, Param, Patch, Post, Put, Query, Req, Res, UseGuards } from '@nestjs/common';
+import type { Appointment, AppointmentSaved, BookingWarning, CalendarResponse } from '@bv/contracts';
+import { Body, Controller, Get, Header, HttpCode, Param, Patch, Post, Put, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { idempotentWrite, type WriteRequest, type WriteResponse } from '../common/idempotent-write';
 import { OwnerShopGuard } from '../common/owner-shop.guard';
 import { DatabaseService } from '../database.service';
-import { AppointmentM1Service, withOverlapIds } from './appointment-m1.service';
+import { AppointmentM1Service } from './appointment-m1.service';
 
 // 계약 #42 예약 등록·상세·변경(BEA-176)과 상태 바꾸기(/status — 취소 BEA-176, 완료·노쇼·정정 BEA-178).
 // OwnerShopGuard가 경로의 shopId = 로그인한 원장의 매장임을 확인한 뒤에만 들어온다.
@@ -16,9 +16,17 @@ export class AppointmentM1Controller {
   create(
     @Param('shopId') shopId: string, @Body() body: unknown,
     @Req() request: WriteRequest, @Res({ passthrough: true }) response: WriteResponse,
-  ): Promise<Appointment> {
-    return withOverlapIds(this.database, shopId, () => idempotentWrite(this.database, shopId, request, response, 201,
-      (client) => this.appointments.create(client, shopId, body)));
+  ): Promise<AppointmentSaved> {
+    return idempotentWrite(this.database, shopId, request, response, 201,
+      (client) => this.appointments.create(client, shopId, body));
+  }
+
+  /** 저장 전 경고 미리 보기(설계 12 D4) — 쓰지 않으므로 Idempotency-Key 없음. 200 { warnings }. */
+  @Post('preview-warnings')
+  @HttpCode(200)
+  @Header('Cache-Control', 'no-store')
+  previewWarnings(@Param('shopId') shopId: string, @Body() body: unknown): Promise<{ warnings: BookingWarning[] }> {
+    return this.database.withShop(shopId, (client) => this.appointments.previewWarnings(client, shopId, body));
   }
 
   @Get(':appointmentId')
@@ -31,18 +39,18 @@ export class AppointmentM1Controller {
   update(
     @Param('shopId') shopId: string, @Param('appointmentId') id: string, @Body() body: unknown,
     @Req() request: WriteRequest, @Res({ passthrough: true }) response: WriteResponse,
-  ): Promise<Appointment> {
-    return withOverlapIds(this.database, shopId, () => idempotentWrite(this.database, shopId, request, response, 200,
-      (client) => this.appointments.update(client, shopId, id, body)));
+  ): Promise<AppointmentSaved> {
+    return idempotentWrite(this.database, shopId, request, response, 200,
+      (client) => this.appointments.update(client, shopId, id, body));
   }
 
   @Put(':appointmentId/status')
   setStatus(
     @Param('shopId') shopId: string, @Param('appointmentId') id: string, @Body() body: unknown,
     @Req() request: WriteRequest, @Res({ passthrough: true }) response: WriteResponse,
-  ): Promise<Appointment> {
-    return withOverlapIds(this.database, shopId, () => idempotentWrite(this.database, shopId, request, response, 200,
-      (client) => this.appointments.setStatus(client, shopId, id, body)));
+  ): Promise<AppointmentSaved> {
+    return idempotentWrite(this.database, shopId, request, response, 200,
+      (client) => this.appointments.setStatus(client, shopId, id, body));
   }
 }
 

@@ -68,7 +68,7 @@ function Body({ b, data, onClose, onRemoved }: { b: CalendarBlock; data: Props['
     setError(
       r.reason === 'VERSION_CONFLICT'
         ? '그사이 다른 곳에서 이 관리 불가 시간이 바뀌었어요. 다시 불러왔으니 확인해 주세요.'
-        : rejectText(r.reason, [], { data: { appointments: [], blocks: [], businessHours: null, staff: [] }, staffId: '', startAt: b.startAt }),
+        : rejectText(r.reason),
     );
   };
 

@@ -20,14 +20,16 @@ export class CatalogService {
   async addMenu(client: PoolClient, shopId: string, input: unknown): Promise<Menu> {
     const body = objectOf(input);
     const checked = validateMenu({
-      name: body.name as string, defaultDurationMin: minutesOf(body.defaultDurationMin), defaultPrepMin: minutesOf(body.defaultPrepMin),
+      name: body.name as string, defaultDurationMin: minutesOf(body.defaultDurationMin),
+      defaultCleanupMin: optionalMinutes(body, 'defaultCleanupMin'), defaultPrepMin: optionalMinutes(body, 'defaultPrepMin'),
+      defaultPrice: priceOf(body.defaultPrice),
     });
     if (!checked.ok) throw invalid(checked.errors);
     const v = checked.value;
     const { rows: [row] } = await client.query<Menu>(
-      `INSERT INTO crm.menu (shop_id, name, default_duration_min, default_prep_min)
-       VALUES ($1, $2, $3, $4) RETURNING ${MENU_COLUMNS}`,
-      [shopId, v.name, v.defaultDurationMin, v.defaultPrepMin]);
+      `INSERT INTO crm.menu (shop_id, name, default_duration_min, default_cleanup_min, default_price)
+       VALUES ($1, $2, $3, $4, $5) RETURNING ${MENU_COLUMNS}`,
+      [shopId, v.name, v.defaultDurationMin, v.defaultCleanupMin, v.defaultPrice]);
     return row!;
   }
 
@@ -38,16 +40,20 @@ export class CatalogService {
     const checked = validateMenu({
       name: (has(body, 'name') ? body.name : current.name) as string,
       defaultDurationMin: has(body, 'defaultDurationMin') ? minutesOf(body.defaultDurationMin) : current.defaultDurationMin,
-      defaultPrepMin: has(body, 'defaultPrepMin') ? minutesOf(body.defaultPrepMin) : current.defaultPrepMin,
+      // 정리 시간은 새 이름·옛 이름 중 보낸 것만 바꾼다. 둘 다 안 보내면 지금 값.
+      ...(has(body, 'defaultCleanupMin') || has(body, 'defaultPrepMin')
+        ? { defaultCleanupMin: optionalMinutes(body, 'defaultCleanupMin'), defaultPrepMin: optionalMinutes(body, 'defaultPrepMin') }
+        : { defaultCleanupMin: current.defaultCleanupMin }),
+      defaultPrice: has(body, 'defaultPrice') ? priceOf(body.defaultPrice) : current.defaultPrice,
     });
     const errors = checked.ok ? [] : [...checked.errors];
     const active = activeOf(body, current.active, errors);
     if (!checked.ok || errors.length > 0) throw invalid(errors);
     const v = checked.value;
     const { rows: [row] } = await client.query<Menu>(
-      `UPDATE crm.menu SET name = $3, default_duration_min = $4, default_prep_min = $5, active = $6
+      `UPDATE crm.menu SET name = $3, default_duration_min = $4, default_cleanup_min = $5, default_price = $6, active = $7
         WHERE shop_id = $1 AND id = $2 RETURNING ${MENU_COLUMNS}`,
-      [shopId, menuId, v.name, v.defaultDurationMin, v.defaultPrepMin, active]);
+      [shopId, menuId, v.name, v.defaultDurationMin, v.defaultCleanupMin, v.defaultPrice, active]);
     return row!;
   }
 
@@ -84,7 +90,9 @@ export class CatalogService {
 }
 
 const META = 'id, version, created_at AS "createdAt", updated_at AS "updatedAt"';
-const MENU_COLUMNS = `${META}, name, default_duration_min AS "defaultDurationMin", default_prep_min AS "defaultPrepMin", active`;
+const MENU_COLUMNS = `${META}, name, default_duration_min AS "defaultDurationMin",
+  default_cleanup_min AS "defaultCleanupMin", default_price AS "defaultPrice", default_cleanup_min AS "defaultPrepMin", active`;
+// defaultPrepMin은 S3 전환 기간의 옛 이름(= defaultCleanupMin) — 웹 전환(③)·배포 뒤 지운다.
 const STAFF_COLUMNS = `${META}, name, active`;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -120,6 +128,17 @@ function objectOf(input: unknown): Record<string, unknown> {
 
 function has(body: Record<string, unknown>, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(body, key) && body[key] !== undefined;
+}
+
+/** 보낸 칸만 검사에 넘긴다(생략 = undefined, null = 비우기). */
+function optionalMinutes(body: Record<string, unknown>, key: string): number | null | undefined {
+  return has(body, key) ? minutesOf(body[key]) : undefined;
+}
+
+/** 가격은 생략하면 0(등록), null·숫자가 아닌 값은 NaN으로 넘겨 INVALID_PRICE. */
+function priceOf(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  return typeof value === 'number' ? value : Number.NaN;
 }
 
 // 숫자가 아닌 값은 NaN으로 넘겨 #39 검사가 INVALID_MINUTES로 거부하게 한다.

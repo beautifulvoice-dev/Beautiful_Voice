@@ -9,6 +9,8 @@
 //   기존 예약은 막지 않고 충돌로 표시만 한다 [결정 R50].
 // DB에도 같은 담당자 겹침 배타 제약이 최종 방어선으로 있다(2F 스키마). 이 함수는 저장 전에 이유와 함께 거절하려는 것이다.
 // 2A는 서울 시간대만 지원한다(#19 리뷰 리더 결정). 서울은 UTC+9 고정이다.
+// @deprecated rev.3.1(S3): 서버는 warnings.ts(appointmentWarnings·occupancyOf)로 옮겼다. checkBooking·occupiedOf·prepMin은
+// 웹이 새 판정으로 옮기면(S3 웹 PR) 지운다. 영업시간·휴무 판정(checkHours)과 서울 시간 함수는 계속 쓴다.
 
 import { OCCUPYING, type AppointmentStatus } from "./appointment-status.ts";
 
@@ -29,7 +31,8 @@ export interface BookingRequest {
 
 export interface ExistingBooking {
   id: string;
-  staffId: string;
+  /** null = 담당자 미지정(rev.3.1). */
+  staffId: string | null;
   status: AppointmentStatus;
   occupied: Interval;
 }
@@ -168,19 +171,23 @@ export function checkBooking(
   return { ok: true, occupied };
 }
 
-/** 차단과 겹쳐 "충돌"로 표시할 기존 예약 id(차단 대상 담당자의 점유 예약만). 차단 생성은 이 예약들을 막지 않는다. */
+/**
+ * 차단과 겹쳐 "충돌"로 표시할 기존 예약 id(차단 대상 담당자의 점유 예약, 담당자 미지정 예약은 모든 차단의 대상).
+ * 차단 생성은 이 예약들을 막지 않는다.
+ */
 export function blockedAppointmentIds(block: ActiveBlock, appointments: readonly ExistingBooking[]): string[] {
   return appointments
     .filter(
       (a) =>
         OCCUPYING.has(a.status) &&
-        (block.allStaff || block.staffIds.includes(a.staffId)) &&
+        (block.allStaff || a.staffId === null || block.staffIds.includes(a.staffId)) &&
         overlaps(block, a.occupied),
     )
     .map((a) => a.id);
 }
 
-function checkHours(session: Interval, hours: ShopHours): BookingReject | null {
+/** 관리(시술) 구간의 휴무·영업시간 판정. 문제가 없으면 null. warnings.ts도 같은 규칙을 쓴다. */
+export function checkHours(session: Interval, hours: ShopHours): "CLOSED_DAY" | "OUTSIDE_BUSINESS_HOURS" | null {
   const local = toSeoul(session.start);
   // 휴무는 관리가 걸치는 **모든** 날(서울)로 판정한다. 영업시간을 넣지 않은 매장에서 여러 날에 걸친 관리가
   // 사이에 낀 휴무일을 지나는 경우도 막는다(#36 리뷰 2회). 영업시간이 있으면 자정을 넘는 관리는 아래에서 어차피 거부된다.
