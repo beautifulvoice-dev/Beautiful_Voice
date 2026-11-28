@@ -2,12 +2,13 @@ require('reflect-metadata');
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
 const { test } = require('node:test');
-const { Module } = require('@nestjs/common');
+const { Controller, Get, Module, Req, UseGuards } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
 const { DatabaseService } = require('../dist/database.service.js');
 const { ApiExceptionFilter } = require('../dist/common/api-exception.filter.js');
+const { OwnerSessionGuard } = require('../dist/common/owner-shop.guard.js');
 const { OwnerAuthController } = require('../dist/owner-auth.controller.js');
-const { verifyCookie, signCookie } = require('../dist/owner-session.js');
+const { APP_SESSION_PURPOSE, verifyCookie, signCookie } = require('../dist/owner-session.js');
 
 test('browser login issues a session and only authorizes the current shop', async (t) => {
   const userId = randomUUID();
@@ -69,8 +70,18 @@ test('browser login issues a session and only authorizes the current shop', asyn
       else process.env[key] = value;
     }
   });
+  class SessionProbe {
+    read(request) {
+      return request.ownerSession;
+    }
+  }
+  const probe = Object.getOwnPropertyDescriptor(SessionProbe.prototype, 'read');
+  Controller('api/session-probe')(SessionProbe);
+  UseGuards(OwnerSessionGuard)(SessionProbe);
+  Get()(SessionProbe.prototype, 'read', probe);
+  Req()(SessionProbe.prototype, 'read', 0);
   class TestModule {}
-  Module({ controllers: [OwnerAuthController], providers: [{ provide: DatabaseService, useValue: database }] })(TestModule);
+  Module({ controllers: [OwnerAuthController, SessionProbe], providers: [{ provide: DatabaseService, useValue: database }] })(TestModule);
   const app = await NestFactory.create(TestModule, { logger: false });
   app.useGlobalFilters(new ApiExceptionFilter());
   t.after(() => app.close());
@@ -109,6 +120,9 @@ test('browser login issues a session and only authorizes the current shop', asyn
   assert.match(cleared, /^bv_oauth_state=; Max-Age=0/);
   assert.match(issued, /^bv_session=.+Max-Age=2592000; Path=\/api; HttpOnly; SameSite=Lax; Secure$/);
   const sessionCookie = issued.split(';')[0];
+  const key = Buffer.from(settings.BV_SESSION_SECRET, 'hex');
+  const appBearer = seconds => 'Bearer ' + signCookie(key, APP_SESSION_PURPOSE, `${userId}:${shopId}`, seconds);
+  const sessionProbe = headers => browserFetch(base + '/api/session-probe', { headers });
   const signatureAt = sessionCookie.lastIndexOf('.') + 1;
   const tampered = sessionCookie.slice(0, signatureAt) + (sessionCookie[signatureAt] === 'x' ? 'y' : 'x')
     + sessionCookie.slice(signatureAt + 1);
@@ -121,6 +135,7 @@ test('browser login issues a session and only authorizes the current shop', asyn
   assert.equal(pending.shopId, shopId);
   assert.equal(pending.consent.text, 'Synthetic consent');
   assert.equal((await request('/api/shops/' + shopId, sessionCookie)).status, 403);
+  assert.equal((await sessionProbe({ Authorization: appBearer(60) })).status, 403);
   const accept = (version, origin) => browserFetch(base + '/api/auth/consent', {
     method: 'POST',
     headers: { Cookie: sessionCookie, Origin: origin, 'Content-Type': 'application/json' },
@@ -144,6 +159,17 @@ test('browser login issues a session and only authorizes the current shop', asyn
   assert.equal((await accept(pending.consent.version, 'https://example.test')).status, 204);
   assert.deepEqual(accepted.get(userId), pending.consent);
   assert.deepEqual(await (await request('/api/auth/session', sessionCookie)).json(), { shopId });
+  for (const headers of [
+    { Cookie: sessionCookie },
+    { Authorization: appBearer(60), 'X-Shop-Id': otherShop },
+  ]) {
+    const result = await sessionProbe(headers);
+    assert.equal(result.status, 200);
+    assert.deepEqual(await result.json(), { userId, shopId });
+  }
+  assert.equal((await sessionProbe({ Authorization: appBearer(-1), Cookie: sessionCookie })).status, 401);
+  assert.equal((await sessionProbe({ Authorization: 'Bearer ' + sessionCookie.slice('bv_session='.length) })).status, 401);
+  assert.equal((await sessionProbe({ Cookie: 'bv_session=' + appBearer(60).slice('Bearer '.length) })).status, 401);
   const blocked = await request('/api/shops/' + otherShop, sessionCookie);
   assert.equal(blocked.status, 404);
   assert.equal((await blocked.json()).code, 'SHOP_NOT_FOUND');
@@ -153,6 +179,7 @@ test('browser login issues a session and only authorizes the current shop', asyn
   assert.deepEqual(await allowed.json(), shop);
   membership = otherShop;
   assert.equal((await request('/api/auth/session', sessionCookie)).status, 401);
+  assert.equal((await sessionProbe({ Authorization: appBearer(60) })).status, 401);
 });
 
 test('expired cookies or cookies signed for a different purpose do not open a session', () => {

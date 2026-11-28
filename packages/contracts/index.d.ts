@@ -42,3 +42,4 @@ export interface OwnerShopResponse {
 
 export * from './crm';
 export * from './actions';
+export * from './wallet';

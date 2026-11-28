@@ -14,6 +14,8 @@ import { CatalogController } from './settings/catalog.controller';
 import { CatalogService } from './settings/catalog.service';
 import { SettingsController } from './settings/settings.controller';
 import { SettingsService } from './settings/settings.service';
+import { WalletController } from './wallet/wallet.controller';
+import { WalletService } from './wallet/wallet.service';
 
 @Controller('api/health')
 class HealthController {
@@ -24,9 +26,9 @@ class HealthController {
 }
 
 @Module({
-  controllers: [HealthController, OwnerAuthController, SettingsController, CatalogController, CustomerController, AppointmentM1Controller, CalendarM1Controller, CalendarBlockController],
+  controllers: [HealthController, OwnerAuthController, SettingsController, CatalogController, CustomerController, AppointmentM1Controller, CalendarM1Controller, CalendarBlockController, WalletController],
   providers: [
-    DatabaseService, SettingsService, CatalogService, CustomerService, AppointmentM1Service, CalendarBlockService,
+    DatabaseService, SettingsService, CatalogService, CustomerService, AppointmentM1Service, CalendarBlockService, WalletService,
     { provide: APP_FILTER, useClass: ApiExceptionFilter },
   ],
 })

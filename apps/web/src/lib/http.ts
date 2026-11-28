@@ -41,7 +41,12 @@ export interface Http {
 
 /** '/api/shops/{shopId}/…' — 칸마다 인코딩한다. */
 export function shopPath(shopId: string, ...segments: string[]): string {
-  return ['/api/shops', shopId, ...segments].map((s, i) => (i === 0 ? s : encodeURIComponent(s))).join('/');
+  return sessionPath('shops', shopId, ...segments);
+}
+
+/** '/api/…' — 매장은 로그인 세션으로 결정한다. */
+export function sessionPath(...segments: string[]): string {
+  return ['/api', ...segments.map((segment) => encodeURIComponent(segment))].join('/');
 }
 
 function withQuery(path: string, query: Query | undefined): string {

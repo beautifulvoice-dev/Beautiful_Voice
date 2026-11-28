@@ -1,0 +1,154 @@
+openapi: 3.1.0
+info:
+  title: Beautiful Voice 지갑 (S4 — 선불금·횟수권)
+  version: '0.1.0'
+  description: |
+    ADR-0009 A단계 새 리소스 — 매장은 로그인 세션으로 정한다. 주소·본문·헤더에 매장 ID를 받지 않는다.
+    세션이 없거나 만료면 401 UNAUTHENTICATED(S1 OwnerSessionGuard 공통 응답), 동의 전이면 403.
+    규약(F-05): 오류 {code,message,details} · 쓰기는 Idempotency-Key(같은 요청 = 메서드·경로·쿼리·본문) · 시각은 ISO-8601 · 목록은 cursor.
+    잔액은 저장하지 않고 원장 합계로 계산한다. 음수 잔액·잔여 횟수도 그대로 돌려준다(실패가 아니다).
+    부호는 서버가 거래 종류(label)로 정한다. 웹은 양수 value만 보내고 signedDelta·예약·회차·opening_balance를 지정할 수 없다(422).
+    경로의 고객이 세션 매장에 없으면 404 NOT_FOUND, 본문의 고객·횟수권·메뉴가 없으면 422 VALIDATION_FAILED + fields[].code = NOT_FOUND.
+paths:
+  /api/wallets/{customerId}:
+    parameters: [{$ref: '#/components/parameters/CustomerId'}]
+    get:
+      summary: 고객 지갑 요약 — 선불 잔액 + 보이는 횟수권(숨긴 횟수권 제외)
+      responses:
+        '200': {description: OK, content: {application/json: {schema: {$ref: '#/components/schemas/WalletSummary'}}}}
+        '404': {$ref: '#/components/responses/Error'} # NOT_FOUND — 세션 매장에 없는 고객
+        default: {$ref: '#/components/responses/Error'}
+  /api/wallet-entries:
+    get:
+      summary: 항목별 거래 내역(최신순) — 선불금이면 unitType=amount, 횟수권이면 unitType=sessions + passId
+      description: 삭제 표시된 거래는 빠진다. 커서는 (발생 시각, id).
+      parameters:
+        - {in: query, name: customerId, required: true, schema: {type: string, format: uuid}}
+        - {in: query, name: unitType, required: true, schema: {$ref: '#/components/schemas/UnitType'}}
+        - {in: query, name: passId, schema: {type: string, format: uuid}, description: 'unitType=sessions일 때 필수, amount면 보내지 않는다'}
+        - {in: query, name: cursor, schema: {type: string}}
+        - {in: query, name: limit, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/WalletEntry'}}
+                  nextCursor: {type: [string, 'null']}
+        '400': {$ref: '#/components/responses/Error'} # INVALID_CURSOR · INVALID_LIMIT
+        '404': {$ref: '#/components/responses/Error'} # NOT_FOUND — 세션 매장에 없는 고객, 또는 그 고객의 횟수권이 아님
+        '422': {$ref: '#/components/responses/Error'} # VALIDATION_FAILED — customerId·unitType·passId 형식
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      summary: 결제·차감 기록. 응답에 적용 직후 잔액(선불) 또는 잔여 횟수(횟수권)
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WalletEntryInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/WalletEntryRecorded'}}}}
+        '422': {$ref: '#/components/responses/Error'} # VALIDATION_FAILED
+        default: {$ref: '#/components/responses/Error'}
+  /api/passes:
+    post:
+      summary: 횟수권 구매·발급 — 횟수권 + 첫 결제 +N회를 함께 기록. 선불금은 바뀌지 않는다
+      description: isPrimary=true면 같은 고객의 기존 대표 횟수권을 같은 저장에서 내린다(고객당 대표 최대 1개).
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PassInput'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/CustomerPass'}}}}
+        '422': {$ref: '#/components/responses/Error'} # VALIDATION_FAILED
+        default: {$ref: '#/components/responses/Error'}
+
+components:
+  securitySchemes:
+    ownerSession: {type: apiKey, in: cookie, name: bv_session}
+  parameters:
+    CustomerId: {in: path, name: customerId, required: true, schema: {type: string, format: uuid}}
+    IdempotencyKey: {in: header, name: Idempotency-Key, required: true, schema: {type: string, minLength: 1, maxLength: 255}}
+  responses:
+    Error:
+      description: '{code, message, details}. message·details에 개인정보를 넣지 않는다'
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  schemas:
+    Error:
+      type: object
+      required: [code, message, details]
+      properties: {code: {type: string}, message: {type: string}, details: {type: object}}
+    UnitType: {enum: [amount, sessions], description: 'amount = 원 단위 선불금, sessions = 횟수권 횟수'}
+    EntryLabel:
+      enum: [payment, deduct, opening_balance, refund, deduct_cancel, payment_cancel]
+      description: '응답에 올 수 있는 거래 종류. 웹 기록은 payment·deduct만(나머지는 CSV·Sprint 2)'
+    Value: {type: integer, minimum: 1, maximum: 2147483647, description: '양수 크기(원 또는 횟수). DB integer 상한'}
+    PassSummary:
+      type: object
+      required: [id, name, menuId, menuName, remainingSessions, isPrimary, version]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        menuId: {type: [string, 'null'], format: uuid}
+        menuName: {type: [string, 'null'], description: '발급 당시 메뉴 이름'}
+        remainingSessions: {type: integer, description: '음수 가능'}
+        isPrimary: {type: boolean}
+        version: {type: integer}
+    WalletSummary:
+      type: object
+      required: [customerId, prepaidBalance, passes]
+      properties:
+        customerId: {type: string, format: uuid}
+        prepaidBalance: {type: integer, description: '원. 음수 가능'}
+        passes: {type: array, items: {$ref: '#/components/schemas/PassSummary'}, description: '대표 먼저, 그다음 발급순'}
+    CustomerPass:
+      allOf:
+        - {$ref: '#/components/schemas/PassSummary'}
+        - type: object
+          required: [customerId]
+          properties: {customerId: {type: string, format: uuid}}
+    PassInput:
+      type: object
+      additionalProperties: false
+      required: [customerId, name, menuId, sessions]
+      properties:
+        customerId: {type: string, format: uuid}
+        name: {type: string, minLength: 1}
+        menuId: {type: string, format: uuid}
+        sessions: {$ref: '#/components/schemas/Value'}
+        isPrimary: {type: boolean, default: false}
+    WalletEntryInput:
+      type: object
+      additionalProperties: false
+      required: [customerId, unitType, label, value]
+      properties:
+        customerId: {type: string, format: uuid}
+        unitType: {$ref: '#/components/schemas/UnitType'}
+        passId: {type: [string, 'null'], format: uuid, description: 'sessions면 필수, amount면 비우거나 null'}
+        label: {enum: [payment, deduct]}
+        value: {$ref: '#/components/schemas/Value'}
+        memo: {type: [string, 'null']}
+    WalletEntry:
+      type: object
+      required: [id, customerId, unitType, passId, label, signedDelta, appointmentId, cycleSeq, memo, version, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        customerId: {type: string, format: uuid}
+        unitType: {$ref: '#/components/schemas/UnitType'}
+        passId: {type: [string, 'null'], format: uuid}
+        label: {$ref: '#/components/schemas/EntryLabel'}
+        signedDelta: {type: integer, description: '부호 있는 변화량'}
+        appointmentId: {type: [string, 'null'], format: uuid, description: '종료 5분 전 완료 카드 차감이면 그 예약'}
+        cycleSeq: {type: [integer, 'null']}
+        memo: {type: [string, 'null']}
+        version: {type: integer}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    WalletEntryRecorded:
+      allOf:
+        - {$ref: '#/components/schemas/WalletEntry'}
+        - type: object
+          required: [prepaidBalance, remainingSessions]
+          properties:
+            prepaidBalance: {type: [integer, 'null'], description: 'amount 거래면 적용 직후 선불 잔액, 아니면 null'}
+            remainingSessions: {type: [integer, 'null'], description: 'sessions 거래면 적용 직후 잔여 횟수, 아니면 null'}
+security: [{ownerSession: []}]

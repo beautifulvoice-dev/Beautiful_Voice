@@ -14,11 +14,15 @@ const ops = (doc) =>
   );
 
 test('모든 $ref가 풀린다', () => {
-  for (const f of ['crm.openapi.yaml', 'auth.openapi.yaml', 'actions.openapi.yaml']) {
+  for (const f of ['crm.openapi.yaml', 'auth.openapi.yaml', 'actions.openapi.yaml', 'wallet.openapi.yaml']) {
     const doc = load(f);
     const refs = [];
     (function walk(o) {
-      if (o && typeof o === 'object') for (const [k, v] of Object.entries(o)) k === '$ref' ? refs.push(v) : walk(v);
+      if (!o || typeof o !== 'object') return;
+      for (const [k, v] of Object.entries(o)) {
+        if (k === '$ref') refs.push(v);
+        else walk(v);
+      }
     })(doc);
     assert.deepEqual(refs.filter((r) => resolve(doc, r) === undefined), [], f);
   }
