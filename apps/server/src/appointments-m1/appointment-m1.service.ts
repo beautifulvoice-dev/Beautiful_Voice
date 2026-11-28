@@ -244,7 +244,7 @@ const KEYS = ['customerId', 'menuId', 'staffId', 'start', 'durationMin', 'cleanu
 type Fields = {
   customerId: string; menuId: string | null; staffId: string | null; start: Date; durationMin: number; cleanupMin: number; memo: string | null;
 };
-const COMPLETION_FIELDS: readonly (keyof Fields)[] = ['start', 'durationMin', 'menuId', 'staffId'];
+const COMPLETION_FIELDS: readonly (keyof Fields)[] = ['customerId', 'start', 'durationMin', 'menuId', 'staffId'];
 const COLUMN: Record<keyof Fields, string> = {
   customerId: 'customer_id', menuId: 'menu_id', staffId: 'staff_id', start: 'start_at',
   durationMin: 'duration_min', cleanupMin: 'cleanup_min', memo: 'memo',

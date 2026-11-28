@@ -240,6 +240,20 @@ test('예약 메모는 미승인 카드를 유지하고 시술 시간이 바뀌�
   assert.deepEqual(await completionCard(card), { status: 'dismissed', dismiss_reason: 'rescheduled', version: 2 });
 });
 
+test('예약 고객만 바꾸면 기존 고객의 미승인 완료 카드가 해제된다', async () => {
+  const nextCustomer = randomUUID();
+  await admin.query(
+    "INSERT INTO crm.customer (id, shop_id, name, created_source) VALUES ($1, $2, '합성 변경 고객', 'manual')",
+    [nextCustomer, shopA],
+  );
+  const id = await insert({ start: '2027-04-07T10:00:00+09:00' });
+  const card = await seedCompletionCard(id);
+  const updated = await call('PATCH', `${A}/appointments/${id}`, { body: { version: 1, customerId: nextCustomer } });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.customerId, nextCustomer);
+  assert.deepEqual(await completionCard(card), { status: 'dismissed', dismiss_reason: 'rescheduled', version: 2 });
+});
+
 test('예정 예약을 취소·노쇼·수동 완료하면 미승인 카드가 해제된다', async () => {
   for (const status of ['cancelled', 'no_show', 'completed']) {
     const id = await insert({ start: '2027-04-06T10:00:00+09:00' });
