@@ -1,0 +1,114 @@
+name: Codex review summary
+
+on:
+  issue_comment:
+    types: [created, edited]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  summary:
+    if: >-
+      github.event.issue.pull_request &&
+      github.event.comment.user.login == 'chatgpt-codex-connector[bot]' &&
+      startsWith(github.event.comment.body, '<!-- codex-pull-request-review-summary -->')
+    concurrency:
+      group: codex-review-summary-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update the team review summary
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const bot = 'chatgpt-codex-connector[bot]';
+            const marker = '<!-- bv-codex-review-summary -->';
+            const sourceMarker = '<!-- codex-pull-request-review-summary -->';
+            const pull = { ...context.repo, pull_number: context.issue.number };
+            const issue = { ...context.repo, issue_number: context.issue.number };
+            const { data: pr } = await github.rest.pulls.get(pull);
+            if (pr.state !== 'open') return;
+
+            const comments = await github.paginate(github.rest.issues.listComments, issue);
+            const source = comments.find(({ user, body }) =>
+              user?.login === bot && body?.startsWith(sourceMarker));
+            // The connector's versioned metadata is observable on GitHub but is not
+            // a documented API. Unknown formats must never produce a passing summary.
+            const metadata = source?.body.match(/^<!-- codex-review-state:v1 (.+) -->$/m);
+            if (!metadata) {
+              core.warning('Codex review metadata is unavailable or has changed.');
+              return;
+            }
+            let state;
+            try {
+              state = JSON.parse(metadata[1]).code_review;
+            } catch {
+              core.warning('Codex review metadata could not be parsed.');
+              return;
+            }
+            if (state?.status !== 'completed' || state.commit_sha !== pr.head.sha
+                || typeof state.has_any_findings !== 'boolean') return;
+
+            const required = [];
+            const optional = [];
+            if (state.has_any_findings) {
+              const reviews = await github.paginate(github.rest.pulls.listReviews, pull);
+              const review = reviews.filter(({ user, commit_id, body, state }) =>
+                user?.login === bot && commit_id === pr.head.sha && state === 'COMMENTED'
+                && /^### (?:💡 )?Codex Review\s*$/m.test(body ?? '')).at(-1);
+              if (!review) {
+                core.warning('Codex reported findings but its code review could not be identified.');
+                return;
+              }
+              const findings = await github.paginate(github.rest.pulls.listCommentsForReview,
+                { ...pull, review_id: review.id });
+              for (const finding of findings) {
+                if (finding.user?.login !== bot || finding.in_reply_to_id) continue;
+                const heading = finding.body?.split('\n')[0] ?? '';
+                const priority = heading.match(/\bP([0-3]) Badge\b|\[P([0-3])\]/);
+                const level = priority?.[1] ?? priority?.[2];
+                if (heading.includes('🔴') || level === '0' || level === '1') {
+                  required.push(finding.id);
+                } else if (heading.includes('❔') || heading.includes('🟡') || level === '2' || level === '3') {
+                  optional.push([heading.includes('❔') ? '❔ 질문' : '🟡 제안', finding.id]);
+                } else {
+                  core.warning('Codex finding priority could not be identified.');
+                  return;
+                }
+              }
+              if (required.length + optional.length === 0) {
+                core.warning('Codex reported findings but no inline findings were returned.');
+                return;
+              }
+            }
+
+            const summary = required.length
+              ? `🔴 필수 ${required.length}건`
+              : '✅ 필수 지적 없음 — 머지 가능(사람 승인 필요)';
+            const lines = [
+              summary, '', marker,
+              `Codex 코드 리뷰 · 기준 커밋 \`${pr.head.sha.slice(0, 10)}\``,
+              '머지 전 현재 커밋의 사람 승인·CI·미해결 리뷰를 확인해 주세요.',
+              `[Codex 원본 리뷰 상태](${pr.html_url}#issuecomment-${source.id})`,
+            ];
+            if (required.length) {
+              lines.push('', ...required.map((id, index) =>
+                `- 🔴 [필수 지적 ${index + 1}](${pr.html_url}#discussion_r${id})`));
+            }
+            if (optional.length) {
+              lines.push('', '**선택**', ...optional.slice(0, 5).map(([label, id], index) =>
+                `- [${label} ${index + 1}](${pr.html_url}#discussion_r${id})`));
+            }
+
+            const body = lines.join('\n');
+            const existing = comments.find((comment) =>
+              comment.user?.login === 'github-actions[bot]' && comment.body?.includes(marker));
+            if (existing?.body === body) return;
+            const { data: latest } = await github.rest.pulls.get(pull);
+            if (latest.state !== 'open' || latest.head.sha !== pr.head.sha) return;
+            if (existing) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...issue, body });
+            }
