@@ -128,3 +128,51 @@ test('startup rejects the migration account', async () => {
     process.env.DATABASE_URL = appUrl;
   }
 });
+
+
+test('018: the worker can only resume a rescheduled completion card with a new snapshot', async () => {
+  const client = new Client({ connectionString: process.env.DATABASE_MIGRATION_URL });
+  const [shopId, otherShopId, customerId, appointmentId, secondId, cardId, userDismissedCardId] =
+    Array.from({ length: 7 }, () => randomUUID());
+  await client.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("INSERT INTO crm.shop (id, name) VALUES ($1, 'Synthetic S6'), ($2, 'Synthetic other')", [shopId, otherShopId]);
+    await client.query("INSERT INTO crm.customer (id, shop_id, name, created_source) VALUES ($1,$2,'Synthetic','manual')", [customerId, shopId]);
+    const { rows: appointments } = await client.query(`
+      INSERT INTO crm.appointment_m1 (id, shop_id, customer_id, start_at, duration_min)
+      VALUES ($1,$3,$4,now(),30), ($2,$3,$4,now(),30) RETURNING cycle_seq`, [appointmentId, secondId, shopId, customerId]);
+    assert.deepEqual(appointments, [{ cycle_seq: 1 }, { cycle_seq: 1 }]);
+    await client.query(`
+      INSERT INTO crm.action_cards (id, shop_id, customer_id, appointment_id, appointment_version, available_at, status, resolved_at, dismiss_reason)
+      VALUES ($1,$5,$6,$3,1,now(),'dismissed',now(),'rescheduled'), ($2,$5,$6,$4,1,now(),'dismissed',now(),'user')`,
+    [cardId, userDismissedCardId, appointmentId, secondId, shopId, customerId]);
+
+    const resume = (id, version) => client.query(`
+      UPDATE crm.action_cards SET appointment_version = $3, status = 'pending',
+        resolved_at = NULL, dismiss_reason = NULL, available_at = now()
+      WHERE shop_id = $1 AND id = $2
+      RETURNING id, cycle_seq, appointment_version, version`, [shopId, id, version]);
+    await client.query('SET LOCAL ROLE bv_system');
+    await client.query("SELECT set_config('app.shop_id', $1, true)", [shopId]);
+    await client.query('SAVEPOINT stale_resume');
+    await assert.rejects(resume(cardId, 1), { code: '23514' });
+    await client.query('ROLLBACK TO SAVEPOINT stale_resume');
+    assert.equal((await resume(userDismissedCardId, 2)).rowCount, 0);
+
+    await client.query('RESET ROLE');
+    const { rows: [changed] } = await client.query(
+      "UPDATE crm.appointment_m1 SET start_at = start_at + interval '1 hour' WHERE id = $1 RETURNING version", [appointmentId]);
+    await client.query('SET LOCAL ROLE bv_system');
+    await client.query("SELECT set_config('app.shop_id', $1, true)", [otherShopId]);
+    assert.equal((await resume(cardId, changed.version)).rowCount, 0);
+    await client.query("SELECT set_config('app.shop_id', $1, true)", [shopId]);
+    assert.deepEqual((await resume(cardId, changed.version)).rows, [
+      { id: cardId, cycle_seq: 1, appointment_version: changed.version, version: 2 },
+    ]);
+    assert.equal((await resume(cardId, changed.version)).rowCount, 0);
+  } finally {
+    await client.query('ROLLBACK').catch(() => {});
+    await client.end();
+  }
+});
