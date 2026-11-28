@@ -195,7 +195,8 @@ export function createMemorySettingsApi(seed: SettingsSeed = seedSettings(), now
         const r = validateMenu(input);
         if (!r.ok) throw new FieldsInvalidError(r.errors);
         const at = stamp();
-        const created: Menu = { ...r.value, id: newId('menu'), version: 1, active: true, createdAt: at, updatedAt: at };
+        // S3 전환: 계약의 새 이름(defaultCleanupMin·defaultPrice)도 채운다 — 화면 전환은 웹 PR(③).
+        const created: Menu = { ...r.value, defaultCleanupMin: r.value.defaultPrepMin, defaultPrice: 0, id: newId('menu'), version: 1, active: true, createdAt: at, updatedAt: at };
         menus.push(created);
         return clone(created);
       });
@@ -209,7 +210,7 @@ export function createMemorySettingsApi(seed: SettingsSeed = seedSettings(), now
           defaultPrepMin: patch.defaultPrepMin === undefined ? row.defaultPrepMin : patch.defaultPrepMin,
       });
       if (!r.ok) throw new FieldsInvalidError(r.errors);
-      Object.assign(row, r.value, { active: patch.active ?? row.active, version: row.version + 1, updatedAt: stamp() });
+      Object.assign(row, r.value, { defaultCleanupMin: r.value.defaultPrepMin, active: patch.active ?? row.active, version: row.version + 1, updatedAt: stamp() });
       return clone(row);
       });
     },

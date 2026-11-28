@@ -9,7 +9,7 @@
     "test": "node --test test/health.test.cjs test/conventions.test.cjs test/kakao-login.test.cjs test/owner-auth.test.cjs",
     "db:migrate": "node --env-file-if-exists=../../.env db/migrate.cjs",
     "db:register-local-owner": "pnpm run build && node --env-file-if-exists=../../.env db/register-local-owner.cjs",
-    "db:test": "node --env-file-if-exists=../../.env --test test/database.test.cjs test/idempotency.test.cjs test/appointment.test.cjs test/m1-reference-data.test.cjs test/m1-appointment.test.cjs test/m1-settings.test.cjs test/m1-catalog.test.cjs test/m1-customers.test.cjs test/m1-customer-active.test.cjs test/m1-appointment-api.test.cjs test/m1-calendar-status-api.test.cjs test/m1-calendar-block-api.test.cjs test/s4-wallet.test.cjs"
+    "db:test": "node --env-file-if-exists=../../.env --test test/database.test.cjs test/idempotency.test.cjs test/appointment.test.cjs test/m1-reference-data.test.cjs test/m1-appointment.test.cjs test/m1-settings.test.cjs test/m1-catalog.test.cjs test/m1-customers.test.cjs test/m1-customer-active.test.cjs test/m1-appointment-api.test.cjs test/m1-calendar-status-api.test.cjs test/m1-calendar-block-api.test.cjs test/m1-migration-015.test.cjs test/s4-wallet.test.cjs"
   },
   "dependencies": {
     "@bv/contracts": "workspace:*",

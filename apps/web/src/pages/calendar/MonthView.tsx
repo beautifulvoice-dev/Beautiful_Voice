@@ -5,7 +5,7 @@ import { Badge } from '@seed-design/react';
 import {
   isClosedDay,
   isShown,
-  overlapsBlock,
+  hasOverlap,
   segmentsForDay,
   shopDate,
   shopTime,
@@ -35,7 +35,7 @@ interface Props {
   selected?: string;
   onPick?: (date: string) => void;
   onStep?: (n: 1 | -1) => void;
-  staffName?: (id: string) => string;
+  staffName?: (id: string | null) => string;
 }
 
 /** 웹 칸에 이름을 몇 건까지 적나 — 넘치면 "+N"(설계서 W1). */
@@ -156,7 +156,7 @@ export function MonthView({ days, month, data, today, onOpen, onOpenBlock, phone
                   );
                 })}
                 {appts.slice(0, NAMES_PER_DAY).map((a) => {
-                  const overlap = overlapsBlock(a, data.blocks);
+                  const overlap = hasOverlap(a, data);
                   return (
                     <li key={a.id}>
                       <button
@@ -171,18 +171,18 @@ export function MonthView({ days, month, data, today, onOpen, onOpenBlock, phone
                             : a.status === 'no_show'
                               ? 'bg-cal-noshow text-cal-noshow-text'
                               : KIND_CLASS.care,
-                          // 관리 불가와 겹친 예약은 주간처럼 빨간 테두리 + "겹침"(R50, #50 리뷰)
+                          // 관리 불가·다른 예약과 겹친 예약은 주간처럼 빨간 테두리 + "겹침"(R50, #50 리뷰, rev.3.1)
                           overlap && 'bg-paper shadow-[inset_0_0_0_2px_var(--cal-overlap)]',
                         )}
                       >
-                        {/* 좁은 칸에서도 잘리지 않게 준비 표시는 글자 앞의 작은 빗금 칸으로. 글자는 화면 읽기·툴팁용. */}
-                        {a.prepMin > 0 && (
+                        {/* 좁은 칸에서도 잘리지 않게 정리 표시는 글자 앞의 작은 빗금 칸으로. 글자는 화면 읽기·툴팁용. */}
+                        {a.cleanupMin > 0 && (
                           <span
-                            data-kind="prep"
-                            title={`준비 ${shopTime(Date.parse(a.startAt) - a.prepMin * 60_000)}부터 ${a.prepMin}분`}
-                            className={cn('mr-1 inline-block h-2 w-2.5 rounded-l-sm align-middle', KIND_CLASS.prep)}
+                            data-kind="cleanup"
+                            title={`정리 ${a.cleanupMin}분 · ${shopTime(Date.parse(a.startAt) + (a.durationMin + a.cleanupMin) * 60_000)}까지`}
+                            className={cn('mr-1 inline-block h-2 w-2.5 rounded-r-sm align-middle', KIND_CLASS.cleanup)}
                           >
-                            <span className="sr-only">준비 {a.prepMin}분</span>
+                            <span className="sr-only">정리 {a.cleanupMin}분</span>
                           </span>
                         )}
                         <span className="tabular-nums">{shopTime(a.startAt)}</span> <b className="font-bold text-ink">{a.customerName}</b>
@@ -216,7 +216,7 @@ function DayList({
   appointments: CalendarAppointment[];
   blocks: CalendarData['blocks'];
   onOpen: (a: CalendarAppointment) => void;
-  staffName?: (id: string) => string;
+  staffName?: (id: string | null) => string;
 }) {
   const label = `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}(${WEEKDAY_SHORT[new Date(`${date}T00:00:00Z`).getUTCDay()]})`;
   return (
@@ -243,7 +243,7 @@ function DayList({
                   <Badge.Label>{STATUS_TEXT[a.status]}</Badge.Label>
                 </Badge.Root>
               )}
-              {overlapsBlock(a, blocks) && <span className="shrink-0 font-semibold text-cal-overlap">겹침</span>}
+              {hasOverlap(a, { appointments, blocks }) && <span className="shrink-0 font-semibold text-cal-overlap">겹침</span>}
             </button>
           </li>
         ))}

@@ -4,6 +4,7 @@
 // 다른 시간대 매장이 생기면 SHOP_OFFSET과 함께 날짜를 다루는 weekTitle·isClosedDay·outsideHours도 점검한다.
 
 import type { BusinessHours, Closure } from '@bv/contracts';
+import { blockApplies, staffContends } from '@bv/scheduling/warnings';
 
 /** 예약 상태(명세 01 §2.2). */
 export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show' | 'voided';
@@ -25,12 +26,13 @@ export interface CalendarAppointment {
   /** 예약 보기(W2) 이름 아래 전화번호. */
   customerPhone?: string | null;
   menuName: string | null;
-  staffId: string;
-  /** 관리 시작(UTC ISO). */
+  /** null = 담당자 미지정(rev.3.1). 누구와도 겹칠 수 있어 캘린더에서는 모든 담당자 줄에 걸쳐 그린다. */
+  staffId: string | null;
+  /** 시술 시작(UTC ISO). */
   startAt: string;
   durationMin: number;
-  /** 준비 시간 — 관리 시작 앞에 붙는다. */
-  prepMin: number;
+  /** 정리 시간 — 시술 뒤에 붙는다(rev.3.1). 점유 = [시작, 시작 + 시술 + 정리). */
+  cleanupMin: number;
   memo: string | null;
   status: AppointmentStatus;
   /** 실제 API의 행 버전 — 상태·내용을 고칠 때 보낸다(계약 #42 동시 수정). 가짜 저장소는 비워 둔다. */
@@ -39,6 +41,8 @@ export interface CalendarAppointment {
   menuId?: string | null;
   /** 실제 API: 이 예약과 겹치는 활성 차단 id(#42·설계 09 D5). 가짜 저장소는 없음(화면이 계산). */
   blockedBy?: string[];
+  /** 실제 API: 조회 시점에 점유가 겹치는 다른 예약 id(같은 담당자이거나 한쪽이 미지정). 가짜 저장소는 없음(화면이 계산). */
+  overlappingAppointmentIds?: string[];
 }
 
 /** 캘린더 차단. allStaff면 매장 전체, 아니면 staffIds의 담당자만 막는다(명세 01 §2.2). */
@@ -60,13 +64,13 @@ export interface Staff {
   active?: boolean;
 }
 
-/** 메뉴(설정 2A-1). 예약 넣기(W3)에서 칩을 고르면 관리·준비 시간이 채워진다(결정 S3). */
+/** 메뉴(설정 2A-1). 예약 넣기(W3)에서 칩을 고르면 시술·정리 시간이 채워진다(결정 S3). */
 export interface Menu {
   id: string;
   name: string;
-  /** 메뉴에 정해 둔 관리·준비 시간. null = 안 정함 → 고르면 지금 입력을 그대로 둔다(설계 06 D3). */
+  /** 메뉴에 정해 둔 시술·정리 시간. null = 안 정함 → 고르면 지금 입력을 그대로 둔다(설계 06 D3). */
   durationMin: number | null;
-  prepMin: number | null;
+  cleanupMin: number | null;
 }
 
 export interface CalendarData {
@@ -130,8 +134,8 @@ export function addMonths(date: string, n: number): string {
 
 // ── 화면 배치 ─────────────────────────────────────────────
 
-/** 관리(care)·준비(prep)·차단(block)을 다르게 그린다(BEA-175 완료 조건). */
-export type SegmentKind = 'care' | 'prep' | 'block';
+/** 시술(care)·정리(cleanup)·차단(block)을 다르게 그린다(BEA-175 완료 조건, rev.3.1 정리 시간은 시술 뒤). */
+export type SegmentKind = 'care' | 'cleanup' | 'block';
 
 export interface Segment {
   kind: SegmentKind;
@@ -140,9 +144,15 @@ export interface Segment {
   /** 그 날 0시부터 몇 분째에서 시작·끝나는지(날을 넘으면 잘라 낸다). */
   fromMin: number;
   toMin: number;
-  /** 담당자 줄. null이면 모든 담당자에 걸친다(매장 전체 차단). */
+  /** 담당자 줄. null이면 모든 담당자에 걸친다(매장 전체 차단). 담당자 미지정 예약은 UNASSIGNED_LANE(따로 "미지정" 열). */
   staffId: string | null;
 }
+
+/**
+ * 담당자 미지정 예약의 줄(옵마 11/27 결정): 담당자가 2명 이상이고 미지정 예약이 있을 때만 활성 담당자 칸 옆에 "미지정" 열을 둔다.
+ * 담당자 0~1명이면 열을 나누지 않으므로 담당자 구분 없이 그려진다.
+ */
+export const UNASSIGNED_LANE = 'unassigned';
 
 /** 캘린더에 보이는 예약: 취소·되돌림은 점유가 아니라 칸을 차지하지 않는다. */
 export function isShown(a: CalendarAppointment): boolean {
@@ -150,13 +160,19 @@ export function isShown(a: CalendarAppointment): boolean {
   return a.status !== 'cancelled' && a.status !== 'voided';
 }
 
-/** 점유 = [시작 − 준비, 시작 + 관리) (명세 01 §2.2, 결정 R33). */
-export function appointmentParts(a: CalendarAppointment): { kind: 'prep' | 'care'; from: number; to: number }[] {
+/** 점유 = [시작, 시작 + 시술 + 정리) (rev.3.1 §4.2) — 시술 칸 바로 아래에 정리 칸. */
+export function appointmentParts(a: CalendarAppointment): { kind: 'cleanup' | 'care'; from: number; to: number }[] {
   const start = Date.parse(a.startAt);
-  const parts: { kind: 'prep' | 'care'; from: number; to: number }[] = [];
-  if (a.prepMin > 0) parts.push({ kind: 'prep', from: start - a.prepMin * MIN, to: start });
-  parts.push({ kind: 'care', from: start, to: start + a.durationMin * MIN });
+  const end = start + a.durationMin * MIN;
+  const parts: { kind: 'cleanup' | 'care'; from: number; to: number }[] = [{ kind: 'care', from: start, to: end }];
+  if (a.cleanupMin > 0) parts.push({ kind: 'cleanup', from: end, to: end + a.cleanupMin * MIN });
   return parts;
+}
+
+/** 점유 구간(ms). */
+function occupiedMs(a: Pick<CalendarAppointment, 'startAt' | 'durationMin' | 'cleanupMin'>): [number, number] {
+  const start = Date.parse(a.startAt);
+  return [start, start + (a.durationMin + a.cleanupMin) * MIN];
 }
 
 /** 하루치 조각. 자정을 넘는 예약·차단은 그 날 안쪽만 남긴다. */
@@ -176,7 +192,7 @@ export function segmentsForDay(date: string, data: Pick<CalendarData, 'appointme
     else for (const s of b.staffIds) clip('block', b.id, from, to, s);
   }
   for (const a of data.appointments.filter(isShown)) {
-    for (const p of appointmentParts(a)) clip(p.kind, a.id, p.from, p.to, a.staffId);
+    for (const p of appointmentParts(a)) clip(p.kind, a.id, p.from, p.to, a.staffId ?? UNASSIGNED_LANE);
   }
   return out;
 }
@@ -197,11 +213,11 @@ export function shopTime(iso: string | number): string {
   return new Date(ms + SHOP_OFFSET).toISOString().slice(11, 16);
 }
 
-/** 예약 카드의 시간 글자: "13:40 준비 · 14:00–15:00". */
+/** 예약 카드의 시간 글자: "14:00–15:00 · 정리 15:10까지". */
 export function appointmentTimeText(a: CalendarAppointment): string {
   const start = Date.parse(a.startAt);
   const care = `${shopTime(start)}–${shopTime(start + a.durationMin * MIN)}`;
-  return a.prepMin > 0 ? `${shopTime(start - a.prepMin * MIN)} 준비 · ${care}` : care;
+  return a.cleanupMin > 0 ? `${care} · 정리 ${shopTime(occupiedMs(a)[1])}까지` : care;
 }
 
 // ── W1 디자인(SEED 옮기기): 제목·영업시간 밖·겹침·담당자 거르기 ─────────────
@@ -277,10 +293,9 @@ export function hoursBase(days: readonly string[], hours: BusinessHours | null):
 
 /**
  * 관리 불가 시간과 겹치는 예약인가(결정 R50: 기존 예약은 그대로 두고 캘린더에서 겹침으로 보인다).
- * 점유 [시작−준비, 시작+관리)가 그 담당자에게 걸린 차단(매장 전체 포함)과 겹치면 true.
- * 표시용이다 — 저장 거부는 서버(#36 checkBooking)가 한다.
- * 실제 API는 예약마다 blockedBy(예약 전체 점유와 겹치는 차단 id, 설계 09 D5)를 준다 — 있으면 그걸 쓴다.
- * 조회 창 밖 차단이라 blocks에 없어도 id가 있으면 겹침이다. 가짜 저장소는 blockedBy가 없어 여기서 계산한다.
+ * 점유 [시작, 시작+시술+정리)가 그 담당자에게 걸린 차단(매장 전체 포함, 미지정 예약은 모든 차단)과 겹치면 true.
+ * 실제 API는 예약마다 blockedBy(서버 판정)를 준다 — 있으면 그걸 쓴다. 조회 창 밖 차단이라 blocks에 없어도 id가 있으면 겹침이다.
+ * 가짜 저장소는 blockedBy가 없어 여기서 같은 규칙(@bv/scheduling/warnings)으로 계산한다.
  */
 export function overlapsBlock(a: CalendarAppointment, blocks: readonly CalendarBlock[]): boolean {
   if (a.blockedBy) return a.blockedBy.length > 0;
@@ -291,31 +306,51 @@ export function overlapsBlock(a: CalendarAppointment, blocks: readonly CalendarB
 export function overlappingBlocks(a: CalendarAppointment, blocks: readonly CalendarBlock[]): CalendarBlock[] {
   // 서버 판정이 있으면 받은 차단 중 그 id만(시각·메모는 받은 차단에서만 보인다, 설계 09 D5).
   if (a.blockedBy) return blocks.filter((b) => a.blockedBy!.includes(b.id));
-  const start = Date.parse(a.startAt);
-  const from = start - a.prepMin * MIN;
-  const to = start + a.durationMin * MIN;
-  return blocks.filter((b) => (b.allStaff || b.staffIds.includes(a.staffId)) && Date.parse(b.startAt) < to && Date.parse(b.endAt) > from);
+  const [from, to] = occupiedMs(a);
+  return blocks.filter((b) => blockApplies(b, a.staffId) && Date.parse(b.startAt) < to && Date.parse(b.endAt) > from);
+}
+
+/**
+ * 이 예약과 점유가 겹치는 다른 예약 id(같은 담당자이거나 한쪽이 미지정, rev.3.1 §4.2). 취소·되돌림은 점유가 아니라 빠진다.
+ * 실제 API는 overlappingAppointmentIds(서버 판정)를 준다. 가짜 저장소·테스트 데이터는 보이는 예약으로 계산한다.
+ */
+export function overlappingAppointmentIds(a: CalendarAppointment, appointments: readonly CalendarAppointment[]): string[] {
+  if (a.overlappingAppointmentIds) return a.overlappingAppointmentIds;
+  if (!isShown(a)) return [];
+  const [from, to] = occupiedMs(a);
+  return appointments
+    .filter((o) => o.id !== a.id && isShown(o) && staffContends(o.staffId, a.staffId))
+    .filter((o) => {
+      const [f, t] = occupiedMs(o);
+      return f < to && t > from;
+    })
+    .map((o) => o.id);
+}
+
+/** 빨간 겹침 표시: 차단 또는 다른 예약과 겹침. */
+export function hasOverlap(a: CalendarAppointment, data: Pick<CalendarData, 'appointments' | 'blocks'>): boolean {
+  return overlapsBlock(a, data.blocks) || overlappingAppointmentIds(a, data.appointments).length > 0;
 }
 
 const DAY_NAME = ['일', '월', '화', '수', '목', '금', '토'];
 
-/** 예약 패널 시각 두 줄(설계서 W2): "11/24(화) 14:00–15:00 · 60분", "준비 10분 · 13:50부터 일정이 잡혀요"(준비가 있을 때). */
+/** 예약 패널 시각 두 줄(설계서 W2): "11/24(화) 14:00–15:00 · 60분", "정리 10분 · 15:10까지 일정이 잡혀요"(정리가 있을 때). */
 export function appointmentPanelTime(a: CalendarAppointment): [string, string | null] {
   const start = Date.parse(a.startAt);
   const d = shopDate(start);
   const dow = DAY_NAME[new Date(`${d}T00:00:00Z`).getUTCDay()];
   const main = `${Number(d.slice(5, 7))}/${Number(d.slice(8, 10))}(${dow}) ${shopTime(start)}–${shopTime(start + a.durationMin * MIN)} · ${a.durationMin}분`;
-  const prep = a.prepMin > 0 ? `준비 ${a.prepMin}분 · ${shopTime(start - a.prepMin * MIN)}부터 일정이 잡혀요` : null;
-  return [main, prep];
+  const cleanup = a.cleanupMin > 0 ? `정리 ${a.cleanupMin}분 · ${shopTime(occupiedMs(a)[1])}까지 일정이 잡혀요` : null;
+  return [main, cleanup];
 }
 
-/** 담당자 거르기. null = 전체. 매장 전체 차단은 누구를 골라도 보인다. */
+/** 담당자 거르기. null = 전체. 매장 전체 차단과 담당자 미지정 예약은 누구를 골라도 보인다(ASSUMPTION: 미지정은 모두와 겹칠 수 있어서). */
 export function forStaff(data: CalendarData, staffId: string | null): CalendarData {
   if (staffId === null) return data;
   return {
     ...data,
     staff: data.staff.filter((s) => s.id === staffId),
-    appointments: data.appointments.filter((a) => a.staffId === staffId),
+    appointments: data.appointments.filter((a) => a.staffId === staffId || a.staffId === null),
     // 여러 담당자에게 걸린 차단은 고른 담당자 조각만 남긴다 — 안 보이는 담당자 조각이 전체 폭으로 겹쳐 그려지지 않게(#50 리뷰).
     blocks: data.blocks
       .filter((b) => b.allStaff || b.staffIds.includes(staffId))

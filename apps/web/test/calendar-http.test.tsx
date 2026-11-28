@@ -40,7 +40,8 @@ const meta = { createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:0
 const staff = (id: string, active = true) => ({ id, name: `합성 ${id}`, active, version: 1, ...meta });
 const appt = (id: string, over: Record<string, unknown> = {}) => ({
   id, customerId: 'c1', customerName: '합성 고객', menuId: null, menuName: null, staffId: 's1',
-  startAt: '2026-12-01T01:00:00.000Z', durationMin: 60, prepMin: 10, memo: null, status: 'scheduled', version: 1, blockedBy: [], ...meta, ...over,
+  startAt: '2026-12-01T01:00:00.000Z', durationMin: 60, cleanupMin: 10, prepMin: 10, memo: null, status: 'scheduled', version: 1, blockedBy: [],
+  overlappingAppointmentIds: [], warnings: [], ...meta, ...over,
 });
 const hours = { businessHours: { '2': [{ open: '10:00', close: '20:00' }] } };
 
@@ -99,12 +100,12 @@ describe('상태 바꾸기', () => {
       'GET /appointments/a9': [json(200, appt('a9', { version: 2 }))],
       'PUT /appointments/a9/status': [
         new TypeError('Failed to fetch'),
-        fail(409, 'STAFF_OVERLAP', { conflictingIds: ['a3'] }),
+        fail(409, 'INVALID_TRANSITION'),
         fail(409, 'VERSION_CONFLICT', { currentVersion: 3 }),
       ],
     });
-    expect(await api.setStatus('a9', 'scheduled')).toEqual({ ok: false, reason: 'NETWORK', conflictingIds: [] });
-    expect(await api.setStatus('a9', 'scheduled')).toEqual({ ok: false, reason: 'STAFF_OVERLAP', conflictingIds: ['a3'] });
+    expect(await api.setStatus('a9', 'scheduled')).toEqual({ ok: false, reason: 'NETWORK' });
+    expect(await api.setStatus('a9', 'scheduled')).toEqual({ ok: false, reason: 'INVALID_TRANSITION' });
     const puts = sent.filter((s) => s.method === 'PUT');
     expect(puts[1]!.key).toBe(puts[0]!.key);
     expect(puts.map((s) => s.body)).toEqual([{ version: 2, status: 'scheduled' }, { version: 2, status: 'scheduled' }]);
@@ -154,15 +155,15 @@ describe('처리하지 않은 서버 오류(#73 리뷰)', () => {
       'GET /appointments/a1': [json(200, appt('a1'))],
       'PUT /appointments/a1/status': [fail(500, 'INTERNAL'), fail(401, 'UNAUTHENTICATED')],
     });
-    expect(await api.setStatus('a1', 'completed')).toEqual({ ok: false, reason: 'FAILED', conflictingIds: [] });
-    expect(await api.setStatus('a1', 'completed')).toEqual({ ok: false, reason: 'UNAUTHENTICATED', conflictingIds: [] });
+    expect(await api.setStatus('a1', 'completed')).toEqual({ ok: false, reason: 'FAILED' });
+    expect(await api.setStatus('a1', 'completed')).toEqual({ ok: false, reason: 'UNAUTHENTICATED' });
   });
 
   it('W2: 서버 오류면 저장 중에서 풀리고 다시 시도할 수 있다는 안내, 401이면 다시 로그인 안내', async () => {
     const base = createMemoryCalendarApi(seedCalendar('2026-11-18'));
     const replies = ['FAILED', 'UNAUTHENTICATED'] as const;
     let i = 0;
-    const api: CalendarApi = { ...base, setStatus: async () => ({ ok: false, reason: replies[i++]!, conflictingIds: [] }) };
+    const api: CalendarApi = { ...base, setStatus: async () => ({ ok: false, reason: replies[i++]! }) };
     const router = createMemoryRouter(routes, { initialEntries: ['/calendar?view=week&date=2026-11-18'] });
     render(
       <SessionLoaderProvider value={async () => ({ shopId: 'shop-1' })}>
@@ -196,35 +197,63 @@ describe('예약 바꾸기(W2 바꾸기)', () => {
     expect(await api.updateAppointment('a1', { version: 2, memo: 'x' })).toMatchObject({ ok: false, reason: 'VERSION_CONFLICT' });
   });
 
-  it('메뉴에 안 정한 시간은 null 그대로 넘긴다(06 D3)', async () => {
-    const { api } = fake({ 'GET /menus': [json(200, { items: [{ id: 'm1', name: '상담', defaultDurationMin: null, defaultPrepMin: 5, active: true, version: 1, ...meta }] })] });
-    expect(await api.menus()).toEqual([{ id: 'm1', name: '상담', durationMin: null, prepMin: 5 }]);
+  it('메뉴에 안 정한 시간은 null 그대로 넘긴다(06 D3). 정리 시간은 새 이름 defaultCleanupMin', async () => {
+    const menu = { id: 'm1', name: '상담', defaultDurationMin: null, defaultCleanupMin: 5, defaultPrepMin: 5, defaultPrice: 0, active: true, version: 1, ...meta };
+    const { api } = fake({ 'GET /menus': [json(200, { items: [menu] })] });
+    expect(await api.menus()).toEqual([{ id: 'm1', name: '상담', durationMin: null, cleanupMin: 5 }]);
+  });
+
+  it('미지정 담당자는 null, 서버 겹침 id·저장 경고를 그대로 받는다', async () => {
+    const warnings = [{ code: 'OVERLAP_APPOINTMENT', relatedIds: ['a2'] }];
+    const { api } = fake({
+      'GET /appointments/a1': [json(200, appt('a1', { staffId: null, overlappingAppointmentIds: ['a2'] }))],
+      'PATCH /appointments/a1': [json(200, appt('a1', { version: 2, warnings }))],
+    });
+    expect(await api.appointment('a1')).toMatchObject({ staffId: null, cleanupMin: 10, overlappingAppointmentIds: ['a2'] });
+    expect(await api.updateAppointment('a1', { version: 1, staffId: 's1' })).toMatchObject({ ok: true, value: { warnings } });
+  });
+
+  it('미리 보기는 키 없이 POST, 예약 규칙은 settings/appointment-rules', async () => {
+    const warnings = [{ code: 'CLOSED_DAY', relatedIds: [] }];
+    const { api, sent } = fake({
+      'POST /appointments/preview-warnings': [json(200, { warnings })],
+      'GET /settings/appointment-rules': [json(200, { requireStaffSelection: true })],
+    });
+    const body = { appointmentId: 'a1', version: 2, startAt: '2026-12-01T06:00:00.000Z' };
+    expect(await api.previewWarnings(body)).toEqual(warnings);
+    expect(sent[0]).toMatchObject({ method: 'POST', body, key: undefined });
+    expect(await api.appointmentRules()).toEqual({ requireStaffSelection: true });
   });
 });
 
 describe('예약 등록', () => {
-  it('메뉴 id·준비 시간을 그대로 보내고, 영업시간 밖·겹침은 이유로 돌려준다', async () => {
+  it('메뉴 id·정리 시간(새 이름)을 그대로 보내고, 담당자 필수·입력 오류는 이유로 돌려준다', async () => {
     const { api, sent } = fake({
-      'POST /appointments': [json(201, appt('n1', { menuId: 'm1', menuName: '합성 관리' })), fail(422, 'OUTSIDE_BUSINESS_HOURS')],
+      'POST /appointments': [
+        json(201, appt('n1', { menuId: 'm1', menuName: '합성 관리' })),
+        fail(422, 'VALIDATION_FAILED', { fields: [{ field: 'staffId', code: 'REQUIRED' }] }),
+        fail(422, 'VALIDATION_FAILED', { fields: [{ field: 'menuId', code: 'NOT_FOUND' }] }),
+      ],
     });
     const input = {
       customerId: 'c1', customerName: '합성 고객', customerPhone: null, menuId: 'm1', menuName: '합성 관리',
-      staffId: 's1', startAt: '2026-12-01T01:00:00.000Z', durationMin: 60, prepMin: 10, memo: null,
+      staffId: 's1', startAt: '2026-12-01T01:00:00.000Z', durationMin: 60, cleanupMin: 10, memo: null,
     };
     expect(await api.createAppointment(input, { idempotencyKey: 'k-1' })).toMatchObject({ ok: true, value: { id: 'n1', menuId: 'm1' } });
     expect(sent[0]).toMatchObject({
       key: 'k-1',
-      body: { customerId: 'c1', staffId: 's1', menuId: 'm1', startAt: input.startAt, durationMin: 60, prepMin: 10, memo: null },
+      body: { customerId: 'c1', staffId: 's1', menuId: 'm1', startAt: input.startAt, durationMin: 60, cleanupMin: 10, memo: null },
     });
-    expect(await api.createAppointment(input)).toEqual({ ok: false, reason: 'OUTSIDE_BUSINESS_HOURS', conflictingIds: [] });
+    expect(await api.createAppointment({ ...input, staffId: null })).toEqual({ ok: false, reason: 'STAFF_REQUIRED' });
+    expect(await api.createAppointment(input)).toEqual({ ok: false, reason: 'INVALID_INPUT' });
     await expect(api.createAppointment({ ...input, customerId: null })).rejects.toThrow('CUSTOMER_REQUIRED');
   });
 
   it('실제 API 거부 문구(설계 05)', () => {
-    const ctx = { data: { appointments: [], blocks: [], businessHours: null, staff: [] }, staffId: 's1', startAt: '2026-12-01T01:00:00Z' };
-    expect(rejectText('NO_CHANGE', [], ctx)).toBe('이미 같은 상태예요.');
-    expect(rejectText('VERSION_CONFLICT', [], ctx)).toBe('그사이 다른 곳에서 이 예약이 바뀌었어요. 다시 열어 확인해 주세요.');
-    expect(rejectText('NETWORK', [], ctx)).toBe('저장 결과를 확인하지 못했어요. 같은 내용으로 다시 시도해 주세요.');
+    expect(rejectText('NO_CHANGE')).toBe('이미 같은 상태예요.');
+    expect(rejectText('VERSION_CONFLICT')).toBe('그사이 다른 곳에서 이 예약이 바뀌었어요. 다시 열어 확인해 주세요.');
+    expect(rejectText('NETWORK')).toBe('저장 결과를 확인하지 못했어요. 같은 내용으로 다시 시도해 주세요.');
+    expect(rejectText('STAFF_REQUIRED')).toBe('담당자를 골라 주세요.');
   });
 });
 

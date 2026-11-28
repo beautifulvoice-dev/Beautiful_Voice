@@ -40,20 +40,20 @@ export async function blocksInRange(client: PoolClient, shopId: string, from: Da
   return rows.map(toBlock);
 }
 
-/** 이 담당자의 점유 구간에 걸리는 활성 차단(매장 전체 포함) — checkBooking에 넘긴다(설계 09 §예약 저장 2·3). */
-export async function activeBlocksFor(client: PoolClient, shopId: string, staffId: string, occupied: Interval): Promise<ActiveBlock[]> {
+/**
+ * 점유 구간에 걸리는 활성 차단(담당자 구분 없이) — appointmentWarnings가 담당자 조건으로 거른다(S3 rev.3.1: 미지정 예약은 모든 차단 대상).
+ */
+export async function activeBlocksIn(client: PoolClient, shopId: string, occupied: Interval): Promise<ActiveBlock[]> {
   const { rows } = await client.query<BlockRow>(
     `${BLOCK_SELECT}
-      WHERE b.shop_id = $1 AND b.status = 'active' AND tstzrange(b.start_at, b.end_at, '[)') && tstzrange($3, $4, '[)')
-        AND (b.all_staff OR EXISTS (
-          SELECT 1 FROM crm.calendar_block_staff t WHERE t.shop_id = b.shop_id AND t.block_id = b.id AND t.staff_id = $2))
-      GROUP BY b.id ORDER BY b.start_at, b.id`, [shopId, staffId, occupied.start, occupied.end]);
+      WHERE b.shop_id = $1 AND b.status = 'active' AND tstzrange(b.start_at, b.end_at, '[)') && tstzrange($2, $3, '[)')
+      GROUP BY b.id ORDER BY b.start_at, b.id`, [shopId, occupied.start, occupied.end]);
   return rows.map((r) => ({ id: r.id, start: r.start_at, end: r.end_at, allStaff: r.all_staff, staffIds: r.staff_ids }));
 }
 
 /**
  * 예약 id → 그 예약의 **전체 점유 구간**과 겹치는 활성 차단 id(시작·id 순, 설계 09 D5).
- * 취소·무효는 점유가 아니라 빈 배열. 한 번의 집합 조회로 계산한다(예약마다 따로 묻지 않는다).
+ * 취소·무효는 점유가 아니라 빈 배열. 담당자 미지정 예약은 모든 차단의 대상(S3 rev.3.1). 한 번의 집합 조회로 계산한다.
  */
 export async function blockedByOf(client: PoolClient, shopId: string, appointmentIds: string[]): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>();
@@ -64,7 +64,7 @@ export async function blockedByOf(client: PoolClient, shopId: string, appointmen
        JOIN crm.calendar_block b
          ON b.shop_id = a.shop_id AND b.status = 'active' AND tstzrange(b.start_at, b.end_at, '[)') && a.occupied
       WHERE a.shop_id = $1 AND a.id = ANY($2::uuid[]) AND a.status IN ('scheduled', 'completed', 'no_show')
-        AND (b.all_staff OR EXISTS (
+        AND (b.all_staff OR a.staff_id IS NULL OR EXISTS (
           SELECT 1 FROM crm.calendar_block_staff t WHERE t.shop_id = a.shop_id AND t.block_id = b.id AND t.staff_id = a.staff_id))
       ORDER BY b.start_at, b.id`, [shopId, appointmentIds]);
   for (const r of rows) out.set(r.appointment_id, [...(out.get(r.appointment_id) ?? []), r.block_id]);

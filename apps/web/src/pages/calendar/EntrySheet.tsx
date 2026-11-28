@@ -1,8 +1,9 @@
 // 예약 넣기 W3 · 관리 불가 시간 W4 (화면 설계서 §4 F1·§5 W3·W4, 디자인 w2.png 가운데·오른쪽). 한 시트를 세그먼트 `예약 · 관리 불가 시간`으로 바꾼다.
 // W4는 창구가 관리 불가 시간을 지원할 때 켠다(api.supportsBlocks) — 실제 API(BEA-179 서버)와 가짜 저장소 모두.
-// 폰은 큰 아래 시트, 웹은 오른쪽 패널(W2와 같은 틀). 저장 검사는 서버와 같은 @bv/scheduling checkBooking(절대 규칙 4) —
-// 거부되면 저장 버튼 위 빨간 알림(W3 거부 표). 관리 불가 시간은 겹치는 예약을 막지 않고 미리 알린다(결정 R50).
-import { blockedAppointmentIds, checkBooking, occupiedOf } from '@bv/scheduling/booking';
+// rev.3.1(설계 12 §5-1): 예약은 겹침·차단·영업시간 밖·휴무여도 저장한다. 입력이 바뀌면 서버 미리 보기(preview-warnings)로
+// 경고를 폼 안에 빨갛게 보이고, 저장 버튼 하나로 저장한다. 저장 응답의 경고가 미리 보기보다 늘었으면 화면(CalendarPage)이 알린다.
+// 관리 불가 시간은 겹치는 예약을 막지 않고 미리 알린다(결정 R50).
+import type { BookingWarning } from '@bv/contracts';
 import type { Candidate } from '@bv/customers/duplicates';
 import {
   ActionButton,
@@ -21,9 +22,21 @@ import {
 } from '@seed-design/react';
 import { CalendarDays, Minus, Plus, Search, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { toBookingInputs, useCalendarApi, type AppointmentChange, type NewAppointment } from '@/features/calendar/api';
-import { occupancyText, rejectText, shopIso, shortDate } from '@/features/calendar/bookingText';
-import { addDays, businessWindowsForDate, shopDate, shopTime, startTimes, type CalendarAppointment, type CalendarData, type Menu, type Staff } from '@/features/calendar/model';
+import { useCalendarApi, type AppointmentChange, type NewAppointment, type SavedAppointment, type WarningPreview } from '@/features/calendar/api';
+import { newWarnings, occupancyText, rejectText, shopIso, shortDate, warningText } from '@/features/calendar/bookingText';
+import {
+  addDays,
+  businessWindowsForDate,
+  isShown,
+  overlappingBlocks,
+  shopDate,
+  shopTime,
+  startTimes,
+  type CalendarAppointment,
+  type CalendarData,
+  type Menu,
+  type Staff,
+} from '@/features/calendar/model';
 import { CustomerValidationError, useCustomerApi } from '@/features/customers/api';
 import type { Customer } from '@/features/customers/model';
 import { HttpError, NetworkError } from '@/lib/http';
@@ -52,8 +65,14 @@ interface Props {
   /** 시작 시각 목록(영업시간 안 15분)을 만드는 데 쓴다. 없으면 09:00~21:00. */
   businessHours?: CalendarData['businessHours'];
   onClose: () => void;
-  /** 저장했다 — 캘린더를 다시 불러오고 그 날로 간다. */
-  onSaved: (date: string) => void;
+  /** 저장했다 — 캘린더를 다시 불러오고 그 날로 간다. 예약이면 저장한 예약과 미리 보기에 없던 새 경고. */
+  onSaved: (date: string, saved?: SaveNotice) => void;
+}
+
+/** 저장 뒤 안내(설계 12 §5-1): 미리 보기에 없던 경고가 있으면 "저장했어요 · 새로 겹치는 예약 N건". */
+export interface SaveNotice {
+  appointmentId: string;
+  fresh: BookingWarning[];
 }
 
 type Kind = 'appointment' | 'block';
@@ -148,9 +167,9 @@ export function EntrySheet({ start, suspended = false, staff, businessHours = nu
               busy={busy}
               saving={saving}
               setSaving={setSaving}
-              onSaved={(d) => {
+              onSaved={(d, saved) => {
                 reset();
-                onSaved(d);
+                onSaved(d, saved);
               }}
             />
           )}
@@ -229,8 +248,15 @@ export function EntrySheet({ start, suspended = false, staff, businessHours = nu
 type Picked = { id: string | null; name: string; phone: string | null };
 
 const DEFAULT_DURATION = 60;
-/** 메뉴가 없으면 준비 시간 기본 10분(PM 메모 닫힌 항목). 요청에 명시한다 — 생략하면 서버는 0분(설계 06 ④). */
-const DEFAULT_PREP = 10;
+/**
+ * 메뉴가 없으면 정리 시간 기본 10분. 요청에 명시한다 — 생략하면 서버는 0분(설계 06 ④).
+ * ASSUMPTION: 옛 "준비 기본 10분"(PM 메모 닫힌 항목)을 rev.3.1 정리 시간에 그대로 옮긴다.
+ */
+const DEFAULT_CLEANUP = 10;
+/** 담당자 칩 "미지정"(rev.3.1). 빈 문자열('')은 아직 안 고름. */
+const UNASSIGNED = 'unassigned';
+/** 입력을 멈추고 이만큼 지나면 경고 미리 보기를 부른다. */
+const PREVIEW_DELAY_MS = 250;
 /** 고객 검색은 두 글자부터(설계 06 ②). */
 const MIN_QUERY = 2;
 
@@ -241,7 +267,9 @@ const NETWORK_TEXT = '저장 결과를 확인하지 못했어요. 같은 내용�
 /** 바꾸기: 그사이 다른 곳에서 바뀜(409). 입력은 두고 최신 값을 불러와 확인한 뒤 다시 저장한다(설계 05 D4·06 거부 표). */
 const EDIT_CONFLICT_TEXT = '그사이 다른 곳에서 이 예약이 바뀌었어요. 최신 값을 불러와 확인한 뒤 다시 저장해 주세요.';
 const EDIT_UNKNOWN_TEXT = '바꾼 내용이 저장됐는지 확인하지 못했어요. 다시 저장하면 같은 요청으로 확인해요.';
-const EDIT_KEYS = ['customerId', 'menuId', 'staffId', 'startAt', 'durationMin', 'prepMin', 'memo'] as const;
+const EDIT_KEYS = ['customerId', 'menuId', 'staffId', 'startAt', 'durationMin', 'cleanupMin', 'memo'] as const;
+/** 미리 보기에 보내는 칸(시간·담당자 — 서버가 경고를 다시 판정하는 칸). */
+const TIMING_KEYS = ['staffId', 'startAt', 'durationMin', 'cleanupMin'] as const;
 type EditKey = (typeof EDIT_KEYS)[number];
 
 function AppointmentForm({
@@ -261,7 +289,7 @@ function AppointmentForm({
   saving: { readonly current: boolean };
   setSaving: (busy: boolean) => void;
   businessHours: CalendarData['businessHours'];
-  onSaved: (date: string) => void;
+  onSaved: (date: string, saved?: SaveNotice) => void;
 }) {
   const api = useCalendarApi();
   const customers = useCustomerApi();
@@ -282,8 +310,14 @@ function AppointmentForm({
   const [date, setDate] = useState(start.date);
   const [time, setTime] = useState(start.time ?? '');
   const [duration, setDuration] = useState(DEFAULT_DURATION);
-  const [prep, setPrep] = useState(DEFAULT_PREP);
+  const [cleanup, setCleanup] = useState(DEFAULT_CLEANUP);
+  // 담당자 필수 설정(rev.3.1 §3.2). 못 읽으면 꺼진 것으로 본다 — 켜진 매장이면 서버가 422로 알려 준다.
+  const [requireStaff, setRequireStaff] = useState(false);
+  useEffect(() => {
+    api.appointmentRules().then((r) => setRequireStaff(r.requireStaffSelection), () => setRequireStaff(false));
+  }, [api]);
   const lane = start.staffId && staff.some((s) => s.id === start.staffId) ? start.staffId : '';
+  // ASSUMPTION: 담당자를 안 고르면 미지정으로 둔다(담당자 필수가 꺼진 매장). 담당자 1명이면 그 사람(F1-4).
   const [staffId, setStaffId] = useState<string>(staff.length === 1 ? staff[0]!.id : lane);
   // 날짜·시각·담당자를 손으로 바꿨는가 — 패널이 열린 채 다른 빈 칸을 누르면 덮어쓰기 전에 묻는다(#69 리뷰).
   const [startEdited, setStartEdited] = useState(false);
@@ -307,6 +341,14 @@ function AppointmentForm({
     // 캘린더를 불러오는 중에 열면 담당자가 아직 없다 — 도착한 담당자가 1명이면 그 사람으로(F1-4, #69 리뷰).
     if (staffId === '' && staff.length === 1) setStaffId(staff[0]!.id);
   }, [staff, staffId]);
+  /** 미지정을 고를 수 있나: 설정이 꺼졌거나, 이미 미지정인 예약을 고치는 중(설계 12 D3 — 메모 수정은 된다). */
+  const editingUnassigned = base?.staffId === null;
+  const unassignedOk = !requireStaff || editingUnassigned;
+  const showStaffPicker = staff.length > 1 || (staff.length === 1 && editingUnassigned);
+  // 안 골랐으면('') 미지정을 고를 수 있을 때 미지정, 아니면 아직 안 고름(저장 못 함). 설정이 나중에 켜지면 미지정을 풀어 준다.
+  const chosen = staffId === UNASSIGNED && !unassignedOk ? '' : staffId;
+  const staffChoice = chosen === '' && unassignedOk && staff.length !== 1 ? UNASSIGNED : chosen;
+  const staffValue: string | null | undefined = staffChoice === UNASSIGNED ? null : staffChoice === '' ? undefined : staffChoice;
   const [memo, setMemo] = useState('');
   const [error, setError] = useState<string | null>(null);
   // 고객·예약은 서로 다른 키. 응답을 못 받으면 같은 내용·같은 키로 다시(설계 05 D5·06 D2).
@@ -337,8 +379,8 @@ function AppointmentForm({
       setTime(shopTime(a.startAt));
     }
     if (want('durationMin')) setDuration(a.durationMin);
-    if (want('prepMin')) setPrep(a.prepMin);
-    if (want('staffId')) setStaffId(a.staffId);
+    if (want('cleanupMin')) setCleanup(a.cleanupMin);
+    if (want('staffId')) setStaffId(a.staffId ?? UNASSIGNED);
     if (want('memo')) setMemo(a.memo ?? '');
   };
   const loadLatest = async (fillDraft: boolean) => {
@@ -382,9 +424,59 @@ function AppointmentForm({
   }, [customers, query, picked]);
 
   const startAt = date && time ? shopIso(date, time) : null;
-  const staffName = staff.find((s) => s.id === staffId)?.name;
+  const staffName = staff.find((s) => s.id === staffValue)?.name ?? null;
   const editing = start.editId !== undefined;
-  const ready = picked !== null && staffId !== '' && startAt !== null && sameName === null && (!editing || base !== null);
+  const ready = picked !== null && staffValue !== undefined && startAt !== null && sameName === null && (!editing || base !== null);
+
+  // ── 경고 미리 보기(설계 12 D4·§5-1): 저장과 같은 서버 판정, 읽기 전용 ──
+  /** 미리 보기 요청. 새 예약은 고객과 상관없이 보낸다 — 등록 고객이면 customerId도 싣는다(새 고객·미선택은 생략). */
+  const previewRequest = useMemo((): WarningPreview | null => {
+    if (!startAt || staffValue === undefined) return null;
+    const draft = { staffId: staffValue, startAt, durationMin: duration, cleanupMin: cleanup };
+    if (!editing) return picked?.id ? { customerId: picked.id, ...draft } : draft;
+    if (!base) return null;
+    const changed = TIMING_KEYS.filter((k) => (k === 'startAt' ? Date.parse(startAt) !== Date.parse(base.startAt) : draft[k] !== base[k]));
+    // 시간·담당자를 안 바꿨으면 서버도 다시 판정하지 않는다(경고 없음).
+    if (changed.length === 0) return null;
+    return { appointmentId: base.id, version: base.version ?? 1, ...Object.fromEntries(changed.map((k) => [k, draft[k]])) };
+  }, [startAt, staffValue, duration, cleanup, editing, picked?.id, base]);
+  const previewKey = previewRequest ? JSON.stringify(previewRequest) : null;
+  const [preview, setPreview] = useState<{ key: string; warnings: BookingWarning[] } | null>(null);
+  useEffect(() => {
+    if (!previewRequest || !previewKey) return setPreview(null);
+    let alive = true;
+    const t = setTimeout(() => {
+      api.previewWarnings(previewRequest).then(
+        (warnings) => alive && setPreview({ key: previewKey, warnings }),
+        // 미리 보기를 못 받아도 저장은 된다 — 저장 응답의 경고로 알린다.
+        () => alive && setPreview(null),
+      );
+    }, PREVIEW_DELAY_MS);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [api, previewKey]);
+  /** 지금 입력에 맞는 미리 보기 경고(입력이 바뀌었는데 아직 새 결과가 없으면 빈 목록). */
+  const shownWarnings = preview && preview.key === previewKey ? preview.warnings : [];
+  // 경고 문구에 겹친 예약 이름·차단 메모를 넣으려고 그 날 앞뒤 캘린더를 읽는다.
+  const [around, setAround] = useState<CalendarData | null>(null);
+  const day = startAt ? shopDate(Date.parse(startAt)) : null;
+  const warned = shownWarnings.length > 0;
+  useEffect(() => {
+    if (!day || !warned) return;
+    let alive = true;
+    api.range(addDays(day, -1), addDays(day, 1)).then(
+      (d) => alive && setAround(d),
+      () => alive && setAround(null),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [api, day, warned]);
+  /** 저장 성공 → 미리 보기에 없던 경고만 골라 알린다. 순서만 다르면 새 경고가 아니다. */
+  const finish = (saved: SavedAppointment) =>
+    onSaved(shopDate(Date.parse(saved.startAt)), { appointmentId: saved.id, fresh: newWarnings(shownWarnings, saved.warnings) });
 
   const pickMenu = (id: string) => {
     touched(setMenuId)(id);
@@ -395,9 +487,9 @@ function AppointmentForm({
       setDuration(m.durationMin);
       mark('durationMin');
     }
-    if (m?.prepMin != null) {
-      setPrep(m.prepMin);
-      mark('prepMin');
+    if (m?.cleanupMin != null) {
+      setCleanup(m.cleanupMin);
+      mark('cleanupMin');
     }
   };
 
@@ -430,7 +522,7 @@ function AppointmentForm({
     if (unsettledEdit.current) {
       const { change, key } = unsettledEdit.current;
       const again = await api.updateAppointment(base.id, change, { idempotencyKey: key });
-      if (again.ok) return onSaved(shopDate(Date.parse(again.value.startAt)));
+      if (again.ok) return finish(again.value);
       if (again.reason === 'NETWORK') return setError(EDIT_UNKNOWN_TEXT);
       unsettledEdit.current = null;
       appointmentKey.settle();
@@ -450,10 +542,10 @@ function AppointmentForm({
     const draft = {
       customerId: customer!.id ?? undefined,
       menuId: menuId === '' ? null : menuId,
-      staffId,
+      staffId: staffValue ?? null,
       startAt,
       durationMin: duration,
-      prepMin: prep,
+      cleanupMin: cleanup,
       memo: memo.trim() || null,
     };
     const fields = EDIT_KEYS.filter((k) =>
@@ -461,20 +553,6 @@ function AppointmentForm({
     );
     if (fields.length === 0) return onSaved(shopDate(Date.parse(base.startAt)));
     const has = (k: (typeof EDIT_KEYS)[number]) => fields.includes(k);
-    // 화면에서 먼저 같은 규칙으로 검사(자기 자신 제외). 시작·끝이 바뀌면 영업시간까지, 준비·담당자만이면 겹침만(04 D2).
-    const end = (a: { startAt: string; durationMin: number }) => Date.parse(a.startAt) + a.durationMin * 60_000;
-    const moved = has('startAt') || end(draft) !== end(base);
-    const day = shopDate(Date.parse(startAt));
-    const data = await api.range(addDays(day, -1), addDays(day, 1));
-    const ctx = { data, staffId, startAt };
-    if (moved || has('prepMin') || has('staffId')) {
-      const { hours, existing, blocks } = toBookingInputs(data);
-      const check = checkBooking({ staffId, start: new Date(startAt), durationMin: duration, prepMin: prep }, hours, existing, blocks, {
-        excludeId: base.id,
-        skipHoursCheck: !moved,
-      });
-      if (!check.ok) return setError(rejectText(check.reason, check.conflictingIds, ctx));
-    }
     const change: AppointmentChange = { version: base.version ?? 1 };
     for (const k of fields) Object.assign(change, { [k]: draft[k] });
     // 가짜 저장소의 카드 이름(실제 API는 보내지 않는다).
@@ -484,7 +562,7 @@ function AppointmentForm({
     const r = await api.updateAppointment(base.id, change, { idempotencyKey: key });
     if (r.ok) {
       appointmentKey.settle();
-      return onSaved(shopDate(Date.parse(r.value.startAt)));
+      return finish(r.value);
     }
     if (r.reason === 'NETWORK') {
       unsettledEdit.current = { change, key };
@@ -495,11 +573,11 @@ function AppointmentForm({
       setConflict(true);
       return setError(EDIT_CONFLICT_TEXT);
     }
-    setError(rejectText(r.reason, r.conflictingIds, ctx));
+    setError(rejectText(r.reason));
   };
 
   const save = async (confirmedNew = false) => {
-    if (saving.current || !picked || staffId === '' || !startAt) return;
+    if (saving.current || !picked || staffValue === undefined || !startAt) return;
     if (editing) {
       setSaving(true);
       setError(null);
@@ -524,7 +602,7 @@ function AppointmentForm({
         if (again.ok) {
           unsettled.current = null;
           appointmentKey.settle();
-          return onSaved(shopDate(Date.parse(again.value.startAt)));
+          return finish(again.value);
         }
         if (again.reason === 'NETWORK') return setError(`${customerNote()}${APPOINTMENT_UNKNOWN_TEXT}`);
         // 처음 요청이 확실히 거절됐다 — 저장되지 않았으니 지금 입력으로 새로 저장한다.
@@ -537,13 +615,7 @@ function AppointmentForm({
         if (r.needsReview) return setSameName(r.candidates);
       }
       setSameName(null);
-      // 1) 같은 규칙으로 먼저 검사해 거부 이유를 문구로(새 고객을 헛되이 만들지 않게). 최종 판정은 서버가 다시 한다.
-      const day = shopDate(Date.parse(startAt));
-      const data = await api.range(addDays(day, -1), addDays(day, 1));
-      const ctx = { data, staffId, startAt };
-      const { hours, existing, blocks } = toBookingInputs(data);
-      const check = checkBooking({ staffId, start: new Date(startAt), durationMin: duration, prepMin: prep }, hours, existing, blocks);
-      if (!check.ok) return setError(rejectText(check.reason, check.conflictingIds, ctx));
+      // 1) 겹침·영업시간은 거부하지 않는다(rev.3.1) — 경고는 미리 보기와 저장 응답으로.
       // 2) 고객 → 예약 순서로 따로 저장(06 D2).
       const wasNew = !picked.id;
       const customer = await ensureCustomer(picked);
@@ -555,24 +627,24 @@ function AppointmentForm({
         customerPhone: customer.phone,
         menuId: menu?.id ?? null,
         menuName: menu?.name ?? null,
-        staffId,
+        staffId: staffValue,
         startAt,
         durationMin: duration,
-        prepMin: prep,
+        cleanupMin: cleanup,
         memo: memo.trim() || null,
       };
       const key = appointmentKey.keyFor(JSON.stringify(input));
       const r = await api.createAppointment(input, { idempotencyKey: key });
       if (r.ok) {
         appointmentKey.settle();
-        return onSaved(shopDate(Date.parse(r.value.startAt)));
+        return finish(r.value);
       }
       if (r.reason === 'NETWORK') {
         unsettled.current = { input, key };
         return setError(`${customerNote()}${APPOINTMENT_UNKNOWN_TEXT}`);
       }
       appointmentKey.settle();
-      const why = rejectText(r.reason, r.conflictingIds, ctx);
+      const why = rejectText(r.reason);
       setError(wasNew || createdCustomer.current ? `${CUSTOMER_SAVED_TEXT} ${why}` : why);
     } catch (err) {
       setError(err instanceof NetworkError ? NETWORK_TEXT : '저장하지 못했어요. 다시 시도해 주세요.');
@@ -596,7 +668,7 @@ function AppointmentForm({
         )}
         {editing && base && conflict && !error && (
           <p role="status" className="rounded-xl bg-neutral-weak p-3 text-sm">
-            최신 값: {shortDate(shopDate(Date.parse(base.startAt)))} {shopTime(base.startAt)} · 관리 {base.durationMin}분 · 준비 {base.prepMin}분
+            최신 값: {shortDate(shopDate(Date.parse(base.startAt)))} {shopTime(base.startAt)} · 시술 {base.durationMin}분 · 정리 {base.cleanupMin}분
             {base.menuName ? ` · ${base.menuName}` : ''} — 입력은 그대로 두었어요. 확인한 뒤 다시 저장해 주세요.
           </p>
         )}
@@ -752,42 +824,45 @@ function AppointmentForm({
           </div>
         </div>
 
+        {/* 시술 5~600분, 정리 0~180분(rev.3.1, DB CHECK와 같음) */}
         <Stepper
-          label="관리 시간"
+          label="시술 시간"
           value={duration}
           step={10}
           min={10}
+          max={600}
           onChange={(v) => {
             touched(setDuration)(v);
             mark('durationMin');
           }}
         />
         <Stepper
-          label="준비 시간"
-          value={prep}
+          label="정리 시간"
+          value={cleanup}
           step={5}
           min={0}
+          max={180}
           onChange={(v) => {
-            touched(setPrep)(v);
-            mark('prepMin');
+            touched(setCleanup)(v);
+            mark('cleanupMin');
           }}
         />
 
-        {staff.length === 0 && (
+        {staff.length === 0 && !unassignedOk && (
           <Callout.Root tone="warning">
             <Callout.Content>
-              <Callout.Description>담당자가 없어 저장할 수 없어요. 설정에서 담당자를 먼저 넣어 주세요.</Callout.Description>
+              <Callout.Description>담당자를 골라야 하는데 담당자가 없어요. 설정에서 담당자를 먼저 넣어 주세요.</Callout.Description>
             </Callout.Content>
           </Callout.Root>
         )}
-        {staff.length > 1 && (
+        {showStaffPicker && (
           <div className="grid gap-2">
             <span className="pl-0.5 text-sm font-medium" id="staff-label">
               담당자
             </span>
             <Chip.RadioRoot
               aria-labelledby="staff-label"
-              value={staffId}
+              value={staffChoice}
               onValueChange={(id) => {
                 touched(setStaffId)(id);
                 mark('staffId');
@@ -801,7 +876,14 @@ function AppointmentForm({
                   <Chip.Label>{s.name}</Chip.Label>
                 </Chip.RadioItem>
               ))}
+              {unassignedOk && (
+                <Chip.RadioItem value={UNASSIGNED} variant="outlineStrong" size="medium">
+                  <RadioGroupItemHiddenInput />
+                  <Chip.Label>미지정</Chip.Label>
+                </Chip.RadioItem>
+              )}
             </Chip.RadioRoot>
+            {!unassignedOk && staffValue === undefined && <p className="pl-0.5 text-sm text-ink-soft">이 매장은 담당자를 꼭 골라야 해요.</p>}
           </div>
         )}
 
@@ -828,11 +910,28 @@ function AppointmentForm({
         {/* 미리보기·거부 알림은 저장 버튼 바로 위(F1-5·6) — 메모 칸이 길어도 가려지지 않게 발에 둔다. */}
         <div className="grid w-full gap-3.5">
           {/* 점유 미리보기(결정 R33) */}
-          {startAt && staffName && (
+          {startAt && staffValue !== undefined && (
             <p aria-live="polite" className="flex items-start gap-2 rounded-xl bg-brand-weak px-3 py-2.5 text-[15px] text-cal-appt-text">
               <CalendarDays aria-hidden size={20} className="mt-px flex-none" />
-              {occupancyText(startAt, duration, prep, staffName)}
+              {occupancyText(startAt, duration, cleanup, staffName)}
             </p>
+          )}
+          {/* 경고 4종(설계 12 §5-1): 막지 않는다 — 확인 창 없이 아래 저장 버튼으로 그대로 저장. */}
+          {startAt && shownWarnings.length > 0 && (
+            <Callout.Root tone="critical" aria-label="저장 전 확인">
+              <Callout.Content>
+                <Callout.Title>확인해 주세요 · 그대로 저장할 수 있어요</Callout.Title>
+                <Callout.Description>
+                  <ul className="m-0 grid gap-0.5 p-0">
+                    {shownWarnings.map((w) => (
+                      <li key={w.code} data-warning={w.code} className="list-none">
+                        {warningText(w, { data: around ?? { appointments: [], blocks: [], businessHours }, startAt })}
+                      </li>
+                    ))}
+                  </ul>
+                </Callout.Description>
+              </Callout.Content>
+            </Callout.Root>
           )}
           {error && (
             <Callout.Root tone="critical" role="alert">
@@ -873,12 +972,14 @@ function Stepper({
   value,
   step,
   min,
+  max,
   onChange,
 }: {
   label: string;
   value: number;
   step: number;
   min: number;
+  max: number;
   onChange: (v: number) => void;
 }) {
   return (
@@ -900,6 +1001,7 @@ function Stepper({
         <button
           type="button"
           aria-label={`${step}분 늘리기`}
+          disabled={value + step > max}
           onClick={() => onChange(value + step)}
           className="grid h-12 w-11 place-items-center"
         >
@@ -998,21 +1100,11 @@ function BlockForm({
     };
   }, [api, date]);
 
-  // 겹치는 예약 미리 알림(결정 R50) — 서버와 같은 blockedAppointmentIds
+  // 겹치는 예약 미리 알림(결정 R50) — 캘린더 겹침 표시와 같은 규칙(점유 = 시술 + 정리, 미지정 예약은 모든 차단)
   const overlapping = useMemo(() => {
     if (!around || !startAt || !endAt) return [];
-    const ids = new Set(
-      blockedAppointmentIds(
-        { id: 'new', start: new Date(startAt), end: new Date(endAt), allStaff, staffIds: who },
-        around.appointments.map((a) => ({
-          id: a.id,
-          staffId: a.staffId,
-          status: a.status,
-          occupied: occupiedOf({ start: new Date(a.startAt), durationMin: a.durationMin, prepMin: a.prepMin }),
-        })),
-      ),
-    );
-    return around.appointments.filter((a) => ids.has(a.id));
+    const draft = [{ id: 'new', startAt, endAt, allStaff, staffIds: who, memo: null }];
+    return around.appointments.filter((a) => isShown(a) && overlappingBlocks({ ...a, blockedBy: undefined }, draft).length > 0);
   }, [around, startAt, endAt, allStaff, who]);
 
   const save = async () => {

@@ -185,3 +185,18 @@ test('같은 키라도 쿼리(예: 삭제의 version)가 다르면 다른 요청
   assert.equal(changed.status, 422);
   assert.equal(changed.body.code, 'IDEMPOTENCY_KEY_REUSED');
 });
+
+test('예약 규칙(S3): 담당자 필수는 처음 꺼짐, 저장하면 그대로 읽힌다, 잘못된 값·모르는 칸은 422, 다른 매장은 404', async () => {
+  const rules = `${A}/settings/appointment-rules`;
+  assert.deepEqual((await call('GET', rules)).body, { requireStaffSelection: false });
+  const on = await call('PUT', rules, { body: { requireStaffSelection: true } });
+  assert.deepEqual([on.status, on.body], [200, { requireStaffSelection: true }]);
+  assert.deepEqual((await call('GET', rules)).body, { requireStaffSelection: true });
+  const bad = await call('PUT', rules, { body: { requireStaffSelection: 'yes', version: 1 } });
+  assert.deepEqual([bad.status, bad.body.details.fields], [422, [
+    { field: 'version', code: 'UNKNOWN_FIELD' }, { field: 'requireStaffSelection', code: 'INVALID_BOOLEAN' }]]);
+  assert.equal((await call('PUT', rules, { body: {} })).body.details.fields[0].code, 'REQUIRED');
+  assert.equal((await call('GET', rules, { cookie: ownerB })).status, 404);
+  assert.equal((await call('PUT', rules, { body: { requireStaffSelection: false }, key: null })).status, 400, 'Idempotency-Key 필수');
+  assert.equal((await call('PUT', rules, { body: { requireStaffSelection: false } })).body.requireStaffSelection, false);
+});
