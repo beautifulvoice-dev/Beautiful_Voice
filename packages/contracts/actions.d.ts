@@ -16,7 +16,13 @@ export interface CompletionPreviewRequest {
 export interface CompletionResolveRequest extends CompletionPreviewRequest {
   action: 'approve';
   completionStep: 'all';
+  expectedDeduction?: CompletionExpectedDeduction;
 }
+
+export type CompletionExpectedDeduction =
+  | { instrument: 'pass'; quantity: number; passId: string }
+  | { instrument: 'prepaid'; quantity: number; passId?: never }
+  | { instrument: 'skipped'; quantity: 0; passId?: never };
 
 export interface CompletionDeduction {
   instrument: 'pass' | 'prepaid' | 'skipped';

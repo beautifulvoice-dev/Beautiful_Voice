@@ -143,6 +143,10 @@ components:
       additionalProperties: false
     ResolveRequest:
       type: object
+      description: |
+        자동 차감은 최신 계산 결과를 expectedDeduction과 비교합니다. 필드가 없는 요청은 카드의 원래 차감안과 비교합니다.
+        차감 수단·횟수권·수량이 달라졌으면 상태 변경 없이 409를 반환합니다. 잔액만 바뀐 경우 최신 잔액을 사용합니다.
+        재확인 뒤 새 요청에는 새 멱등키를 사용합니다. 원장이 직접 정한 차감은 walletOverride로 전달하고 최신 상태에서 유효성을 검사합니다.
       required: [cardVersion, customerVersion, action, completionStep]
       properties:
         cardVersion: { $ref: '#/components/schemas/Version' }
@@ -150,9 +154,32 @@ components:
         customerName: { type: string }
         customerPhone: { type: string, nullable: true }
         walletOverride: { $ref: '#/components/schemas/WalletOverride' }
+        expectedDeduction: { $ref: '#/components/schemas/ExpectedDeduction' }
         action: { type: string, enum: [approve] }
         completionStep: { type: string, enum: [all] }
       additionalProperties: false
+    ExpectedDeduction:
+      description: 마지막 미리 보기에서 확인한 자동 차감의 수단·수량·횟수권 ID입니다.
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [instrument, quantity, passId]
+          properties:
+            instrument: { type: string, enum: [pass] }
+            quantity: { type: integer, minimum: 1 }
+            passId: { $ref: '#/components/schemas/Id' }
+        - type: object
+          additionalProperties: false
+          required: [instrument, quantity]
+          properties:
+            instrument: { type: string, enum: [prepaid] }
+            quantity: { type: integer, minimum: 1 }
+        - type: object
+          additionalProperties: false
+          required: [instrument, quantity]
+          properties:
+            instrument: { type: string, enum: [skipped] }
+            quantity: { type: integer, minimum: 0, maximum: 0 }
     Deduction:
       type: object
       required: [instrument, quantity]

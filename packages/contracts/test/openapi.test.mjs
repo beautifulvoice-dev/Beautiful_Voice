@@ -124,6 +124,14 @@ test('완료 카드 승인은 업무 결과와 재확인 충돌을 구분한다'
   assert.deepEqual(schemas.ResolveRequest.required, ['cardVersion', 'customerVersion', 'action', 'completionStep']);
   assert.deepEqual(schemas.WalletOverride.oneOf.map((variant) => variant.required),
     [['instrument', 'passId', 'sessions'], ['instrument', 'amount'], ['instrument']]);
+  assert.equal(schemas.PreviewRequest.properties.expectedDeduction, undefined);
+  assert.ok(schemas.ResolveRequest.properties.expectedDeduction.$ref.endsWith('/ExpectedDeduction'));
+  assert.deepEqual(schemas.ExpectedDeduction.oneOf.map(({ properties, required, additionalProperties }) =>
+    [properties.instrument.enum[0], properties.quantity.minimum, properties.quantity.maximum, required, additionalProperties]), [
+    ['pass', 1, undefined, ['instrument', 'quantity', 'passId'], false],
+    ['prepaid', 1, undefined, ['instrument', 'quantity'], false],
+    ['skipped', 0, 0, ['instrument', 'quantity'], false],
+  ]);
   const result = resolveAction.responses['200'].content['application/json'].schema;
   assert.deepEqual(result.oneOf.map(({ $ref }) => resolve(actions, $ref).properties.outcome.enum[0]),
     ['resolved', 'failed', 'needs_input']);
