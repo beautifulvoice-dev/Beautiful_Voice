@@ -1,0 +1,20 @@
+{
+  "name": "@bv/wallet",
+  "version": "0.0.0",
+  "private": true,
+  "description": "지갑(선불금·횟수권, 설계 13) 거래 종류별 부호·입력 검증 — DB 없이 도는 순수 규칙",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": "./src/wallet.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0"
+  }
+}
