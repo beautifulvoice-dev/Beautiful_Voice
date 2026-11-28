@@ -14,7 +14,7 @@ const ops = (doc) =>
   );
 
 test('모든 $ref가 풀린다', () => {
-  for (const f of ['crm.openapi.yaml', 'auth.openapi.yaml']) {
+  for (const f of ['crm.openapi.yaml', 'auth.openapi.yaml', 'actions.openapi.yaml']) {
     const doc = load(f);
     const refs = [];
     (function walk(o) {
@@ -102,4 +102,44 @@ test('S3 rev.3.1: 예약 쓰기 응답은 warnings를 싣고, 시간 범위는 �
   assert.equal(schemaOf(`${base}/{appointmentId}`, 'patch', '200'), '#/components/schemas/AppointmentSaved');
   assert.equal(schemaOf(`${base}/{appointmentId}/status`, 'put', '200'), '#/components/schemas/AppointmentSaved');
   assert.ok(!s.AppointmentInput.allOf[1].required.includes('staffId'), '담당자 미지정 허용');
+});
+
+test('완료 카드 계약은 세션 기준이며 승인만 멱등키를 요구한다', () => {
+  const actions = load('actions.openapi.yaml');
+  assert.deepEqual(actions.security, [{ SessionCookie: [] }, { AppBearer: [] }]);
+  const list = actions.paths['/api/actions'].get;
+  assert.deepEqual(list.parameters.map(({ name }) => name), ['status', 'cursor', 'limit']);
+  assert.deepEqual(list.responses['200'].content['application/json'].schema.required, ['items', 'nextCursor']);
+  const preview = actions.paths['/api/actions/{id}/preview'].post;
+  const resolveAction = actions.paths['/api/actions/{id}/resolve'].post;
+  assert.equal(preview.parameters, undefined);
+  assert.deepEqual(resolveAction.parameters, [{ $ref: '#/components/parameters/IdempotencyKey' }]);
+  assert.equal(actions.components.parameters.IdempotencyKey.required, true);
+});
+
+test('완료 카드 승인은 업무 결과와 재확인 충돌을 구분한다', () => {
+  const actions = load('actions.openapi.yaml');
+  const { schemas } = actions.components;
+  const resolveAction = actions.paths['/api/actions/{id}/resolve'].post;
+  assert.deepEqual(schemas.ResolveRequest.required, ['cardVersion', 'customerVersion', 'action', 'completionStep']);
+  assert.deepEqual(schemas.WalletOverride.oneOf.map((variant) => variant.required),
+    [['instrument', 'passId', 'sessions'], ['instrument', 'amount'], ['instrument']]);
+  assert.equal(schemas.PreviewRequest.properties.expectedDeduction, undefined);
+  assert.ok(schemas.ResolveRequest.properties.expectedDeduction.$ref.endsWith('/ExpectedDeduction'));
+  assert.deepEqual(schemas.ExpectedDeduction.oneOf.map(({ properties, required, additionalProperties }) =>
+    [properties.instrument.enum[0], properties.quantity.minimum, properties.quantity.maximum, required, additionalProperties]), [
+    ['pass', 1, undefined, ['instrument', 'quantity', 'passId'], false],
+    ['prepaid', 1, undefined, ['instrument', 'quantity'], false],
+    ['skipped', 0, 0, ['instrument', 'quantity'], false],
+  ]);
+  const result = resolveAction.responses['200'].content['application/json'].schema;
+  assert.deepEqual(result.oneOf.map(({ $ref }) => resolve(actions, $ref).properties.outcome.enum[0]),
+    ['resolved', 'failed', 'needs_input']);
+  assert.equal(schemas.TargetChanged.properties.reason.enum[0], 'TARGET_CHANGED');
+  assert.equal(schemas.NeedsInput.properties.cardStatus.enum[0], 'pending');
+  assert.equal(schemas.PreviewRequired.allOf[1].properties.code.enum[0], 'COMPLETION_PREVIEW_REQUIRED');
+  assert.deepEqual(schemas.PreviewRequired.allOf[1].properties.details.properties.reason.enum,
+    ['INSTRUMENT_CHANGED', 'AMOUNT_CHANGED']);
+  assert.ok(schemas.CompletionPreview.properties.deduction);
+  assert.ok(!schemas.CompletionPreview.required.includes('deduction'));
 });
