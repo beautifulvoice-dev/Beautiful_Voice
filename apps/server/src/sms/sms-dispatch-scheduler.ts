@@ -23,10 +23,10 @@ export class SmsDispatchScheduler implements OnApplicationBootstrap, OnModuleDes
     }
 
     const normalized = recipient ? normalizePhone(recipient) : null;
-    if (normalized && (!normalized.ok || normalized.kind !== 'mobile')) {
-      throw new Error('BV_SMS_DISPATCH_TEST_RECIPIENT must be a valid mobile number');
+    if (!normalized?.ok || normalized.kind !== 'mobile') {
+      throw new Error('Enabled dev SMS dispatch requires BV_SMS_DISPATCH_TEST_RECIPIENT to be a valid mobile number');
     }
-    const testRecipient = normalized?.phone;
+    const testRecipient = normalized.phone;
     const deliver = createSolapiSender({ apiKey, apiSecret, from });
     let running = false;
     const tick = async () => {
