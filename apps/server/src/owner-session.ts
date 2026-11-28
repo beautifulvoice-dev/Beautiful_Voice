@@ -3,6 +3,7 @@ import { ApiError } from './common/api-error';
 import type { KakaoLoginConfig } from './kakao-login';
 
 export const SESSION_COOKIE = 'bv_session';
+export const APP_SESSION_PURPOSE = 'owner-app-session';
 export const STATE_COOKIE = 'bv_oauth_state';
 export const SESSION_SECONDS = 30 * 24 * 60 * 60;
 export const STATE_SECONDS = 5 * 60;
