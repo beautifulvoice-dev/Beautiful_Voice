@@ -7,6 +7,7 @@ import type { PoolClient } from 'pg';
 import { activeBlocksIn, blockedByOf, blocksInRange } from '../calendar-blocks/block-queries';
 import { ApiError } from '../common/api-error';
 import { lockShopWrites } from '../common/shop-lock';
+import { dismissPendingCompletion, lockPendingCompletion } from '../completion/appointment-card';
 
 // M1 예약 쓰기(BEA-176·160) — `crm.appointment_m1`만 쓴다. 006 `crm.appointment`(옛 C-07 서비스, src/appointments)는
 // 이행 합의 전까지 건드리지 않는다. 모든 함수는 DatabaseService.withShop 트랜잭션의 client를 받고,
@@ -53,12 +54,13 @@ export class AppointmentM1Service {
   /**
    * 상태 바꾸기·정정(#42 PUT …/status, 설계 04 보강 §예약 취소와 상태 API). 판정은 @bv/scheduling changeStatus(결정 S5).
    * 취소를 되살리면 예약·차단 겹침을 warnings로 알리고 저장한다(설계 12 §3). 영업시간·휴무는 보지 않는다(Q2).
-   * 지갑·문자는 건드리지 않는다.
+   * 예정 예약을 닫으면 같은 트랜잭션에서 미승인 완료 카드를 해제한다.
    */
   async setStatus(client: PoolClient, shopId: string, id: string, input: unknown): Promise<AppointmentSaved> {
     if (!UUID.test(id)) throw appointmentNotFound();
     const { version, status } = readStatusInput(input);
     await lockShopWrites(client, shopId);
+    const cardId = status !== 'scheduled' ? await lockPendingCompletion(client, shopId, id) : undefined;
     const current = await loadCurrent(client, shopId, id, true);
     if (!current) throw appointmentNotFound();
     if (current.version !== version) throw versionConflict(current.version);
@@ -71,6 +73,7 @@ export class AppointmentM1Service {
     const warnings = change.needsOverlapCheck
       ? await judge(client, shopId, toFields(current), { hours: false, overlap: true, excludeId: id }) : [];
     await client.query('UPDATE crm.appointment_m1 SET status = $3 WHERE shop_id = $1 AND id = $2', [shopId, id, status]);
+    if (cardId && current.status === 'scheduled') await dismissPendingCompletion(client, shopId, cardId, 'status_changed');
     return saved(await this.find(client, shopId, id), warnings);
   }
 
@@ -94,6 +97,8 @@ export class AppointmentM1Service {
     if (!UUID.test(id)) throw appointmentNotFound();
     const { values, version } = readInput(input, 'patch');
     await lockShopWrites(client, shopId);
+    const cardId = COMPLETION_FIELDS.some((field) => values[field] !== undefined)
+      ? await lockPendingCompletion(client, shopId, id) : undefined;
     const current = await loadCurrent(client, shopId, id, true);
     if (!current) throw appointmentNotFound();
     if (current.version !== version) throw versionConflict(current.version);
@@ -106,6 +111,9 @@ export class AppointmentM1Service {
       await client.query(
         `UPDATE crm.appointment_m1 SET ${columns.join(', ')} WHERE shop_id = $1 AND id = $2`,
         [shopId, id, ...changed.map((k) => after[k])]);
+      if (cardId && changed.some((field) => COMPLETION_FIELDS.includes(field))) {
+        await dismissPendingCompletion(client, shopId, cardId, 'rescheduled');
+      }
     }
     return saved(await this.find(client, shopId, id), warnings);
   }
@@ -236,6 +244,7 @@ const KEYS = ['customerId', 'menuId', 'staffId', 'start', 'durationMin', 'cleanu
 type Fields = {
   customerId: string; menuId: string | null; staffId: string | null; start: Date; durationMin: number; cleanupMin: number; memo: string | null;
 };
+const COMPLETION_FIELDS: readonly (keyof Fields)[] = ['customerId', 'start', 'durationMin', 'menuId', 'staffId'];
 const COLUMN: Record<keyof Fields, string> = {
   customerId: 'customer_id', menuId: 'menu_id', staffId: 'staff_id', start: 'start_at',
   durationMin: 'duration_min', cleanupMin: 'cleanup_min', memo: 'memo',

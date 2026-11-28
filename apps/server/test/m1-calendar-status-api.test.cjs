@@ -57,7 +57,7 @@ before(async () => {
 after(async () => {
   await app?.close();
   try {
-    for (const table of ['idempotency_key', 'appointment_m1', 'staff', 'menu', 'customer', 'shop_closure', 'shop_settings', 'user_membership']) {
+    for (const table of ['idempotency_key', 'action_cards', 'appointment_m1', 'staff', 'menu', 'customer', 'shop_closure', 'shop_settings', 'user_membership']) {
       await admin.query(`DELETE FROM crm.${table} WHERE shop_id IN ($1, $2)`, [shopA, shopB]);
     }
     await admin.query('DELETE FROM crm.shop WHERE id IN ($1, $2)', [shopA, shopB]);
@@ -210,4 +210,55 @@ test('같은 키·같은 요청은 재생, 같은 키·다른 상태는 422 IDEM
   assert.deepEqual(again.body, first.body);
   assert.equal((await setStatus(id, { version: 1, status: 'completed' }, { key })).body.code, 'IDEMPOTENCY_KEY_REUSED');
   assert.equal((await setStatus(id, { version: 2, status: 'completed' }, { key: null })).body.code, 'INVALID_IDEMPOTENCY_KEY');
+});
+
+async function seedCompletionCard(appointmentId) {
+  const { rows: [card] } = await admin.query(`
+    INSERT INTO crm.action_cards (shop_id, customer_id, appointment_id, appointment_version, cycle_seq, available_at)
+    SELECT shop_id, customer_id, id, version, cycle_seq, clock_timestamp()
+      FROM crm.appointment_m1 WHERE shop_id = $1 AND id = $2
+    RETURNING id`, [shopA, appointmentId]);
+  return card.id;
+}
+
+async function completionCard(id) {
+  const { rows: [card] } = await admin.query(`
+    SELECT status, dismiss_reason, version
+      FROM crm.action_cards WHERE shop_id = $1 AND id = $2`, [shopA, id]);
+  return card;
+}
+
+test('예약 메모는 미승인 카드를 유지하고 시술 시간이 바뀌면 같은 카드가 해제된다', async () => {
+  const id = await insert({ start: '2027-04-05T10:00:00+09:00' });
+  const card = await seedCompletionCard(id);
+  const patch = (body) => call('PATCH', `${A}/appointments/${id}`, { body });
+  assert.equal((await patch({ version: 1, memo: '시연 예약' })).status, 200);
+  assert.deepEqual(await completionCard(card), { status: 'pending', dismiss_reason: null, version: 1 });
+  assert.equal((await patch({ version: 1, durationMin: 90 })).status, 409);
+  assert.deepEqual(await completionCard(card), { status: 'pending', dismiss_reason: null, version: 1 });
+  assert.equal((await patch({ version: 2, durationMin: 90 })).status, 200);
+  assert.deepEqual(await completionCard(card), { status: 'dismissed', dismiss_reason: 'rescheduled', version: 2 });
+});
+
+test('예약 고객만 바꾸면 기존 고객의 미승인 완료 카드가 해제된다', async () => {
+  const nextCustomer = randomUUID();
+  await admin.query(
+    "INSERT INTO crm.customer (id, shop_id, name, created_source) VALUES ($1, $2, '합성 변경 고객', 'manual')",
+    [nextCustomer, shopA],
+  );
+  const id = await insert({ start: '2027-04-07T10:00:00+09:00' });
+  const card = await seedCompletionCard(id);
+  const updated = await call('PATCH', `${A}/appointments/${id}`, { body: { version: 1, customerId: nextCustomer } });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.customerId, nextCustomer);
+  assert.deepEqual(await completionCard(card), { status: 'dismissed', dismiss_reason: 'rescheduled', version: 2 });
+});
+
+test('예정 예약을 취소·노쇼·수동 완료하면 미승인 카드가 해제된다', async () => {
+  for (const status of ['cancelled', 'no_show', 'completed']) {
+    const id = await insert({ start: '2027-04-06T10:00:00+09:00' });
+    const card = await seedCompletionCard(id);
+    assert.equal((await setStatus(id, { version: 1, status })).status, 200, status);
+    assert.deepEqual(await completionCard(card), { status: 'dismissed', dismiss_reason: 'status_changed', version: 2 });
+  }
 });
