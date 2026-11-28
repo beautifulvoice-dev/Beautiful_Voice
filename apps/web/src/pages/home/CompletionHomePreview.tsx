@@ -129,7 +129,7 @@ export function CompletionHomePreview() {
               {preview ? (
                 <div className="rounded-lg bg-neutral-weak p-4">
                   <p className="break-words text-sm leading-relaxed">{preview.renderedPreview}</p>
-                  <p className="mt-2 text-xs text-ink-soft">{preview.messageType} · {preview.byteLength}바이트</p>
+                  <p className="mt-2 text-sm text-ink-soft">{preview.messageType} · {preview.byteLength}바이트</p>
                 </div>
               ) : (
                 <ActionButton variant="neutralWeak" size="medium" onClick={() => {
