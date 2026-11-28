@@ -64,6 +64,21 @@ describe("완료 카드 승격", () => {
     }
     assert.deepEqual(promotion({ cards: [history({ reason: "rescheduled" })] }), { promote: true });
   });
+
+  it("같은 회차의 카드는 예약 변경으로 해제된 경우만 다시 승격한다", () => {
+    const changed = { ...appointment, startAt: at("13:00:00") };
+    const sameCycle = { cycleSeq: appointment.cycleSeq };
+    for (const card of [
+      history(sameCycle), history({ ...sameCycle, reason: "reverted" }),
+      history({ ...sameCycle, status: "failed", reason: "target_changed" }),
+      history({ ...sameCycle, reason: "status_changed" }),
+    ]) {
+      assert.deepEqual(promotion({ cards: [card], appointment: changed }),
+        { promote: false, reason: "SAME_CYCLE_HISTORY" });
+    }
+    assert.deepEqual(promotion({ cards: [history({ ...sameCycle, reason: "rescheduled" })], appointment: changed }),
+      { promote: true });
+  });
 });
 
 const pass = (id: string, fields: Partial<CompletionPass> = {}): CompletionPass => ({

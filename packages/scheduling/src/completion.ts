@@ -30,7 +30,7 @@ export interface PromotionInput {
   cards: readonly CompletionCardHistory[];
 }
 
-export type PromotionReason = "PAST_UNCOMPLETED" | "ACTIVE_CARD_EXISTS" | "SAME_SNAPSHOT_HISTORY";
+export type PromotionReason = "PAST_UNCOMPLETED" | "ACTIVE_CARD_EXISTS" | "SAME_SNAPSHOT_HISTORY" | "SAME_CYCLE_HISTORY";
 
 const MINUTE = 60_000;
 const ACTIVE_CARD = new Set<CompletionCardHistory["status"]>(["pending", "dismissing", "resolved"]);
@@ -62,6 +62,11 @@ export function isPromotable({
       && snapshot.durationMin === duration && snapshot.menuId === appointment.menuId;
   });
   if (sameSnapshotHistory) return { promote: false, reason: "SAME_SNAPSHOT_HISTORY" };
+  // 018은 회차당 카드 한 장만 허용하며 시스템은 예약 변경으로 해제된 카드만 다시 연다.
+  const sameCycle = cards.find((card) => card.cycleSeq === appointment.cycleSeq);
+  if (sameCycle && (sameCycle.status !== "dismissed" || sameCycle.reason !== "rescheduled")) {
+    return { promote: false, reason: "SAME_CYCLE_HISTORY" };
+  }
   return { promote: true };
 }
 
