@@ -2,6 +2,8 @@ import { Navigate, type RouteObject } from 'react-router';
 import { AppShell } from '@/components/layout/AppShell';
 import { EmptyState } from '@/components/states/DataState';
 import { RequireSession } from '@/features/auth/RequireSession';
+import { FAKE_API } from '@/lib/apiMode';
+import { CompletionHomePreview } from '@/pages/home/CompletionHomePreview';
 import { CalendarPage } from '@/pages/calendar/CalendarPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { CustomerDetailPage } from '@/pages/customers/CustomerDetailPage';
@@ -26,6 +28,7 @@ export const routes: RouteObject[] = [
     children: [
       // ASSUMPTION: 첫 화면은 메뉴 첫 칸인 캘린더 — 와이어프레임(11/21)으로 확인.
       { index: true, element: <Navigate to="/calendar" replace /> },
+      ...(FAKE_API ? [{ path: 'home', element: <CompletionHomePreview /> }] : []),
       { path: 'calendar', element: <CalendarPage /> },
       {
         // 등록은 목록 위 시트(W5 디자인) — /customers/new 로 바로 들어와도 열린다.
