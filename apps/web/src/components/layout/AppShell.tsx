@@ -2,12 +2,13 @@
 // 웹(768px 이상): 64px 머리줄 — 왼쪽 브랜드, 매장 이름, 탭. 폰: 머리줄 없이 아래 탭 바(아이콘 + 글자).
 // 폰에서 매장 이름은 각 화면 제목 위에 둔다(디자인 .p-shop) — 화면이 useShopName()으로 받는다.
 // 색은 tokens.css 역할(bg-paper, text-ink-soft, text-brand-text …)만, 배치는 Tailwind만 쓴다.
-import { CalendarDays, Settings, Users } from 'lucide-react';
+import { CalendarDays, House, Settings, Users } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { NavLink, Outlet, useOutletContext } from 'react-router';
 import { BRAND_NAME } from '@/brand';
 import { useSession } from '@/features/auth/session';
 import { FALLBACK_SHOP_NAME, useShopNameLoader } from '@/features/shop/shopName';
+import { FAKE_API } from '@/lib/apiMode';
 import { cn } from '@/lib/utils';
 
 // 메뉴: M1은 캘린더·고객·설정. 승인함은 M2에서 나타난다(§3.1, 2F-B7). 매출은 어느 모듈에도 없다(명세 3 §1).
@@ -16,6 +17,8 @@ export const NAV_ITEMS = [
   { to: '/customers', label: '고객', icon: Users },
   { to: '/settings', label: '설정', icon: Settings },
 ] as const;
+
+const previewNav = [{ to: '/home', label: '홈', icon: House }, ...NAV_ITEMS];
 
 interface ShellContext {
   shopName: string;
@@ -41,8 +44,8 @@ export function AppShell() {
             aria-label="주 메뉴"
             className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-paper pb-[max(14px,env(safe-area-inset-bottom))] md:static md:ml-2 md:h-full md:border-t-0 md:pb-0"
           >
-            <ul className="grid grid-cols-3 md:flex md:h-full md:gap-1">
-              {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+            <ul className={cn('grid md:flex md:h-full md:gap-1', FAKE_API ? 'grid-cols-4' : 'grid-cols-3')}>
+              {(FAKE_API ? previewNav : NAV_ITEMS).map(({ to, label, icon: Icon }) => (
                 <li key={to} className="md:h-full">
                   <NavLink
                     to={to}
